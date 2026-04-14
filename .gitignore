@@ -1,0 +1,15 @@
+# Unity
+/Library/
+/Temp/
+/Obj/
+/Build/
+/Logs/
+/UserSettings/
+
+# Large files
+*.unitypackage
+*.asset
+
+# Node
+node_modules/
+.next/
