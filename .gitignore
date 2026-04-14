@@ -6,10 +6,10 @@
 /Logs/
 /UserSettings/
 
-# Large files
-*.unitypackage
-*.asset
-
 # Node
 node_modules/
 .next/
+
+# OS
+.DS_Store
+Thumbs.db
