@@ -207,6 +207,13 @@ export default function PublicMatchOffersPanel() {
     try {
       const identity = await getCurrentPlayerIdentity();
 
+      if (!identity) {
+        window.clearTimeout(timeoutId);
+        setCreating(false);
+        router.replace("/auth/login");
+        return;
+      }
+
       socket.once("publicOffer:created", () => {
         window.clearTimeout(timeoutId);
       });
@@ -252,6 +259,13 @@ export default function PublicMatchOffersPanel() {
     try {
       const identity = await getCurrentPlayerIdentity();
 
+      if (!identity) {
+        window.clearTimeout(timeoutId);
+        setJoiningOfferId(null);
+        router.replace("/auth/login");
+        return;
+      }
+
       socket.once("publicOffer:matched", () => {
         window.clearTimeout(timeoutId);
       });
@@ -285,6 +299,11 @@ export default function PublicMatchOffersPanel() {
 
     try {
       const identity = await getCurrentPlayerIdentity();
+
+      if (!identity) {
+        router.replace("/auth/login");
+        return;
+      }
 
       socket.emit("activeRoom:clear", {
         playerId: identity.playerId,

@@ -5,16 +5,17 @@ export type PlayerIdentity = {
   username: string;
 };
 
-export async function getCurrentPlayerIdentity(): Promise<PlayerIdentity> {
+/**
+ * Returns authenticated multiplayer identity (Supabase `user.id` as `playerId`).
+ * Returns `null` when there is no session — callers must not emit socket events and should redirect to login.
+ */
+export async function getCurrentPlayerIdentity(): Promise<PlayerIdentity | null> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
 
   if (!session) {
-    return {
-      playerId: "guest",
-      username: "Player",
-    };
+    return null;
   }
 
   const { data } = await supabase

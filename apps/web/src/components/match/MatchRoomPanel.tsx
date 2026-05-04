@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { getSocket } from "../../lib/socket/client";
 import { clearActiveMatch } from "../../lib/match/activeMatch";
 import {
@@ -52,6 +53,38 @@ type MatchStatusPayload = {
 
 const LANES: Lane[] = ["LEFT", "CENTER", "RIGHT"];
 
+const GOAL_MESSAGES = [
+  "Clinical finish.",
+  "Keeper went the wrong way.",
+  "Buried with confidence.",
+  "No chance for the keeper.",
+] as const;
+
+const SAVE_MESSAGES = [
+  "Keeper read it.",
+  "Big stop.",
+  "Denied.",
+  "Perfect guess.",
+] as const;
+
+const DRAW_MESSAGES = [
+  "No advantage.",
+  "Both froze.",
+  "Reset and go again.",
+  "Nothing separates them.",
+] as const;
+
+function pickResultFlavorMessage(result: ShotResult): string {
+  const pool =
+    result === "GOAL"
+      ? GOAL_MESSAGES
+      : result === "SAVE"
+        ? SAVE_MESSAGES
+        : DRAW_MESSAGES;
+
+  return pool[Math.floor(Math.random() * pool.length)] ?? "";
+}
+
 function laneEmoji(lane: Lane) {
   if (lane === "LEFT") return "↙";
   if (lane === "CENTER") return "⬆";
@@ -82,6 +115,7 @@ function resultLabel(result?: ShotResult) {
 }
 
 export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
+  const router = useRouter();
   const [identity, setIdentity] = useState<PlayerIdentity | null>(null);
   const [roles, setRoles] = useState<Record<string, Role>>({});
   const [playerNames, setPlayerNames] = useState<Record<string, string>>({});
@@ -101,6 +135,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const [revealStage, setRevealStage] = useState<RevealStage>("IDLE");
   const [hasSubmittedPick, setHasSubmittedPick] = useState(false);
   const [status, setStatus] = useState("Connecting...");
+  const [opponentStatus, setOpponentStatus] = useState("");
   const [connected, setConnected] = useState(false);
   const [matchEnded, setMatchEnded] = useState(false);
   const [playerCount, setPlayerCount] = useState(1);
@@ -118,6 +153,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const closingRevealRoundSnapshotRef = useRef<number | null>(null);
   /** Closing pick round stored when reorder advance runs before trailing match:result. */
   const staleReorderClosingRoundRef = useRef<number | null>(null);
+  const previousScoresForPulseRef = useRef<Record<string, number>>({});
 
   function clearMatchResultRevealTimeout() {
     if (matchResultRevealTimeoutRef.current !== null) {
@@ -133,6 +169,20 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const [rematchVotes, setRematchVotes] = useState(0);
   const [rematchRequired, setRematchRequired] = useState(2);
   const [rematchRequested, setRematchRequested] = useState(false);
+  const [scorePulse, setScorePulse] = useState<"p1" | "p2" | null>(null);
+  const [impactResult, setImpactResult] = useState<
+    "GOAL" | "SAVE" | "DRAW" | null
+  >(null);
+  const [screenEffect, setScreenEffect] = useState<
+    "GOAL" | "SAVE" | "DRAW" | null
+  >(null);
+  const [resultFlavorMessage, setResultFlavorMessage] = useState<string | null>(
+    null
+  );
+
+  const clickSound = useMemo(() => new Audio("/sounds/click.mp3"), []);
+  const goalSound = useMemo(() => new Audio("/sounds/goal.mp3"), []);
+  const saveSound = useMemo(() => new Audio("/sounds/save.mp3"), []);
 
   useEffect(() => {
     let isMounted = true;
@@ -142,6 +192,11 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
       if (!isMounted) return;
 
+      if (!currentIdentity) {
+        router.replace("/auth/login");
+        return;
+      }
+
       setIdentity(currentIdentity);
     }
 
@@ -150,7 +205,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (!identity) return;
@@ -224,6 +279,35 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           ? Math.max(1, Math.ceil((data.round - normalTurns) / 2))
           : 0);
 
+      const myId = identity?.playerId;
+      if (myId && data.scores && typeof data.scores === "object") {
+        const prevSnap = previousScoresForPulseRef.current;
+        const newScore1 = data.scores[myId] ?? 0;
+        const oldScore1 = prevSnap[myId] ?? 0;
+        const oppId = Object.keys(data.scores).find((id) => id !== myId);
+
+        if (newScore1 !== oldScore1) {
+          setScorePulse("p1");
+          window.setTimeout(() => {
+            setScorePulse(null);
+          }, 300);
+        }
+
+        if (oppId) {
+          const newScore2 = data.scores[oppId] ?? 0;
+          const oldScore2 = prevSnap[oppId] ?? 0;
+
+          if (newScore2 !== oldScore2) {
+            setScorePulse("p2");
+            window.setTimeout(() => {
+              setScorePulse(null);
+            }, 300);
+          }
+        }
+
+        previousScoresForPulseRef.current = { ...data.scores };
+      }
+
       setRoles(data.roles);
       setScores(data.scores);
       setDisplayScores(data.scores);
@@ -262,6 +346,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         setMyPick(null);
         setResult(null);
         setPendingResult(null);
+        setResultFlavorMessage(null);
+        setOpponentStatus("");
         setRevealStage("IDLE");
       }
 
@@ -282,6 +368,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         clearActiveMatch();
         lastPickRoundRef.current = null;
         setHasSubmittedPick(false);
+        setOpponentStatus("");
         return;
       }
 
@@ -311,6 +398,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         matchResultRevealArmedRef.current = false;
         setRevealStage("IDLE");
         setHasSubmittedPick(false);
+        setOpponentStatus("");
         setTimer(data.timeoutSeconds);
       }
     }
@@ -337,6 +425,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
       closingRevealRoundSnapshotRef.current = lastPickRoundRef.current;
 
+      setOpponentStatus("Opponent locked their choice");
       setPendingResult(data);
       setRevealStage("REVEALING");
       setStatus("Both players locked. Revealing result...");
@@ -361,6 +450,50 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         setResult(data);
         setRevealStage("REVEALED");
         setStatus(data.statusMessage || `Result: ${data.result}`);
+        setResultFlavorMessage(pickResultFlavorMessage(data.result));
+        setOpponentStatus("");
+
+        if (data.result === "GOAL") {
+          goalSound.currentTime = 0;
+          void goalSound.play().catch(() => {});
+        } else if (data.result === "SAVE") {
+          saveSound.currentTime = 0;
+          void saveSound.play().catch(() => {});
+        }
+
+        if (data.result === "GOAL") {
+          setImpactResult("GOAL");
+          window.setTimeout(() => {
+            setImpactResult(null);
+          }, 600);
+        } else if (data.result === "SAVE") {
+          setImpactResult("SAVE");
+          window.setTimeout(() => {
+            setImpactResult(null);
+          }, 600);
+        } else if (data.result === "DRAW") {
+          setImpactResult("DRAW");
+          window.setTimeout(() => {
+            setImpactResult(null);
+          }, 500);
+        }
+
+        if (data.result === "GOAL") {
+          setScreenEffect("GOAL");
+          window.setTimeout(() => {
+            setScreenEffect(null);
+          }, 600);
+        } else if (data.result === "SAVE") {
+          setScreenEffect("SAVE");
+          window.setTimeout(() => {
+            setScreenEffect(null);
+          }, 600);
+        } else if (data.result === "DRAW") {
+          setScreenEffect("DRAW");
+          window.setTimeout(() => {
+            setScreenEffect(null);
+          }, 500);
+        }
       }, 900);
     }
 
@@ -372,6 +505,12 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       matchResultRevealArmedRef.current = false;
       lastFullyRevealedPickRoundRef.current = 0;
       lastPickRoundRef.current = null;
+      previousScoresForPulseRef.current = {};
+      setScorePulse(null);
+      setImpactResult(null);
+      setScreenEffect(null);
+      setResultFlavorMessage(null);
+      setOpponentStatus("");
       setHasSubmittedPick(false);
       setMatchEnded(true);
       setFinalScores(payload.scores);
@@ -395,6 +534,12 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       matchResultRevealArmedRef.current = false;
       lastFullyRevealedPickRoundRef.current = 0;
       lastPickRoundRef.current = null;
+      previousScoresForPulseRef.current = {};
+      setScorePulse(null);
+      setImpactResult(null);
+      setScreenEffect(null);
+      setResultFlavorMessage(null);
+      setOpponentStatus("");
       setMatchEnded(false);
       setFinalScores(null);
       setResult(null);
@@ -480,6 +625,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const opponentScore = opponentId ? activeScores[opponentId] ?? 0 : 0;
 
   const normalTurns = maxRounds * 2;
+  const isLateGame = round >= maxRounds * 2 - 2;
+  const isSuddenDeathPhase = phase === "SUDDEN_DEATH";
   const isSuddenDeath = phase === "SUDDEN_DEATH" || round > normalTurns;
 
   const roundLabel = isSuddenDeath
@@ -509,6 +656,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       socket.connect();
     }
 
+    clickSound.currentTime = 0;
+    void clickSound.play().catch(() => {});
+
     socket.emit("match:pick", {
       roomCode,
       lane,
@@ -518,6 +668,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     setHasSubmittedPick(true);
     setMyPick(lane);
     setRevealStage("LOCKED");
+    setOpponentStatus("Opponent is thinking...");
     setStatus(`You locked ${lane}. Waiting for opponent...`);
   }
 
@@ -536,17 +687,53 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 text-white">
-      <section className="overflow-hidden rounded-[2rem] border border-zinc-800 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black shadow-2xl">
+    <>
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `@keyframes matchScreenShake{0%,100%{transform:translate3d(0,0,0)}15%{transform:translate3d(-10px,0,0)}30%{transform:translate3d(10px,0,0)}45%{transform:translate3d(-8px,0,0)}60%{transform:translate3d(8px,0,0)}75%{transform:translate3d(-4px,0,0)}90%{transform:translate3d(4px,0,0)}}`,
+        }}
+      />
+      <div
+        className={`main-container mx-auto max-w-6xl space-y-6 px-4 py-6 text-white ${
+          screenEffect === "GOAL"
+            ? "zoom-impact scale-[1.06] transition-transform duration-300 ease-out ring-2 ring-green-400/80 shadow-[0_0_40px_rgba(34,197,94,0.55)]"
+            : screenEffect === "SAVE"
+              ? "shake-impact ring-2 ring-orange-500 shadow-[0_0_36px_rgba(249,115,22,0.55)] [animation:matchScreenShake_0.6s_ease-in-out]"
+              : screenEffect === "DRAW"
+                ? "soft-impact scale-[1.03] transition-transform duration-300 ease-out ring-1 ring-zinc-300/90 shadow-[0_0_28px_rgba(212,212,216,0.45)]"
+                : isSuddenDeathPhase
+                  ? "rounded-[2rem] border border-yellow-400/45 bg-yellow-500/10 shadow-[0_0_28px_rgba(234,179,8,0.14)]"
+                  : isLateGame
+                    ? "rounded-[2rem] border border-red-400/35 bg-red-500/5 shadow-[0_0_22px_rgba(248,113,113,0.08)]"
+                    : ""
+        }`}
+      >
+      <section
+        className={`match-container overflow-hidden rounded-[2rem] border bg-gradient-to-br shadow-2xl transition-all duration-300 ease-out ${
+          impactResult === "GOAL"
+            ? "border-zinc-800 from-zinc-950 via-zinc-900 to-black goal-flash ring-4 ring-green-400 scale-[1.05] shadow-[0_0_44px_rgba(34,197,94,0.65)]"
+            : impactResult === "SAVE"
+              ? "border-zinc-800 from-zinc-950 via-zinc-900 to-black save-flash ring-4 ring-orange-500 scale-[1.04] shadow-[0_0_40px_rgba(249,115,22,0.6)]"
+              : impactResult === "DRAW"
+                ? "border-zinc-800 from-zinc-950 via-zinc-900 to-black draw-flash ring-2 ring-zinc-300 scale-[1.03] shadow-[0_0_32px_rgba(212,212,216,0.5)]"
+                : isSuddenDeathPhase
+                  ? "border-yellow-500/50 from-yellow-950/25 via-zinc-900 to-black shadow-[0_0_36px_rgba(234,179,8,0.14)]"
+                  : isLateGame
+                    ? "border-red-400/40 from-zinc-950 via-zinc-900 to-black shadow-[0_0_30px_rgba(248,113,113,0.1)]"
+                    : "border-zinc-800 from-zinc-950 via-zinc-900 to-black"
+        }`}
+      >
         <div className="border-b border-zinc-800 px-6 py-5">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <span
-                  className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.2em] ${
+                  className={`rounded-full px-3 py-1 font-black uppercase tracking-[0.2em] ${
                     isSuddenDeath
-                      ? "bg-yellow-400 text-black"
-                      : "bg-emerald-400 text-black"
+                      ? isSuddenDeathPhase
+                        ? "bg-amber-400 px-4 py-1.5 text-sm text-black shadow-[0_0_18px_rgba(251,191,36,0.45)]"
+                        : "bg-yellow-400 text-xs text-black"
+                      : "bg-emerald-400 text-xs text-black"
                   }`}
                 >
                   {phaseLabel}
@@ -568,11 +755,33 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               </div>
 
               <h1 className="mt-4 text-3xl font-black md:text-5xl">
-                {myName} <span className="text-zinc-500">vs</span>{" "}
+                {myName}{" "}
+                <span
+                  className={
+                    isSuddenDeathPhase
+                      ? "text-amber-200/90"
+                      : isLateGame
+                        ? "text-zinc-300"
+                        : "text-zinc-500"
+                  }
+                >
+                  vs
+                </span>{" "}
                 {opponentName}
               </h1>
 
-              <p className="mt-3 max-w-2xl text-sm text-zinc-400">{status}</p>
+              <p
+                className={`mt-3 max-w-2xl text-sm ${
+                  isSuddenDeathPhase
+                    ? "text-zinc-100"
+                    : isLateGame
+                      ? "text-zinc-200"
+                      : "text-zinc-400"
+                }`}
+              >
+                {status}
+              </p>
+              <p className="text-xs text-yellow-400">{opponentStatus}</p>
             </div>
 
             <div
@@ -607,13 +816,35 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             <p className="mt-3 text-2xl font-black">{myRole || "-"}</p>
           </div>
 
-          <div className="rounded-3xl border border-zinc-800 bg-black/40 p-5">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
+          <div
+            className={`rounded-3xl border bg-black/40 p-5 ${
+              isSuddenDeathPhase
+                ? "border-amber-400/45 shadow-[inset_0_0_24px_rgba(251,191,36,0.06)]"
+                : isLateGame
+                  ? "border-red-400/30"
+                  : "border-zinc-800"
+            }`}
+          >
+            <p
+              className={`text-xs font-bold uppercase tracking-[0.18em] ${
+                isSuddenDeathPhase
+                  ? "text-amber-300/90"
+                  : isLateGame
+                    ? "text-zinc-300"
+                    : "text-zinc-500"
+              }`}
+            >
               Round
             </p>
             <p
-              className={`mt-3 text-2xl font-black ${
-                isSuddenDeath ? "text-yellow-300" : ""
+              className={`mt-3 font-black ${
+                isSuddenDeathPhase
+                  ? "text-3xl text-amber-200 md:text-4xl"
+                  : isSuddenDeath
+                    ? "text-2xl text-yellow-300"
+                    : isLateGame
+                      ? "text-2xl text-zinc-100"
+                      : "text-2xl"
               }`}
             >
               {roundLabel}
@@ -663,7 +894,13 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         <div className="rounded-[2rem] border border-zinc-800 bg-zinc-950 p-6 shadow-xl">
           <p className="text-sm text-zinc-400">{myName}</p>
           <div className="mt-3 flex items-end justify-between">
-            <p className="text-7xl font-black transition-transform duration-300">
+            <p
+              className={`text-7xl font-black transition-all duration-200 ease-out ${
+                scorePulse === "p1"
+                  ? "scale-[1.2] drop-shadow-[0_0_14px_rgba(255,255,255,0.55)]"
+                  : ""
+              }`}
+            >
               {myScore}
             </p>
             <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-black">
@@ -675,7 +912,13 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         <div className="rounded-[2rem] border border-zinc-800 bg-zinc-950 p-6 shadow-xl">
           <p className="text-sm text-zinc-400">{opponentName}</p>
           <div className="mt-3 flex items-end justify-between">
-            <p className="text-7xl font-black transition-transform duration-300">
+            <p
+              className={`text-7xl font-black transition-all duration-200 ease-out ${
+                scorePulse === "p2"
+                  ? "scale-[1.2] drop-shadow-[0_0_14px_rgba(255,255,255,0.55)]"
+                  : ""
+              }`}
+            >
               {opponentScore}
             </p>
             <span className="rounded-full border border-zinc-600 px-3 py-1 text-xs font-black text-zinc-300">
@@ -748,6 +991,12 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                 ? "Revealing..."
                 : resultLabel(shownResult?.result)}
             </h2>
+
+            {revealStage !== "REVEALING" && resultFlavorMessage ? (
+              <p className="mt-1 text-sm font-medium italic text-zinc-400">
+                {resultFlavorMessage}
+              </p>
+            ) : null}
 
             {shownResult?.statusMessage ? (
               <p className="mt-2 text-sm opacity-80">
@@ -822,6 +1071,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           </div>
         </section>
       ) : null}
-    </div>
+      </div>
+    </>
   );
 }

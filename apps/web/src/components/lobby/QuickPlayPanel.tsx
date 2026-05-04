@@ -45,6 +45,11 @@ export default function QuickPlayPanel() {
 
     const identity = await getCurrentPlayerIdentity();
 
+    if (!identity) {
+      router.replace("/auth/login");
+      return;
+    }
+
     setSearching(true);
     setStatus("Searching for opponent...");
 
@@ -57,6 +62,13 @@ export default function QuickPlayPanel() {
   async function cancelSearch() {
     const socket = getSocket();
     const identity = await getCurrentPlayerIdentity();
+
+    if (!identity) {
+      router.replace("/auth/login");
+      setSearching(false);
+      setStatus("Search cancelled.");
+      return;
+    }
 
     socket.emit("matchmaking:cancel", {
       playerId: identity.playerId,

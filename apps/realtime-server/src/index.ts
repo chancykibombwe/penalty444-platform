@@ -62,6 +62,8 @@ type Room = {
   stakeSettled: boolean;
   resultSaved: boolean;
   timeout?: NodeJS.Timeout;
+  isResolving: boolean;
+  resolveContinuationTimeout?: NodeJS.Timeout;
 };
 
 type PublicMatchOffer = {
@@ -171,6 +173,10 @@ function clearRoomTimer(room: Room) {
   if (room.timeout) {
     clearTimeout(room.timeout);
     room.timeout = undefined;
+  }
+  if (room.resolveContinuationTimeout) {
+    clearTimeout(room.resolveContinuationTimeout);
+    room.resolveContinuationTimeout = undefined;
   }
 }
 
@@ -416,6 +422,7 @@ function createRoomWithPlayers(
     stakeAmount,
     stakeSettled: false,
     resultSaved: false,
+    isResolving: false,
   };
 
   if (firstPlayer) {
@@ -511,6 +518,8 @@ async function saveMatchResult(room: Room) {
 
 function endMatch(roomCode: string, room: Room) {
   clearRoomTimer(room);
+
+  room.isResolving = false;
 
   room.matchEnded = true;
   room.rematchVotes = [];
@@ -612,8 +621,11 @@ function shouldEndSuddenDeath(room: Room) {
   return false;
 }
 
+const RESULT_REVEAL_PAUSE_MS = 3000;
+
 function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
   if (room.matchEnded) return;
+  if (room.isResolving) return;
 
   const kickerPick = room.picks.KICKER;
   const keeperPick = room.picks.KEEPER;
@@ -649,84 +661,112 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
     statusMessage,
   });
 
-  const totalNormalTurns = room.maxRounds * 2;
-  const isFinalNormalTurn =
-    room.phase === "NORMAL" && room.round >= totalNormalTurns;
+  room.isResolving = true;
 
-  const playerIds = room.players.map((player) => player.playerId);
-  const firstPlayerId = playerIds[0];
-  const secondPlayerId = playerIds[1];
-
-  const firstScore = firstPlayerId ? room.scores[firstPlayerId] || 0 : 0;
-  const secondScore = secondPlayerId ? room.scores[secondPlayerId] || 0 : 0;
-
-  const kicksTakenByFirst = Math.ceil(room.round / 2);
-  const kicksTakenBySecond = Math.floor(room.round / 2);
-
-  const remainingFirst = room.maxRounds - kicksTakenByFirst;
-  const remainingSecond = room.maxRounds - kicksTakenBySecond;
-
-  const firstAlreadyWon =
-    room.phase === "NORMAL" && firstScore > secondScore + remainingSecond;
-
-  const secondAlreadyWon =
-    room.phase === "NORMAL" && secondScore > firstScore + remainingFirst;
-
-  if (firstAlreadyWon || secondAlreadyWon) {
-    endMatch(roomCode, room);
-    return;
+  if (room.resolveContinuationTimeout) {
+    clearTimeout(room.resolveContinuationTimeout);
+    room.resolveContinuationTimeout = undefined;
   }
 
-  if (isFinalNormalTurn) {
-    if (shouldEnterSuddenDeath(room)) {
-      room.phase = "SUDDEN_DEATH";
-      room.suddenDeathRound = 1;
-      room.picks = {};
-      room.round += 1;
-      swapRoles(room);
+  room.resolveContinuationTimeout = setTimeout(() => {
+    room.resolveContinuationTimeout = undefined;
 
-      io.to(roomCode).emit("match:status", {
-        message: "Match tied. Sudden Death begins.",
-        timeoutSeconds: 10,
-        phase: room.phase,
-        suddenDeathRound: room.suddenDeathRound,
-      });
-
-      emitRoomUpdate(roomCode, room);
-      emitMatchState(roomCode, room);
-      startRoundTimer(roomCode, room);
+    const r = rooms.get(roomCode);
+    if (!r) {
+      room.isResolving = false;
       return;
     }
 
-    endMatch(roomCode, room);
-    return;
-  }
-
-  if (room.phase === "SUDDEN_DEATH" && shouldEndSuddenDeath(room)) {
-    endMatch(roomCode, room);
-    return;
-  }
-
-  if (room.phase === "SUDDEN_DEATH") {
-    const suddenTurnsPlayed = room.round - totalNormalTurns;
-
-    if (suddenTurnsPlayed > 0 && suddenTurnsPlayed % 2 === 0) {
-      room.suddenDeathRound += 1;
+    if (r.matchEnded) {
+      r.isResolving = false;
+      return;
     }
-  }
 
-  swapRoles(room);
+    try {
+      const totalNormalTurns = r.maxRounds * 2;
+      const isFinalNormalTurn =
+        r.phase === "NORMAL" && r.round >= totalNormalTurns;
 
-  room.picks = {};
-  room.round += 1;
+      const playerIds = r.players.map((player) => player.playerId);
+      const firstPlayerId = playerIds[0];
+      const secondPlayerId = playerIds[1];
 
-  emitRoomUpdate(roomCode, room);
-  emitMatchState(roomCode, room);
-  startRoundTimer(roomCode, room);
+      const firstScore = firstPlayerId ? r.scores[firstPlayerId] || 0 : 0;
+      const secondScore = secondPlayerId ? r.scores[secondPlayerId] || 0 : 0;
+
+      const kicksTakenByFirst = Math.ceil(r.round / 2);
+      const kicksTakenBySecond = Math.floor(r.round / 2);
+
+      const remainingFirst = r.maxRounds - kicksTakenByFirst;
+      const remainingSecond = r.maxRounds - kicksTakenBySecond;
+
+      const firstAlreadyWon =
+        r.phase === "NORMAL" && firstScore > secondScore + remainingSecond;
+
+      const secondAlreadyWon =
+        r.phase === "NORMAL" && secondScore > firstScore + remainingFirst;
+
+      if (firstAlreadyWon || secondAlreadyWon) {
+        endMatch(roomCode, r);
+        return;
+      }
+
+      if (isFinalNormalTurn) {
+        if (shouldEnterSuddenDeath(r)) {
+          r.phase = "SUDDEN_DEATH";
+          r.suddenDeathRound = 1;
+          r.picks = {};
+          r.round += 1;
+          swapRoles(r);
+
+          io.to(roomCode).emit("match:status", {
+            message: "Match tied. Sudden Death begins.",
+            timeoutSeconds: 10,
+            phase: r.phase,
+            suddenDeathRound: r.suddenDeathRound,
+          });
+
+          emitRoomUpdate(roomCode, r);
+          emitMatchState(roomCode, r);
+          startRoundTimer(roomCode, r);
+          return;
+        }
+
+        endMatch(roomCode, r);
+        return;
+      }
+
+      if (r.phase === "SUDDEN_DEATH" && shouldEndSuddenDeath(r)) {
+        endMatch(roomCode, r);
+        return;
+      }
+
+      if (r.phase === "SUDDEN_DEATH") {
+        const suddenTurnsPlayed = r.round - totalNormalTurns;
+
+        if (suddenTurnsPlayed > 0 && suddenTurnsPlayed % 2 === 0) {
+          r.suddenDeathRound += 1;
+        }
+      }
+
+      swapRoles(r);
+
+      r.picks = {};
+      r.round += 1;
+
+      emitRoomUpdate(roomCode, r);
+      emitMatchState(roomCode, r);
+      startRoundTimer(roomCode, r);
+    } finally {
+      r.isResolving = false;
+    }
+  }, RESULT_REVEAL_PAUSE_MS);
 }
 
 function resetRoomForRematch(roomCode: string, room: Room) {
   clearRoomTimer(room);
+
+  room.isResolving = false;
 
   room.picks = {};
   room.round = 1;
@@ -1244,6 +1284,7 @@ io.on("connection", (socket) => {
 
       if (!room) return;
       if (room.matchEnded) return;
+      if (room.isResolving) return;
 
       const role = room.roles[playerId];
 

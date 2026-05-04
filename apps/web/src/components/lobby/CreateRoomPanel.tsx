@@ -23,6 +23,12 @@ export default function CreateRoomPanel() {
 
     const identity = await getCurrentPlayerIdentity();
 
+    if (!identity) {
+      setLoading(false);
+      router.replace("/auth/login");
+      return;
+    }
+
     socket.emit("room:create", {
       playerId: identity.playerId,
       username: identity.username,
