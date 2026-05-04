@@ -13,3 +13,10 @@ export function getSocket(): Socket {
   }
   return socket;
 }
+
+/** Disconnects the singleton socket if it was created. Does not open a new connection. */
+export function disconnectSocket() {
+  if (socket) {
+    socket.disconnect();
+  }
+}

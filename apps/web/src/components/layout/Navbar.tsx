@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getActiveMatch } from "../../lib/match/activeMatch";
+import { clearActiveMatch, getActiveMatch } from "../../lib/match/activeMatch";
+import { disconnectSocket } from "../../lib/socket/client";
 import { supabase } from "../../lib/supabase/client";
 
 type NavItem = {
@@ -19,6 +21,7 @@ const baseNavItems: NavItem[] = [
 ];
 
 export default function Navbar() {
+  const router = useRouter();
   const [activeRoomCode, setActiveRoomCode] = useState<string | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
 
@@ -33,6 +36,14 @@ export default function Navbar() {
   function refreshActiveMatch() {
     const activeMatch = getActiveMatch();
     setActiveRoomCode(activeMatch?.roomCode || null);
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    clearActiveMatch();
+    disconnectSocket();
+    refreshActiveMatch();
+    router.replace("/");
   }
 
   useEffect(() => {
@@ -90,12 +101,13 @@ export default function Navbar() {
           ) : null}
 
           {loggedIn ? (
-            <Link
-              href="/auth/login"
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
               className="rounded-xl border border-zinc-700 px-3 py-2 text-white hover:border-zinc-500"
             >
-              Account
-            </Link>
+              Logout
+            </button>
           ) : (
             <Link
               href="/auth/login"
