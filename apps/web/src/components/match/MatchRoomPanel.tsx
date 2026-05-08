@@ -114,6 +114,17 @@ function resultLabel(result?: ShotResult) {
   return "Waiting for result";
 }
 
+function isReconnectForfeitCountdownStatusMessage(message: string) {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("opponent disconnected") &&
+    lower.includes("waiting") &&
+    lower.includes("39") &&
+    lower.includes("second") &&
+    lower.includes("reconnect")
+  );
+}
+
 export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const router = useRouter();
   const [identity, setIdentity] = useState<PlayerIdentity | null>(null);
@@ -140,6 +151,11 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const [matchEnded, setMatchEnded] = useState(false);
   const [playerCount, setPlayerCount] = useState(1);
   const [timer, setTimer] = useState<number | null>(null);
+  const [disconnectCountdown, setDisconnectCountdown] = useState<number | null>(
+    null
+  );
+  const disconnectCountdownRef = useRef<number | null>(null);
+  const disconnectCountdownTickIntervalRef = useRef<number | null>(null);
 
   const lastPickRoundRef = useRef<number | null>(null);
   const matchResultRevealTimeoutRef = useRef<number | null>(null);
@@ -160,6 +176,41 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       window.clearTimeout(matchResultRevealTimeoutRef.current);
       matchResultRevealTimeoutRef.current = null;
     }
+  }
+
+  function clearDisconnectCountdownVisual() {
+    if (disconnectCountdownTickIntervalRef.current !== null) {
+      window.clearInterval(disconnectCountdownTickIntervalRef.current);
+      disconnectCountdownTickIntervalRef.current = null;
+    }
+    disconnectCountdownRef.current = null;
+    setDisconnectCountdown(null);
+  }
+
+  function startDisconnectCountdownVisual(seconds: number) {
+    if (disconnectCountdownTickIntervalRef.current !== null) {
+      window.clearInterval(disconnectCountdownTickIntervalRef.current);
+      disconnectCountdownTickIntervalRef.current = null;
+    }
+
+    disconnectCountdownRef.current = seconds;
+    setDisconnectCountdown(seconds);
+
+    disconnectCountdownTickIntervalRef.current = window.setInterval(() => {
+      setDisconnectCountdown((prev) => {
+        if (prev === null || prev <= 0) return prev;
+
+        const next = prev - 1;
+        disconnectCountdownRef.current = next;
+
+        if (next <= 0 && disconnectCountdownTickIntervalRef.current !== null) {
+          window.clearInterval(disconnectCountdownTickIntervalRef.current);
+          disconnectCountdownTickIntervalRef.current = null;
+        }
+
+        return next;
+      });
+    }, 1000);
   }
 
   const [finalScores, setFinalScores] = useState<Record<string, number> | null>(
@@ -268,16 +319,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
       lastPickRoundRef.current = incomingRound;
 
-      const normalTurns = data.maxRounds * 2;
-      const inferredPhase: MatchPhase =
-        data.phase || data.round > normalTurns ? "SUDDEN_DEATH" : "NORMAL";
+      const inferredPhase: MatchPhase = data.phase || "NORMAL";
 
       const inferredSuddenRound =
-        data.suddenDeathRound ||
-        data.suddenRound ||
-        (data.round > normalTurns
-          ? Math.max(1, Math.ceil((data.round - normalTurns) / 2))
-          : 0);
+        data.suddenDeathRound || data.suddenRound || 0;
 
       const myId = identity?.playerId;
       if (myId && data.scores && typeof data.scores === "object") {
@@ -323,6 +368,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
         clearMatchResultRevealTimeout();
 
+        if (disconnectCountdownRef.current !== null) {
+          clearDisconnectCountdownVisual();
+        }
+
         if (prev !== null) {
           const resolutionComplete =
             lastFullyRevealedPickRoundRef.current >= prev;
@@ -356,6 +405,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       }
 
       if (data.matchEnded) {
+        if (disconnectCountdownRef.current !== null) {
+          clearDisconnectCountdownVisual();
+        }
         clearMatchResultRevealTimeout();
         staleReorderMatchResultRef.current = false;
         staleReorderClosingRoundRef.current = null;
@@ -379,6 +431,17 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     function onMatchStatus(data: MatchStatusPayload) {
       setStatus(data.message);
 
+      const messageLower = data.message.toLowerCase();
+      if (disconnectCountdownRef.current !== null) {
+        if (messageLower.includes("opponent reconnected")) {
+          clearDisconnectCountdownVisual();
+        }
+      }
+
+      if (isReconnectForfeitCountdownStatusMessage(data.message)) {
+        startDisconnectCountdownVisual(39);
+      }
+
       if (data.phase) {
         setPhase(data.phase);
       }
@@ -392,6 +455,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       }
 
       if (typeof data.timeoutSeconds === "number") {
+        if (disconnectCountdownRef.current !== null) {
+          clearDisconnectCountdownVisual();
+        }
         // New pick window countdown from server — cancel stray reveal timeout so
         // a prior round match:result timer cannot force REVEALED during this countdown.
         clearMatchResultRevealTimeout();
@@ -498,6 +564,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     }
 
     function onMatchEnd(payload: MatchEndPayload) {
+      if (disconnectCountdownRef.current !== null) {
+        clearDisconnectCountdownVisual();
+      }
       clearMatchResultRevealTimeout();
       staleReorderMatchResultRef.current = false;
       staleReorderClosingRoundRef.current = null;
@@ -527,6 +596,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     }
 
     function onRematchAccepted() {
+      if (disconnectCountdownRef.current !== null) {
+        clearDisconnectCountdownVisual();
+      }
       clearMatchResultRevealTimeout();
       staleReorderMatchResultRef.current = false;
       staleReorderClosingRoundRef.current = null;
@@ -575,6 +647,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     }
 
     return () => {
+      clearDisconnectCountdownVisual();
       clearMatchResultRevealTimeout();
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
@@ -626,14 +699,15 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
   const normalTurns = maxRounds * 2;
   const isLateGame = round >= maxRounds * 2 - 2;
-  const isSuddenDeathPhase = phase === "SUDDEN_DEATH";
-  const isSuddenDeath = phase === "SUDDEN_DEATH" || round > normalTurns;
+  const isSuddenDeath = phase === "SUDDEN_DEATH";
 
-  const roundLabel = isSuddenDeath
-    ? `Sudden Death ${
-        suddenDeathRound || Math.max(1, Math.ceil((round - normalTurns) / 2))
-      }`
-    : `${round} / ${normalTurns}`;
+  const roundLabel =
+    phase === "SUDDEN_DEATH"
+      ? `Sudden Death ${
+          suddenDeathRound ||
+          Math.max(1, Math.ceil((round - normalTurns) / 2))
+        }`
+      : `${round} / ${normalTurns}`;
 
   const phaseLabel = isSuddenDeath ? "SUDDEN DEATH" : "NORMAL MATCH";
 
@@ -701,7 +775,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               ? "shake-impact ring-2 ring-orange-500 shadow-[0_0_36px_rgba(249,115,22,0.55)] [animation:matchScreenShake_0.6s_ease-in-out]"
               : screenEffect === "DRAW"
                 ? "soft-impact scale-[1.03] transition-transform duration-300 ease-out ring-1 ring-zinc-300/90 shadow-[0_0_28px_rgba(212,212,216,0.45)]"
-                : isSuddenDeathPhase
+                : isSuddenDeath
                   ? "rounded-[2rem] border border-yellow-400/45 bg-yellow-500/10 shadow-[0_0_28px_rgba(234,179,8,0.14)]"
                   : isLateGame
                     ? "rounded-[2rem] border border-red-400/35 bg-red-500/5 shadow-[0_0_22px_rgba(248,113,113,0.08)]"
@@ -716,7 +790,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               ? "border-zinc-800 from-zinc-950 via-zinc-900 to-black save-flash ring-4 ring-orange-500 scale-[1.04] shadow-[0_0_40px_rgba(249,115,22,0.6)]"
               : impactResult === "DRAW"
                 ? "border-zinc-800 from-zinc-950 via-zinc-900 to-black draw-flash ring-2 ring-zinc-300 scale-[1.03] shadow-[0_0_32px_rgba(212,212,216,0.5)]"
-                : isSuddenDeathPhase
+                : isSuddenDeath
                   ? "border-yellow-500/50 from-yellow-950/25 via-zinc-900 to-black shadow-[0_0_36px_rgba(234,179,8,0.14)]"
                   : isLateGame
                     ? "border-red-400/40 from-zinc-950 via-zinc-900 to-black shadow-[0_0_30px_rgba(248,113,113,0.1)]"
@@ -730,9 +804,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                 <span
                   className={`rounded-full px-3 py-1 font-black uppercase tracking-[0.2em] ${
                     isSuddenDeath
-                      ? isSuddenDeathPhase
-                        ? "bg-amber-400 px-4 py-1.5 text-sm text-black shadow-[0_0_18px_rgba(251,191,36,0.45)]"
-                        : "bg-yellow-400 text-xs text-black"
+                      ? "bg-amber-400 px-4 py-1.5 text-sm text-black shadow-[0_0_18px_rgba(251,191,36,0.45)]"
                       : "bg-emerald-400 text-xs text-black"
                   }`}
                 >
@@ -758,7 +830,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                 {myName}{" "}
                 <span
                   className={
-                    isSuddenDeathPhase
+                    isSuddenDeath
                       ? "text-amber-200/90"
                       : isLateGame
                         ? "text-zinc-300"
@@ -772,7 +844,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
               <p
                 className={`mt-3 max-w-2xl text-sm ${
-                  isSuddenDeathPhase
+                  isSuddenDeath
                     ? "text-zinc-100"
                     : isLateGame
                       ? "text-zinc-200"
@@ -782,6 +854,14 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                 {status}
               </p>
               <p className="text-xs text-yellow-400">{opponentStatus}</p>
+              {disconnectCountdown !== null ? (
+                <div className="mt-2 max-w-2xl rounded-xl border border-red-500/40 bg-red-950/35 px-3 py-2">
+                  <p className="text-sm font-semibold text-red-200">
+                    Opponent disconnected. Aborting match in{" "}
+                    {disconnectCountdown}s...
+                  </p>
+                </div>
+              ) : null}
             </div>
 
             <div
@@ -818,7 +898,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
           <div
             className={`rounded-3xl border bg-black/40 p-5 ${
-              isSuddenDeathPhase
+              isSuddenDeath
                 ? "border-amber-400/45 shadow-[inset_0_0_24px_rgba(251,191,36,0.06)]"
                 : isLateGame
                   ? "border-red-400/30"
@@ -827,7 +907,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           >
             <p
               className={`text-xs font-bold uppercase tracking-[0.18em] ${
-                isSuddenDeathPhase
+                isSuddenDeath
                   ? "text-amber-300/90"
                   : isLateGame
                     ? "text-zinc-300"
@@ -838,13 +918,11 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             </p>
             <p
               className={`mt-3 font-black ${
-                isSuddenDeathPhase
+                isSuddenDeath
                   ? "text-3xl text-amber-200 md:text-4xl"
-                  : isSuddenDeath
-                    ? "text-2xl text-yellow-300"
-                    : isLateGame
-                      ? "text-2xl text-zinc-100"
-                      : "text-2xl"
+                  : isLateGame
+                    ? "text-2xl text-zinc-100"
+                    : "text-2xl"
               }`}
             >
               {roundLabel}

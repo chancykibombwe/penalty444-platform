@@ -46,6 +46,8 @@ type RoomPlayer = {
 
 type Room = {
   code: string;
+  /** Increments when a rematch starts in the same room; pairs with room_code for saved rows. */
+  matchInstance: number;
   players: RoomPlayer[];
   roles: Record<string, Role>;
   picks: Partial<Record<Role, Lane>>;
@@ -64,6 +66,9 @@ type Room = {
   timeout?: NodeJS.Timeout;
   isResolving: boolean;
   resolveContinuationTimeout?: NodeJS.Timeout;
+  disconnectedPlayerId?: string;
+  disconnectedAt?: number;
+  disconnectForfeitTimeout?: NodeJS.Timeout;
 };
 
 type PublicMatchOffer = {
@@ -177,6 +182,10 @@ function clearRoomTimer(room: Room) {
   if (room.resolveContinuationTimeout) {
     clearTimeout(room.resolveContinuationTimeout);
     room.resolveContinuationTimeout = undefined;
+  }
+  if (room.disconnectForfeitTimeout) {
+    clearTimeout(room.disconnectForfeitTimeout);
+    room.disconnectForfeitTimeout = undefined;
   }
 }
 
@@ -407,6 +416,7 @@ function createRoomWithPlayers(
 
   const room: Room = {
     code,
+    matchInstance: 1,
     players,
     roles: {},
     picks: {},
@@ -503,6 +513,7 @@ async function saveMatchResult(room: Room) {
 
     rounds: room.maxRounds,
     is_draw: isDraw,
+    match_instance: room.matchInstance ?? 1,
   };
 
   const { error } = await supabase.from("match_results").insert(payload);
@@ -768,6 +779,8 @@ function resetRoomForRematch(roomCode: string, room: Room) {
 
   room.isResolving = false;
 
+  room.matchInstance = (room.matchInstance ?? 1) + 1;
+
   room.picks = {};
   room.round = 1;
   room.phase = "NORMAL";
@@ -777,6 +790,9 @@ function resetRoomForRematch(roomCode: string, room: Room) {
   room.resultSaved = false;
   room.stakeSettled = room.stakeAmount > 0;
   room.scores = {};
+  room.disconnectedPlayerId = undefined;
+  room.disconnectedAt = undefined;
+  room.disconnectForfeitTimeout = undefined;
 
   const first = room.players[0];
   const second = room.players[1];
@@ -926,6 +942,25 @@ io.on("connection", (socket) => {
         existingPlayer.username = playerName;
 
         setPlayerActiveRoom(playerId, code);
+
+        if (room.disconnectedPlayerId === playerId) {
+          if (room.disconnectForfeitTimeout) {
+            clearTimeout(room.disconnectForfeitTimeout);
+            room.disconnectForfeitTimeout = undefined;
+          }
+
+          room.disconnectedPlayerId = undefined;
+          room.disconnectedAt = undefined;
+
+          io.to(code).emit("match:status", {
+            message: "Opponent reconnected. Match continues.",
+            phase: room.phase,
+            suddenDeathRound: room.suddenDeathRound,
+          });
+
+          // Keep reconnect logic simple: always restart the round timer.
+          startRoundTimer(code, room);
+        }
 
         socket.join(code);
         socket.emit("room:joined", { roomCode: code });
@@ -1285,6 +1320,7 @@ io.on("connection", (socket) => {
       if (!room) return;
       if (room.matchEnded) return;
       if (room.isResolving) return;
+      if (room.disconnectedPlayerId === playerId) return;
 
       const role = room.roles[playerId];
 
@@ -1376,9 +1412,51 @@ io.on("connection", (socket) => {
 
       if (!player) continue;
 
-      io.to(room.code).emit("error:message", {
-        message: "Opponent disconnected. Waiting for reconnect...",
+      // Only apply reconnect-forfeit to active 2-player matches that are not ended.
+      if (room.players.length !== 2 || room.matchEnded) {
+        io.to(room.code).emit("match:status", {
+          message: "Opponent disconnected. Waiting for reconnect...",
+          phase: room.phase,
+          suddenDeathRound: room.suddenDeathRound,
+        });
+
+        emitRoomUpdate(room.code, room);
+        emitMatchState(room.code, room);
+        return;
+      }
+
+      // Pause all match timers while we wait for reconnect.
+      clearRoomTimer(room);
+
+      room.disconnectedPlayerId = player.playerId;
+      room.disconnectedAt = Date.now();
+
+      io.to(room.code).emit("match:status", {
+        message: "Opponent disconnected. Waiting 39 seconds for reconnect...",
+        phase: room.phase,
+        suddenDeathRound: room.suddenDeathRound,
       });
+
+      room.disconnectForfeitTimeout = setTimeout(() => {
+        const r = rooms.get(room.code);
+        if (!r) return;
+        if (r.matchEnded) return;
+
+        const disconnectedId = r.disconnectedPlayerId;
+        if (!disconnectedId) return;
+
+        const opponent = r.players.find((p) => p.playerId !== disconnectedId);
+        if (!opponent) return;
+
+        const maxScore = Math.max(...Object.values(r.scores || {}), 0);
+        r.scores[opponent.playerId] = maxScore + 1;
+
+        r.disconnectedPlayerId = undefined;
+        r.disconnectedAt = undefined;
+        r.disconnectForfeitTimeout = undefined;
+
+        endMatch(r.code, r);
+      }, 39_000);
 
       emitRoomUpdate(room.code, room);
       emitMatchState(room.code, room);

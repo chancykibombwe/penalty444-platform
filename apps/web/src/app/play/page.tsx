@@ -32,17 +32,17 @@ export default function PlayPage() {
   return (
     <section className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-white">Play Penalty444</h1>
+        <h1 className="text-3xl font-bold text-white">Play on 444 ARENA</h1>
         <p className="mt-2 text-zinc-400">
-          Choose how you want to enter the game.
+          Choose a game and how you want to play.
         </p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
-          <h2 className="text-xl font-semibold text-white">Guest vs AI</h2>
+          <h2 className="text-xl font-semibold text-white">Penalty444</h2>
           <p className="mt-3 text-zinc-400">
-            Quick access. No account required.
+            Guest vs AI. Quick access. No account required.
           </p>
 
           <Link
@@ -54,11 +54,11 @@ export default function PlayPage() {
         </div>
 
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
-          <h2 className="text-xl font-semibold text-white">Live Multiplayer</h2>
+          <h2 className="text-xl font-semibold text-white">Penalty444</h2>
           <p className="mt-3 text-zinc-400">
             {loggedIn
-              ? "Enter the lobby and challenge real players."
-              : "Login to access the lobby and challenge real players."}
+              ? "Live multiplayer. Enter the lobby and challenge real players."
+              : "Live multiplayer. Login to access the lobby and challenge real players."}
           </p>
 
           <Link

@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase/client";
-import { clearActiveMatch } from "../../lib/match/activeMatch";
 import { disconnectSocket } from "../../lib/socket/client";
 
 export default function RequireAuth({ children }: { children: ReactNode }) {
@@ -34,7 +33,6 @@ export default function RequireAuth({ children }: { children: ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") {
-        clearActiveMatch();
         disconnectSocket();
         setChecking(true);
         router.replace("/auth/login");

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { clearActiveMatch, getActiveMatch } from "../../lib/match/activeMatch";
+import { getActiveMatch } from "../../lib/match/activeMatch";
 import { disconnectSocket } from "../../lib/socket/client";
 import { supabase } from "../../lib/supabase/client";
 
@@ -40,7 +40,6 @@ export default function Navbar() {
 
   async function handleLogout() {
     await supabase.auth.signOut();
-    clearActiveMatch();
     disconnectSocket();
     refreshActiveMatch();
     router.replace("/");
@@ -81,7 +80,7 @@ export default function Navbar() {
     <header className="border-b border-zinc-800 bg-zinc-950">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 md:flex-row md:items-center md:justify-between">
         <Link href="/" className="text-xl font-bold text-white">
-          Penalty444
+          444 ARENA
         </Link>
 
         <nav className="flex flex-wrap items-center gap-4 text-sm text-zinc-300">
