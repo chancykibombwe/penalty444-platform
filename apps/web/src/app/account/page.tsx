@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { disconnectSocket } from "../../lib/socket/client";
 import { supabase } from "../../lib/supabase/client";
 
 type PlayerStatsRow = {
@@ -72,6 +73,20 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+function SettingRow({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-t border-zinc-800/80 px-5 py-4 first:border-t-0">
+      <div>
+        <p className="font-semibold text-white">{title}</p>
+        <p className="mt-1 text-sm text-zinc-500">{description}</p>
+      </div>
+      <span className="shrink-0 text-xs font-bold uppercase tracking-[0.18em] text-zinc-600">
+        Coming soon
+      </span>
+    </div>
+  );
+}
+
 export default function AccountPage() {
   const router = useRouter();
 
@@ -80,6 +95,14 @@ export default function AccountPage() {
   const [globalRank, setGlobalRank] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("Loading account...");
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    setLoggingOut(true);
+    await supabase.auth.signOut();
+    disconnectSocket();
+    router.replace("/");
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -188,15 +211,15 @@ export default function AccountPage() {
       {!loading ? (
         <>
           <div className="rounded-[1.75rem] border border-zinc-800/80 bg-black/45 p-6 shadow-[0_28px_80px_rgba(0,0,0,0.45)] sm:p-8">
-            <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-              <div className="flex items-center gap-5">
-                <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/70 text-2xl font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_45px_rgba(0,0,0,0.45)]">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+                <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/70 text-3xl font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_45px_rgba(0,0,0,0.45)]">
                   {getInitials(displayName)}
                 </div>
 
                 <div>
                   <div className="flex flex-wrap items-center gap-3">
-                    <h2 className="text-3xl font-black tracking-tight text-white">
+                    <h2 className="text-3xl font-black tracking-tight text-white sm:text-4xl">
                       {displayName}
                     </h2>
                     <span
@@ -208,26 +231,27 @@ export default function AccountPage() {
                     </span>
                   </div>
                   <p className="mt-2 text-sm text-zinc-500">
-                    Account ID: {account?.id}
+                    Penalty444 ranked account
+                    {account?.email ? ` · ${account.email}` : ""}
                   </p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 sm:min-w-[280px]">
-                <div className="rounded-2xl border border-yellow-300/20 bg-yellow-950/10 p-4">
+              <div className="grid grid-cols-2 gap-3 lg:min-w-[320px]">
+                <div className="rounded-2xl border border-yellow-300/20 bg-yellow-950/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-yellow-300/70">
-                    Points
+                    Rank Points
                   </p>
                   <p className="mt-2 text-4xl font-black tracking-tighter text-yellow-100">
                     {rankPoints}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-zinc-700/80 bg-black/35 p-4">
+                <div className="rounded-2xl border border-zinc-700/80 bg-black/35 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
                     Global Rank
                   </p>
                   <p className="mt-2 text-4xl font-black tracking-tighter text-white">
-                    {globalRank ? `#${globalRank}` : "-"}
+                    {globalRank ? `#${globalRank}` : "—"}
                   </p>
                 </div>
               </div>
@@ -243,7 +267,6 @@ export default function AccountPage() {
               <StatCard label="Win Rate" value={`${winRate}%`} />
               <StatCard label="Goals For" value={stats.goals_for} />
               <StatCard label="Goals Against" value={stats.goals_against} />
-              <StatCard label="Tier" value={tier} />
             </div>
           ) : (
             <div className="rounded-2xl border border-zinc-800/80 bg-black/45 p-6 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
@@ -256,6 +279,42 @@ export default function AccountPage() {
               </p>
             </div>
           )}
+
+          <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
+            <div className="border-b border-zinc-800/80 px-5 py-4">
+              <h2 className="text-lg font-black text-white">Settings</h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                Account controls and preferences will appear here.
+              </p>
+            </div>
+            <SettingRow
+              title="Account Settings"
+              description="Profile details and account preferences."
+            />
+            <SettingRow
+              title="Wallet Settings"
+              description="Manage arena wallet options and coin settings."
+            />
+            <SettingRow
+              title="Game Settings"
+              description="Penalty444 match and gameplay preferences."
+            />
+            <SettingRow
+              title="Security"
+              description="Password, sessions, and account security."
+            />
+          </div>
+
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              disabled={loggingOut}
+              className="w-full rounded-xl border border-zinc-700 px-4 py-3 font-semibold text-white hover:border-zinc-500 disabled:opacity-50 sm:w-auto"
+            >
+              {loggingOut ? "Logging out..." : "Logout"}
+            </button>
+          </div>
         </>
       ) : null}
     </section>

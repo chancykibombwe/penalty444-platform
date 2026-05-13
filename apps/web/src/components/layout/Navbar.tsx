@@ -1,10 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getActiveMatch } from "../../lib/match/activeMatch";
-import { disconnectSocket } from "../../lib/socket/client";
 import { supabase } from "../../lib/supabase/client";
 
 type NavItem = {
@@ -14,35 +12,55 @@ type NavItem = {
 
 const baseNavItems: NavItem[] = [
   { href: "/", label: "Home" },
-  { href: "/play", label: "Play" },
   { href: "/lobby", label: "Lobby" },
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/wallet", label: "Wallet" },
 ];
 
 export default function Navbar() {
-  const router = useRouter();
   const [activeRoomCode, setActiveRoomCode] = useState<string | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [accountLabel, setAccountLabel] = useState("Account");
 
   async function refreshAuthState() {
     const {
       data: { session },
     } = await supabase.auth.getSession();
 
-    setLoggedIn(!!session);
+    if (!session) {
+      setLoggedIn(false);
+      setAccountLabel("Account");
+      return;
+    }
+
+    setLoggedIn(true);
+
+    const userId = session.user.id;
+
+    const { data: stats } = await supabase
+      .from("player_stats")
+      .select("username")
+      .eq("game_id", "penalty444")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (stats?.username) {
+      setAccountLabel(stats.username);
+      return;
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("username")
+      .eq("id", userId)
+      .maybeSingle();
+
+    setAccountLabel(profile?.username || "Account");
   }
 
   function refreshActiveMatch() {
     const activeMatch = getActiveMatch();
     setActiveRoomCode(activeMatch?.roomCode || null);
-  }
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    disconnectSocket();
-    refreshActiveMatch();
-    router.replace("/");
   }
 
   useEffect(() => {
@@ -99,22 +117,12 @@ export default function Navbar() {
             </Link>
           ) : null}
 
-          {loggedIn ? (
-            <button
-              type="button"
-              onClick={() => void handleLogout()}
-              className="rounded-xl border border-zinc-700 px-3 py-2 text-white hover:border-zinc-500"
-            >
-              Logout
-            </button>
-          ) : (
-            <Link
-              href="/auth/login"
-              className="rounded-xl border border-zinc-700 px-3 py-2 text-white hover:border-zinc-500"
-            >
-              Login
-            </Link>
-          )}
+          <Link
+            href={loggedIn ? "/account" : "/auth/login"}
+            className="rounded-xl border border-zinc-700 px-3 py-2 text-white hover:border-zinc-500"
+          >
+            {accountLabel}
+          </Link>
         </nav>
       </div>
     </header>
