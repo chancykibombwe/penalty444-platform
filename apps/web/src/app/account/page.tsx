@@ -31,6 +31,31 @@ type AccountInfo = {
   email: string;
 };
 
+type MatchResultRow = {
+  room_code: string;
+  match_instance: number;
+  match_type: string;
+  player_one_id: string;
+  player_one_username: string;
+  player_one_score: number;
+  player_two_id: string;
+  player_two_username: string;
+  player_two_score: number;
+  winner_id: string | null;
+  loser_id: string | null;
+  is_draw: boolean;
+  created_at: string | null;
+};
+
+type DisplayMatch = {
+  key: string;
+  result: "W" | "D" | "L";
+  opponent: string;
+  score: string;
+  rankPointChange: string;
+  dateLabel: string;
+};
+
 function getTierBadgeClass(tier: string) {
   switch (tier.toLowerCase()) {
     case "bronze":
@@ -87,6 +112,56 @@ function SettingRow({ title, description }: { title: string; description: string
   );
 }
 
+function getResultBadgeClass(result: DisplayMatch["result"]) {
+  switch (result) {
+    case "W":
+      return "border-emerald-500/70 bg-emerald-950/70 text-emerald-200";
+    case "D":
+      return "border-yellow-500/70 bg-yellow-950/70 text-yellow-200";
+    case "L":
+      return "border-red-500/70 bg-red-950/70 text-red-200";
+  }
+}
+
+function formatMatchDate(createdAt: string | null) {
+  if (!createdAt) return "—";
+
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function mapMatchForDisplay(match: MatchResultRow, userId: string): DisplayMatch {
+  const result: DisplayMatch["result"] = match.is_draw
+    ? "D"
+    : match.winner_id === userId
+      ? "W"
+      : "L";
+  const isPlayerOne = userId === match.player_one_id;
+  const opponent = isPlayerOne
+    ? match.player_two_username
+    : match.player_one_username;
+  const myScore = isPlayerOne ? match.player_one_score : match.player_two_score;
+  const opponentScore = isPlayerOne
+    ? match.player_two_score
+    : match.player_one_score;
+
+  return {
+    key: `${match.room_code}-${match.match_instance}`,
+    result,
+    opponent,
+    score: `${myScore} - ${opponentScore}`,
+    rankPointChange:
+      result === "W" ? "+3 RP" : result === "D" ? "+1 RP" : "-1 RP",
+    dateLabel: formatMatchDate(match.created_at),
+  };
+}
+
 export default function AccountPage() {
   const router = useRouter();
 
@@ -96,6 +171,8 @@ export default function AccountPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("Loading account...");
   const [loggingOut, setLoggingOut] = useState(false);
+  const [recentMatches, setRecentMatches] = useState<MatchResultRow[]>([]);
+  const [matchHistoryNotice, setMatchHistoryNotice] = useState("");
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -122,7 +199,7 @@ export default function AccountPage() {
 
       const userId = session.user.id;
 
-      const [statsResult, rankResult] = await Promise.all([
+      const [statsResult, rankResult, matchesResult] = await Promise.all([
         supabase
           .from("player_stats")
           .select(
@@ -139,6 +216,14 @@ export default function AccountPage() {
           .order("wins", { ascending: false })
           .order("matches", { ascending: false })
           .order("goals_for", { ascending: false }),
+        supabase
+          .from("match_results")
+          .select(
+            "room_code, match_instance, match_type, player_one_id, player_one_username, player_one_score, player_two_id, player_two_username, player_two_score, winner_id, loser_id, is_draw, created_at"
+          )
+          .or(`player_one_id.eq.${userId},player_two_id.eq.${userId}`)
+          .order("created_at", { ascending: false })
+          .limit(10),
       ]);
 
       if (cancelled) return;
@@ -160,6 +245,12 @@ export default function AccountPage() {
 
       setStats(currentStats);
       setGlobalRank(rankIndex >= 0 ? rankIndex + 1 : null);
+      setRecentMatches((matchesResult.data ?? []) as MatchResultRow[]);
+      setMatchHistoryNotice(
+        matchesResult.error
+          ? "Match history is unavailable right now."
+          : ""
+      );
       setMessage(
         rankResult.error
           ? `Could not calculate global rank: ${rankResult.error.message}`
@@ -181,6 +272,9 @@ export default function AccountPage() {
   const winRate = stats?.matches
     ? Math.round((stats.wins / stats.matches) * 100)
     : 0;
+  const displayedMatches = account
+    ? recentMatches.map((match) => mapMatchForDisplay(match, account.id))
+    : [];
 
   return (
     <section className="space-y-8 rounded-[2rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top,_rgba(234,179,8,0.10),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(34,211,238,0.07),_transparent_28%),linear-gradient(180deg,_#050505,_#09090b_42%,_#020202)] p-5 shadow-[0_40px_120px_rgba(0,0,0,0.65)] sm:p-7 lg:p-9">
@@ -279,6 +373,60 @@ export default function AccountPage() {
               </p>
             </div>
           )}
+
+          <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
+            <div className="border-b border-zinc-800/80 px-5 py-4">
+              <h2 className="text-lg font-black text-white">Recent Matches</h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                Your latest Penalty444 arena results.
+              </p>
+            </div>
+            {matchHistoryNotice ? (
+              <p className="border-b border-zinc-800/80 px-5 py-3 text-sm text-zinc-500">
+                {matchHistoryNotice}
+              </p>
+            ) : null}
+            {displayedMatches.length > 0 ? (
+              <div>
+                {displayedMatches.map((match) => (
+                  <div
+                    key={match.key}
+                    className="flex flex-col gap-3 border-t border-zinc-800/80 px-5 py-4 first:border-t-0 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-sm font-black ${getResultBadgeClass(
+                          match.result
+                        )}`}
+                      >
+                        {match.result}
+                      </span>
+                      <div>
+                        <p className="font-semibold text-white">
+                          vs {match.opponent}
+                        </p>
+                        <p className="mt-1 text-sm text-zinc-500">
+                          {match.dateLabel}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm sm:justify-end">
+                      <span className="font-semibold text-white">
+                        {match.score}
+                      </span>
+                      <span className="font-bold text-yellow-200">
+                        {match.rankPointChange}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="px-5 py-6 text-sm text-zinc-500">
+                No match history yet.
+              </p>
+            )}
+          </div>
 
           <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
             <div className="border-b border-zinc-800/80 px-5 py-4">
