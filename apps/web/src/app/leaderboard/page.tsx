@@ -1,9 +1,12 @@
+import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
 );
+
+type LeaderboardScope = "season" | "all-time";
 
 type PlayerStatsRow = {
   user_id: string;
@@ -99,36 +102,14 @@ function getInitials(username: string) {
   return initials || "?";
 }
 
-export default async function LeaderboardPage() {
-  const [{ data, error }, seasonResult] = await Promise.all([
-    supabase
-      .from("player_stats")
-      .select(
-        "user_id, username, matches, wins, losses, draws, goals_for, goals_against, rank_points, tier"
-      )
-      .eq("game_id", "penalty444")
-      .order("rank_points", { ascending: false })
-      .order("wins", { ascending: false })
-      .order("matches", { ascending: false })
-      .order("goals_for", { ascending: false }),
-    supabase
-      .from("seasons")
-      .select(
-        "id, game_id, season_number, name, starts_at, ends_at, is_active"
-      )
-      .eq("game_id", "penalty444")
-      .eq("is_active", true)
-      .maybeSingle(),
-  ]);
+function getScopeChipClass(isActive: boolean) {
+  return isActive
+    ? "rounded-xl border border-yellow-500/30 bg-yellow-950/20 px-4 py-2 text-sm font-semibold text-yellow-100 shadow-lg shadow-black/30"
+    : "rounded-xl border border-zinc-700/80 bg-black/45 px-4 py-2 text-sm font-semibold text-zinc-100 shadow-lg shadow-black/30";
+}
 
-  const activeSeason = !seasonResult.error
-    ? (seasonResult.data as SeasonRow | null)
-    : null;
-  const seasonCountdown = activeSeason
-    ? formatSeasonCountdown(activeSeason.ends_at)
-    : null;
-
-  const leaderboard = ((data ?? []) as PlayerStatsRow[])
+function buildLeaderboard(rows: PlayerStatsRow[]): LeaderboardPlayer[] {
+  return rows
     .map((row): LeaderboardPlayer => ({
       id: row.user_id,
       username: row.username,
@@ -148,8 +129,159 @@ export default async function LeaderboardPage() {
       if (b.matches !== a.matches) return b.matches - a.matches;
       return b.goalsFor - a.goalsFor;
     });
+}
 
+function parsePage(value: string | undefined) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) return 1;
+  return Math.floor(parsed);
+}
+
+function parseLimit(value: string | undefined) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) return 100;
+  return Math.min(100, Math.floor(parsed));
+}
+
+function buildLeaderboardHref(
+  scope: LeaderboardScope,
+  options: { search?: string; page?: number; limit?: number } = {}
+) {
+  const page = options.page ?? 1;
+  const limit = options.limit ?? 100;
+  const params = new URLSearchParams({
+    scope,
+    page: String(page),
+    limit: String(limit),
+  });
+
+  if (options.search) {
+    params.set("search", options.search);
+  }
+
+  return `/leaderboard?${params.toString()}`;
+}
+
+function hasValidUserId(userId: string) {
+  return userId.trim().length > 0;
+}
+
+function buildChallengeHref(userId: string, username: string) {
+  const params = new URLSearchParams({
+    challengeUserId: userId,
+    challengeUsername: username,
+  });
+
+  return `/lobby?${params.toString()}`;
+}
+
+function buildPlayerProfileHref(userId: string) {
+  return `/players/${userId}`;
+}
+
+export default async function LeaderboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    scope?: string;
+    search?: string;
+    page?: string;
+    limit?: string;
+  }>;
+}) {
+  const { scope: rawScope, search: rawSearch, page: rawPage, limit: rawLimit } =
+    await searchParams;
+  const scope: LeaderboardScope =
+    rawScope === "all-time" ? "all-time" : "season";
+  const search = rawSearch?.trim() ?? "";
+  const hasActiveSearch = search.length > 0;
+  const page = parsePage(rawPage);
+  const limit = parseLimit(rawLimit);
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+
+  const seasonResult = await supabase
+    .from("seasons")
+    .select("id, game_id, season_number, name, starts_at, ends_at, is_active")
+    .eq("game_id", "penalty444")
+    .eq("is_active", true)
+    .order("season_number", { ascending: false })
+    .limit(1);
+
+  const activeSeason = !seasonResult.error
+    ? ((seasonResult.data?.[0] as SeasonRow | undefined) ?? null)
+    : null;
+  const seasonCountdown = activeSeason
+    ? formatSeasonCountdown(activeSeason.ends_at)
+    : null;
+  const seasonLabel = activeSeason?.name ?? "Season 1";
+
+  const statsSelect =
+    "user_id, username, matches, wins, losses, draws, goals_for, goals_against, rank_points, tier";
+
+  const statsResult =
+    scope === "all-time"
+      ? await (() => {
+          let query = supabase
+            .from("player_stats")
+            .select(statsSelect)
+            .eq("game_id", "penalty444");
+
+          if (hasActiveSearch) {
+            query = query.ilike("username", `%${search}%`);
+          }
+
+          return query
+            .order("rank_points", { ascending: false })
+            .order("wins", { ascending: false })
+            .order("matches", { ascending: false })
+            .order("goals_for", { ascending: false })
+            .range(from, to);
+        })()
+      : activeSeason
+        ? await (() => {
+            let query = supabase
+              .from("season_player_stats")
+              .select(statsSelect)
+              .eq("game_id", "penalty444")
+              .eq("season_id", activeSeason.id);
+
+            if (hasActiveSearch) {
+              query = query.ilike("username", `%${search}%`);
+            }
+
+            return query
+              .order("rank_points", { ascending: false })
+              .order("wins", { ascending: false })
+              .order("matches", { ascending: false })
+              .order("goals_for", { ascending: false })
+              .range(from, to);
+          })()
+        : { data: [], error: null };
+
+  const error = statsResult.error;
+  const leaderboard = buildLeaderboard((statsResult.data ?? []) as PlayerStatsRow[]);
   const topPlayers = leaderboard.slice(0, 3);
+  const hasNoActiveSeason = scope === "season" && !activeSeason;
+  const emptyMessage =
+    scope === "season"
+      ? `No ${activeSeason?.name ?? "Season"} matches yet.`
+      : "No completed matches yet.";
+  const hrefOptions = { search, page, limit };
+  const seasonScopeHref = buildLeaderboardHref("season", hrefOptions);
+  const allTimeScopeHref = buildLeaderboardHref("all-time", hrefOptions);
+  const clearSearchHref = buildLeaderboardHref(scope, { page, limit });
+  const previousPageHref = buildLeaderboardHref(scope, {
+    search,
+    page: page - 1,
+    limit,
+  });
+  const nextPageHref = buildLeaderboardHref(scope, {
+    search,
+    page: page + 1,
+    limit,
+  });
+  const showNextPage = leaderboard.length === limit;
 
   return (
     <section className="space-y-10 rounded-[2rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top,_rgba(234,179,8,0.10),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(34,211,238,0.07),_transparent_28%),linear-gradient(180deg,_#050505,_#09090b_42%,_#020202)] p-5 shadow-[0_40px_120px_rgba(0,0,0,0.65)] sm:p-7 lg:p-9">
@@ -170,21 +302,23 @@ export default async function LeaderboardPage() {
           <div className="rounded-xl border border-zinc-700/80 bg-black/45 px-4 py-2 text-sm font-semibold text-zinc-100 shadow-lg shadow-black/30">
             Penalty444
           </div>
-          <div className="rounded-xl border border-zinc-700/80 bg-black/45 px-4 py-2 text-sm font-semibold text-zinc-100 shadow-lg shadow-black/30">
+          <Link
+            href={seasonScopeHref}
+            className={getScopeChipClass(scope === "season")}
+          >
+            <span>{seasonLabel}</span>
+            {scope === "season" && seasonCountdown ? (
+              <span className="mt-1 block text-xs font-medium text-yellow-200/80">
+                {seasonCountdown}
+              </span>
+            ) : null}
+          </Link>
+          <Link
+            href={allTimeScopeHref}
+            className={getScopeChipClass(scope === "all-time")}
+          >
             All Time
-          </div>
-          {activeSeason ? (
-            <div className="rounded-xl border border-yellow-500/30 bg-yellow-950/20 px-4 py-2 shadow-lg shadow-black/30">
-              <p className="text-sm font-semibold text-yellow-100">
-                {activeSeason.name}
-              </p>
-              {seasonCountdown ? (
-                <p className="mt-1 text-xs font-medium text-yellow-200/80">
-                  {seasonCountdown}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
+          </Link>
         </div>
       </div>
 
@@ -217,12 +351,30 @@ export default async function LeaderboardPage() {
               </div>
 
               <div className="mt-7 flex flex-col items-center text-center">
-                <div className="flex h-20 w-20 items-center justify-center rounded-full border border-white/15 bg-black/70 text-2xl font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_45px_rgba(0,0,0,0.45)] md:h-24 md:w-24 md:text-3xl">
-                  {getInitials(player.username)}
-                </div>
-                <div className="mt-5 max-w-full truncate text-2xl font-black tracking-tight text-white">
-                  {player.username}
-                </div>
+                {hasValidUserId(player.id) ? (
+                  <Link
+                    href={buildPlayerProfileHref(player.id)}
+                    className="flex h-20 w-20 items-center justify-center rounded-full border border-white/15 bg-black/70 text-2xl font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_45px_rgba(0,0,0,0.45)] transition hover:border-white/30 hover:text-yellow-100 md:h-24 md:w-24 md:text-3xl"
+                  >
+                    {getInitials(player.username)}
+                  </Link>
+                ) : (
+                  <div className="flex h-20 w-20 items-center justify-center rounded-full border border-white/15 bg-black/70 text-2xl font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_45px_rgba(0,0,0,0.45)] md:h-24 md:w-24 md:text-3xl">
+                    {getInitials(player.username)}
+                  </div>
+                )}
+                {hasValidUserId(player.id) ? (
+                  <Link
+                    href={buildPlayerProfileHref(player.id)}
+                    className="mt-5 max-w-full truncate text-2xl font-black tracking-tight text-white transition hover:text-yellow-100"
+                  >
+                    {player.username}
+                  </Link>
+                ) : (
+                  <div className="mt-5 max-w-full truncate text-2xl font-black tracking-tight text-white">
+                    {player.username}
+                  </div>
+                )}
                 <div className="mt-4 text-6xl font-black tracking-tighter text-white">
                   {player.rankPoints}
                 </div>
@@ -244,81 +396,181 @@ export default async function LeaderboardPage() {
         </div>
       ) : null}
 
-      <div className="overflow-x-auto rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_28px_80px_rgba(0,0,0,0.45)]">
-        <table className="w-full min-w-[1050px] text-left">
-          <thead className="bg-black/55">
-            <tr className="text-xs uppercase tracking-wide text-zinc-500">
-              <th className="px-4 py-3">Rank</th>
-              <th className="px-4 py-3">Player</th>
-              <th className="px-4 py-3">Tier</th>
-              <th className="px-4 py-3">Points</th>
-              <th className="px-4 py-3">Wins</th>
-              <th className="px-4 py-3">Losses</th>
-              <th className="px-4 py-3">Draws</th>
-              <th className="px-4 py-3">Matches</th>
-              <th className="px-4 py-3">Goals For</th>
-              <th className="px-4 py-3">Goals Against</th>
-              <th className="px-4 py-3">Win Rate</th>
-            </tr>
-          </thead>
+      <form
+        action="/leaderboard"
+        method="get"
+        className="flex flex-col gap-3 rounded-2xl border border-zinc-800/80 bg-black/45 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.35)] sm:flex-row sm:items-center"
+      >
+        <input type="hidden" name="scope" value={scope} />
+        <input type="hidden" name="page" value="1" />
+        <input type="hidden" name="limit" value={limit} />
+        <input
+          type="search"
+          name="search"
+          defaultValue={search}
+          placeholder="Search player username..."
+          className="w-full rounded-xl border border-zinc-700/80 bg-black/60 px-4 py-3 text-sm text-white placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
+        />
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            className="rounded-xl border border-zinc-700 px-4 py-3 text-sm font-semibold text-white hover:border-zinc-500"
+          >
+            Search
+          </button>
+          {hasActiveSearch ? (
+            <Link
+              href={clearSearchHref}
+              className="text-sm font-semibold text-yellow-200/80 hover:text-yellow-100"
+            >
+              Clear search
+            </Link>
+          ) : null}
+        </div>
+      </form>
 
-          <tbody>
-            {leaderboard.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={11}
-                  className="px-4 py-8 text-center text-zinc-400"
-                >
-                  No completed matches yet.
-                </td>
+      <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_28px_80px_rgba(0,0,0,0.45)]">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1050px] text-left">
+            <thead className="bg-black/55">
+              <tr className="text-xs uppercase tracking-wide text-zinc-500">
+                <th className="px-4 py-3">Rank</th>
+                <th className="px-4 py-3">Player</th>
+                <th className="px-4 py-3">Tier</th>
+                <th className="px-4 py-3">Points</th>
+                <th className="px-4 py-3">Wins</th>
+                <th className="px-4 py-3">Losses</th>
+                <th className="px-4 py-3">Draws</th>
+                <th className="px-4 py-3">Matches</th>
+                <th className="px-4 py-3">Goals For</th>
+                <th className="px-4 py-3">Goals Against</th>
+                <th className="px-4 py-3">Win Rate</th>
               </tr>
-            ) : (
-              leaderboard.map((player, index) => (
-                <tr
-                  key={player.id}
-                  className="border-t border-zinc-800 hover:bg-zinc-800/40"
-                >
-                  <td className="px-4 py-4 text-lg font-black text-zinc-50">
-                    #{index + 1}
-                  </td>
+            </thead>
 
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700/80 bg-black/60 text-xs font-black text-white shadow-inner">
-                        {getInitials(player.username)}
+            <tbody>
+              {leaderboard.length === 0 ? (
+                <tr>
+                  <td colSpan={11} className="px-4 py-8 text-center text-zinc-400">
+                    {hasNoActiveSeason ? (
+                      <div className="space-y-2">
+                        <p className="text-base font-semibold text-zinc-300">
+                          No active season right now.
+                        </p>
+                        <p className="text-sm text-zinc-500">
+                          Season rankings will appear once a season becomes active.
+                        </p>
                       </div>
-                      <span className="font-bold text-white">
-                        {player.username}
-                      </span>
-                    </div>
+                    ) : hasActiveSearch ? (
+                      <p>{`No players found for "${search}".`}</p>
+                    ) : (
+                      <div className="space-y-4">
+                        <p>{emptyMessage}</p>
+                        <Link
+                          href="/lobby"
+                          className="inline-flex rounded-xl border border-zinc-700 px-4 py-3 text-sm font-semibold text-white hover:border-zinc-500"
+                        >
+                          Start Playing
+                        </Link>
+                      </div>
+                    )}
                   </td>
-
-                  <td className="px-4 py-4">
-                    <span
-                      className={`inline-flex rounded-full border px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide ${getTierBadgeClass(
-                        player.tier
-                      )}`}
-                    >
-                      {player.tier}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 text-lg font-black text-yellow-100">
-                    {player.rankPoints}
-                  </td>
-                  <td className="px-4 py-4 text-white">{player.wins}</td>
-                  <td className="px-4 py-4 text-white">{player.losses}</td>
-                  <td className="px-4 py-4 text-white">{player.draws}</td>
-                  <td className="px-4 py-4 text-white">{player.matches}</td>
-                  <td className="px-4 py-4 text-white">{player.goalsFor}</td>
-                  <td className="px-4 py-4 text-white">
-                    {player.goalsAgainst}
-                  </td>
-                  <td className="px-4 py-4 text-white">{player.winRate}%</td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                leaderboard.map((player, index) => (
+                  <tr
+                    key={player.id}
+                    className="border-t border-zinc-800 hover:bg-zinc-800/40"
+                  >
+                    <td className="px-4 py-4 text-lg font-black text-zinc-50">
+                      #{from + index + 1}
+                    </td>
+
+                    <td className="px-4 py-4">
+                      <div className="flex items-center gap-3">
+                        {hasValidUserId(player.id) ? (
+                          <Link
+                            href={buildPlayerProfileHref(player.id)}
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700/80 bg-black/60 text-xs font-black text-white shadow-inner transition hover:border-zinc-500 hover:text-yellow-100"
+                          >
+                            {getInitials(player.username)}
+                          </Link>
+                        ) : (
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700/80 bg-black/60 text-xs font-black text-white shadow-inner">
+                            {getInitials(player.username)}
+                          </div>
+                        )}
+                        {hasValidUserId(player.id) ? (
+                          <Link
+                            href={buildPlayerProfileHref(player.id)}
+                            className="font-bold text-white transition hover:text-yellow-100"
+                          >
+                            {player.username}
+                          </Link>
+                        ) : (
+                          <span className="font-bold text-white">
+                            {player.username}
+                          </span>
+                        )}
+                        {hasActiveSearch && hasValidUserId(player.id) ? (
+                          <Link
+                            href={buildChallengeHref(player.id, player.username)}
+                            className="shrink-0 rounded-lg border border-cyan-400/40 bg-cyan-950/20 px-2.5 py-1 text-xs font-semibold text-cyan-100 shadow-[0_0_16px_rgba(34,211,238,0.12)] hover:border-cyan-300/60 hover:text-cyan-50"
+                          >
+                            Challenge
+                          </Link>
+                        ) : null}
+                      </div>
+                    </td>
+
+                    <td className="px-4 py-4">
+                      <span
+                        className={`inline-flex rounded-full border px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide ${getTierBadgeClass(
+                          player.tier
+                        )}`}
+                      >
+                        {player.tier}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 text-lg font-black text-yellow-100">
+                      {player.rankPoints}
+                    </td>
+                    <td className="px-4 py-4 text-white">{player.wins}</td>
+                    <td className="px-4 py-4 text-white">{player.losses}</td>
+                    <td className="px-4 py-4 text-white">{player.draws}</td>
+                    <td className="px-4 py-4 text-white">{player.matches}</td>
+                    <td className="px-4 py-4 text-white">{player.goalsFor}</td>
+                    <td className="px-4 py-4 text-white">
+                      {player.goalsAgainst}
+                    </td>
+                    <td className="px-4 py-4 text-white">{player.winRate}%</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 px-4 py-4">
+          {page > 1 ? (
+            <Link
+              href={previousPageHref}
+              className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-white hover:border-zinc-500"
+            >
+              Previous
+            </Link>
+          ) : (
+            <span />
+          )}
+          {showNextPage ? (
+            <Link
+              href={nextPageHref}
+              className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-white hover:border-zinc-500"
+            >
+              Next
+            </Link>
+          ) : null}
+        </div>
       </div>
     </section>
   );

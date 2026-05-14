@@ -5,7 +5,15 @@ import { useRouter } from "next/navigation";
 import { getSocket } from "../../lib/socket/client";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
 
-export default function CreateRoomPanel() {
+type CreateRoomPanelProps = {
+  challengeUserId?: string;
+  challengeUsername?: string;
+};
+
+export default function CreateRoomPanel({
+  challengeUserId,
+  challengeUsername,
+}: CreateRoomPanelProps) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
@@ -46,6 +54,12 @@ export default function CreateRoomPanel() {
       <p className="text-zinc-400">
         Start a match and share the room code with your opponent.
       </p>
+
+      {challengeUsername ? (
+        <p className="text-sm text-cyan-100/80">
+          Challenge target: {challengeUsername}
+        </p>
+      ) : null}
 
       <button
         onClick={createRoom}
