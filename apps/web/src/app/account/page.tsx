@@ -56,6 +56,31 @@ type DisplayMatch = {
   dateLabel: string;
 };
 
+type SeasonRow = {
+  id: string;
+  game_id: string;
+  season_number: number;
+  name: string;
+  starts_at: string;
+  ends_at: string;
+  is_active: boolean;
+};
+
+function formatSeasonCountdown(endsAt: string) {
+  const end = new Date(endsAt);
+  if (Number.isNaN(end.getTime())) return null;
+
+  const remaining = end.getTime() - Date.now();
+  if (remaining <= 0) return "Season ended";
+
+  const days = Math.floor(remaining / 86_400_000);
+  const hours = Math.floor((remaining % 86_400_000) / 3_600_000);
+  const minutes = Math.floor((remaining % 3_600_000) / 60_000);
+
+  if (days > 0) return `Ends in ${days}d ${hours}h`;
+  return `Ends in ${hours}h ${minutes}m`;
+}
+
 function getTierBadgeClass(tier: string) {
   switch (tier.toLowerCase()) {
     case "bronze":
@@ -173,6 +198,8 @@ export default function AccountPage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [recentMatches, setRecentMatches] = useState<MatchResultRow[]>([]);
   const [matchHistoryNotice, setMatchHistoryNotice] = useState("");
+  const [activeSeason, setActiveSeason] = useState<SeasonRow | null>(null);
+  const [seasonCountdown, setSeasonCountdown] = useState<string | null>(null);
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -199,7 +226,8 @@ export default function AccountPage() {
 
       const userId = session.user.id;
 
-      const [statsResult, rankResult, matchesResult] = await Promise.all([
+      const [statsResult, rankResult, matchesResult, seasonResult] =
+        await Promise.all([
         supabase
           .from("player_stats")
           .select(
@@ -224,6 +252,14 @@ export default function AccountPage() {
           .or(`player_one_id.eq.${userId},player_two_id.eq.${userId}`)
           .order("created_at", { ascending: false })
           .limit(10),
+        supabase
+          .from("seasons")
+          .select(
+            "id, game_id, season_number, name, starts_at, ends_at, is_active"
+          )
+          .eq("game_id", "penalty444")
+          .eq("is_active", true)
+          .maybeSingle(),
       ]);
 
       if (cancelled) return;
@@ -251,6 +287,13 @@ export default function AccountPage() {
           ? "Match history is unavailable right now."
           : ""
       );
+      const season = !seasonResult.error
+        ? (seasonResult.data as SeasonRow | null)
+        : null;
+      setActiveSeason(season);
+      setSeasonCountdown(
+        season ? formatSeasonCountdown(season.ends_at) : null
+      );
       setMessage(
         rankResult.error
           ? `Could not calculate global rank: ${rankResult.error.message}`
@@ -265,6 +308,21 @@ export default function AccountPage() {
       cancelled = true;
     };
   }, [router]);
+
+  useEffect(() => {
+    if (!activeSeason) return;
+
+    const updateCountdown = () => {
+      setSeasonCountdown(formatSeasonCountdown(activeSeason.ends_at));
+    };
+
+    updateCountdown();
+    const intervalId = window.setInterval(updateCountdown, 60_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [activeSeason]);
 
   const displayName = stats?.username || account?.email || "Player";
   const tier = stats?.tier || "Unranked";
@@ -288,6 +346,18 @@ export default function AccountPage() {
         <p className="mt-3 max-w-2xl text-sm text-zinc-500 sm:text-base">
           Your Penalty444 ranked profile and lifetime arena stats.
         </p>
+        {activeSeason ? (
+          <div className="mt-4 inline-flex flex-col rounded-xl border border-yellow-500/30 bg-yellow-950/20 px-4 py-3 shadow-lg shadow-black/30">
+            <p className="text-sm font-semibold text-yellow-100">
+              {activeSeason.name} · Active
+            </p>
+            {seasonCountdown ? (
+              <p className="mt-1 text-xs font-medium text-yellow-200/80">
+                {seasonCountdown}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {loading ? (

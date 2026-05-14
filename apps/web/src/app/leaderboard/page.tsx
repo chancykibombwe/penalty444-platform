@@ -32,6 +32,31 @@ type LeaderboardPlayer = {
   winRate: number;
 };
 
+type SeasonRow = {
+  id: string;
+  game_id: string;
+  season_number: number;
+  name: string;
+  starts_at: string;
+  ends_at: string;
+  is_active: boolean;
+};
+
+function formatSeasonCountdown(endsAt: string) {
+  const end = new Date(endsAt);
+  if (Number.isNaN(end.getTime())) return null;
+
+  const remaining = end.getTime() - Date.now();
+  if (remaining <= 0) return "Season ended";
+
+  const days = Math.floor(remaining / 86_400_000);
+  const hours = Math.floor((remaining % 86_400_000) / 3_600_000);
+  const minutes = Math.floor((remaining % 3_600_000) / 60_000);
+
+  if (days > 0) return `Ends in ${days}d ${hours}h`;
+  return `Ends in ${hours}h ${minutes}m`;
+}
+
 function getTierBadgeClass(tier: string) {
   switch (tier.toLowerCase()) {
     case "bronze":
@@ -75,16 +100,33 @@ function getInitials(username: string) {
 }
 
 export default async function LeaderboardPage() {
-  const { data, error } = await supabase
-    .from("player_stats")
-    .select(
-      "user_id, username, matches, wins, losses, draws, goals_for, goals_against, rank_points, tier"
-    )
-    .eq("game_id", "penalty444")
-    .order("rank_points", { ascending: false })
-    .order("wins", { ascending: false })
-    .order("matches", { ascending: false })
-    .order("goals_for", { ascending: false });
+  const [{ data, error }, seasonResult] = await Promise.all([
+    supabase
+      .from("player_stats")
+      .select(
+        "user_id, username, matches, wins, losses, draws, goals_for, goals_against, rank_points, tier"
+      )
+      .eq("game_id", "penalty444")
+      .order("rank_points", { ascending: false })
+      .order("wins", { ascending: false })
+      .order("matches", { ascending: false })
+      .order("goals_for", { ascending: false }),
+    supabase
+      .from("seasons")
+      .select(
+        "id, game_id, season_number, name, starts_at, ends_at, is_active"
+      )
+      .eq("game_id", "penalty444")
+      .eq("is_active", true)
+      .maybeSingle(),
+  ]);
+
+  const activeSeason = !seasonResult.error
+    ? (seasonResult.data as SeasonRow | null)
+    : null;
+  const seasonCountdown = activeSeason
+    ? formatSeasonCountdown(activeSeason.ends_at)
+    : null;
 
   const leaderboard = ((data ?? []) as PlayerStatsRow[])
     .map((row): LeaderboardPlayer => ({
@@ -124,13 +166,25 @@ export default async function LeaderboardPage() {
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-end gap-2">
           <div className="rounded-xl border border-zinc-700/80 bg-black/45 px-4 py-2 text-sm font-semibold text-zinc-100 shadow-lg shadow-black/30">
             Penalty444
           </div>
           <div className="rounded-xl border border-zinc-700/80 bg-black/45 px-4 py-2 text-sm font-semibold text-zinc-100 shadow-lg shadow-black/30">
             All Time
           </div>
+          {activeSeason ? (
+            <div className="rounded-xl border border-yellow-500/30 bg-yellow-950/20 px-4 py-2 shadow-lg shadow-black/30">
+              <p className="text-sm font-semibold text-yellow-100">
+                {activeSeason.name}
+              </p>
+              {seasonCountdown ? (
+                <p className="mt-1 text-xs font-medium text-yellow-200/80">
+                  {seasonCountdown}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
 

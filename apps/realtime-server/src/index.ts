@@ -463,6 +463,25 @@ function createRoomWithPlayers(
   return { code, room };
 }
 
+async function resolveActivePenalty444SeasonId(): Promise<string | null> {
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from("seasons")
+    .select("id")
+    .eq("game_id", "penalty444")
+    .eq("is_active", true)
+    .order("season_number", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.warn("Failed to resolve active season:", error.message);
+    return null;
+  }
+
+  return data?.[0]?.id ?? null;
+}
+
 async function saveMatchResult(room: Room) {
   if (!supabase) {
     console.warn("Supabase backend client is not configured. Match not saved.");
@@ -494,9 +513,16 @@ async function saveMatchResult(room: Room) {
       ? secondPlayer
       : firstPlayer;
 
+  const seasonId = await resolveActivePenalty444SeasonId();
+  if (!seasonId) {
+    console.warn("No active Penalty444 season found; saving match without season_id.");
+  }
+
   const payload = {
     room_code: room.code,
     match_type: room.matchType,
+    game_id: "penalty444",
+    season_id: seasonId,
 
     player_one_id: firstPlayer.playerId,
     player_one_username: firstPlayer.username,
