@@ -93,18 +93,72 @@ function laneEmoji(lane: Lane) {
 
 function resultStyle(result?: ShotResult) {
   if (result === "GOAL") {
-    return "border-emerald-400 bg-emerald-500/15 text-emerald-300";
+    return "border-emerald-400/80 bg-emerald-500/15 text-emerald-100 shadow-[0_0_36px_rgba(52,211,153,0.22)]";
   }
 
   if (result === "SAVE") {
-    return "border-sky-400 bg-sky-500/15 text-sky-300";
+    return "border-sky-400/80 bg-sky-500/15 text-sky-100 shadow-[0_0_36px_rgba(56,189,248,0.22)]";
   }
 
   if (result === "DRAW") {
-    return "border-yellow-400 bg-yellow-500/15 text-yellow-300";
+    return "border-yellow-400/80 bg-yellow-500/15 text-yellow-100 shadow-[0_0_32px_rgba(250,204,21,0.18)]";
   }
 
   return "border-zinc-800 bg-zinc-900 text-white";
+}
+
+function resultHeadlineClass(result?: ShotResult, revealStage?: RevealStage) {
+  if (revealStage === "REVEALING") {
+    return "match-result-reveal-active text-white";
+  }
+
+  if (result === "GOAL") {
+    return "match-result-headline-goal text-emerald-100";
+  }
+
+  if (result === "SAVE") {
+    return "match-result-headline-save text-sky-100";
+  }
+
+  if (result === "DRAW") {
+    return "match-result-headline-draw text-yellow-100";
+  }
+
+  return "text-white";
+}
+
+function getLaneButtonClass(
+  lane: Lane,
+  options: {
+    canPick: boolean;
+    myPick: Lane | null;
+    isSuddenDeath: boolean;
+    revealStage: RevealStage;
+  }
+) {
+  const { canPick, myPick, isSuddenDeath, revealStage } = options;
+  const isSelected = myPick === lane;
+  const isLocked = myPick !== null;
+  const isRevealLocked =
+    revealStage === "REVEALING" || revealStage === "REVEALED";
+
+  if (isSelected) {
+    return "match-lane-locked scale-[1.03] border-emerald-300 bg-emerald-500/20 text-emerald-50 shadow-[0_0_28px_rgba(52,211,153,0.35)] ring-2 ring-emerald-300/70";
+  }
+
+  if (!canPick || isRevealLocked) {
+    return "match-lane-disabled cursor-not-allowed border-zinc-800/80 bg-black/20 text-zinc-600 opacity-45";
+  }
+
+  if (isLocked) {
+    return "match-lane-muted cursor-not-allowed border-zinc-800 bg-black/25 text-zinc-500 opacity-60";
+  }
+
+  if (isSuddenDeath) {
+    return "match-lane-ready border-yellow-500/70 bg-black/35 text-yellow-50 hover:-translate-y-0.5 hover:border-yellow-300 hover:bg-yellow-400 hover:text-black active:scale-[0.98]";
+  }
+
+  return "match-lane-ready border-zinc-700 bg-black/35 text-white hover:-translate-y-0.5 hover:border-white hover:bg-white hover:text-black active:scale-[0.98]";
 }
 
 function resultLabel(result?: ShotResult) {
@@ -712,6 +766,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const phaseLabel = isSuddenDeath ? "SUDDEN DEATH" : "NORMAL MATCH";
 
   const shownResult = result || pendingResult;
+  const isTimerUrgent = timer !== null && timer > 0 && timer <= 3;
+  const isRevealLocked =
+    revealStage === "REVEALING" || revealStage === "REVEALED";
 
   const canPick =
     playerCount >= 2 &&
@@ -764,11 +821,11 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     <>
       <style
         dangerouslySetInnerHTML={{
-          __html: `@keyframes matchScreenShake{0%,100%{transform:translate3d(0,0,0)}15%{transform:translate3d(-10px,0,0)}30%{transform:translate3d(10px,0,0)}45%{transform:translate3d(-8px,0,0)}60%{transform:translate3d(8px,0,0)}75%{transform:translate3d(-4px,0,0)}90%{transform:translate3d(4px,0,0)}}`,
+          __html: `@keyframes matchScreenShake{0%,100%{transform:translate3d(0,0,0)}15%{transform:translate3d(-10px,0,0)}30%{transform:translate3d(10px,0,0)}45%{transform:translate3d(-8px,0,0)}60%{transform:translate3d(8px,0,0)}75%{transform:translate3d(-4px,0,0)}90%{transform:translate3d(4px,0,0)}}@keyframes matchTimerUrgentPulse{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,0.45),0 0 24px rgba(248,113,113,0.18)}50%{box-shadow:0 0 0 10px rgba(248,113,113,0),0 0 36px rgba(248,113,113,0.42)}}@keyframes matchTimerUrgentScale{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}@keyframes matchSuddenDeathTimerGlow{0%,100%{box-shadow:0 0 18px rgba(250,204,21,0.18),inset 0 0 18px rgba(250,204,21,0.08)}50%{box-shadow:0 0 30px rgba(250,204,21,0.34),inset 0 0 24px rgba(250,204,21,0.12)}}@keyframes matchGoalFlash{0%{box-shadow:0 0 0 0 rgba(52,211,153,0.55)}100%{box-shadow:0 0 0 18px rgba(52,211,153,0)}}@keyframes matchSaveFlash{0%{box-shadow:0 0 0 0 rgba(249,115,22,0.5)}100%{box-shadow:0 0 0 16px rgba(249,115,22,0)}}@keyframes matchDrawFlash{0%{box-shadow:0 0 0 0 rgba(212,212,216,0.45)}100%{box-shadow:0 0 0 14px rgba(212,212,216,0)}}@keyframes matchResultReveal{0%{opacity:0.45;transform:translateY(10px) scale(0.98)}100%{opacity:1;transform:translateY(0) scale(1)}}@keyframes matchScorePulse{0%{transform:scale(1)}35%{transform:scale(1.28)}100%{transform:scale(1)}}.match-timer-urgent{animation:matchTimerUrgentPulse 0.9s ease-in-out infinite,matchTimerUrgentScale 0.9s ease-in-out infinite}.match-timer-sudden-death{animation:matchSuddenDeathTimerGlow 1.4s ease-in-out infinite}.goal-flash{animation:matchGoalFlash 0.6s ease-out}.save-flash{animation:matchSaveFlash 0.6s ease-out}.draw-flash{animation:matchDrawFlash 0.5s ease-out}.match-result-reveal-active{animation:matchResultReveal 0.9s ease-out infinite alternate}.match-result-reveal-done{animation:matchResultReveal 0.45s ease-out}.match-result-headline-goal{text-shadow:0 0 24px rgba(52,211,153,0.45)}.match-result-headline-save{text-shadow:0 0 24px rgba(56,189,248,0.42)}.match-result-headline-draw{text-shadow:0 0 22px rgba(250,204,21,0.34)}.match-score-pulse{animation:matchScorePulse 0.45s cubic-bezier(0.22,1,0.36,1)}.match-lane-ready{transition:transform 180ms ease,box-shadow 180ms ease,background-color 180ms ease,border-color 180ms ease,color 180ms ease}`,
         }}
       />
       <div
-        className={`main-container mx-auto max-w-6xl space-y-6 px-4 py-6 text-white ${
+        className={`main-container mx-auto max-w-6xl space-y-8 px-4 py-8 text-white md:space-y-10 md:px-6 md:py-10 ${
           screenEffect === "GOAL"
             ? "zoom-impact scale-[1.06] transition-transform duration-300 ease-out ring-2 ring-green-400/80 shadow-[0_0_40px_rgba(34,197,94,0.55)]"
             : screenEffect === "SAVE"
@@ -865,25 +922,47 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             </div>
 
             <div
-              className={`rounded-3xl border px-6 py-5 text-center ${
-                timer !== null && timer <= 3
-                  ? "border-red-400 bg-red-500/15"
+              className={`min-w-[9.5rem] rounded-3xl border px-6 py-5 text-center shadow-lg transition-all duration-300 ${
+                isTimerUrgent
+                  ? "match-timer-urgent border-red-400/90 bg-red-500/20"
                   : isSuddenDeath
-                    ? "border-yellow-400 bg-yellow-500/15"
+                    ? "match-timer-sudden-death border-yellow-400/80 bg-yellow-500/15"
                     : "border-zinc-700 bg-zinc-900"
               }`}
             >
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-400">
+              <p
+                className={`text-xs font-bold uppercase tracking-[0.2em] ${
+                  isTimerUrgent
+                    ? "text-red-200"
+                    : isSuddenDeath
+                      ? "text-yellow-200/90"
+                      : "text-zinc-400"
+                }`}
+              >
                 Timer
               </p>
               <p
-                className={`mt-1 text-5xl font-black ${
-                  timer !== null && timer <= 3 ? "text-red-300" : "text-white"
+                className={`mt-1 text-5xl font-black tabular-nums transition-transform duration-300 ${
+                  isTimerUrgent
+                    ? "text-red-200"
+                    : isSuddenDeath
+                      ? "text-yellow-100"
+                      : "text-white"
                 }`}
               >
                 {timer !== null ? timer : "-"}
               </p>
-              <p className="text-xs text-zinc-500">seconds</p>
+              <p
+                className={`text-xs ${
+                  isTimerUrgent
+                    ? "text-red-200/80"
+                    : isSuddenDeath
+                      ? "text-yellow-200/70"
+                      : "text-zinc-500"
+                }`}
+              >
+                seconds
+              </p>
             </div>
           </div>
         </div>
@@ -968,15 +1047,18 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         </section>
       ) : null}
 
-      <section className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-[2rem] border border-zinc-800 bg-zinc-950 p-6 shadow-xl">
-          <p className="text-sm text-zinc-400">{myName}</p>
-          <div className="mt-3 flex items-end justify-between">
+      <section className="grid gap-5 md:grid-cols-2 md:gap-6">
+        <div className="rounded-[2rem] border border-zinc-800 bg-zinc-950/95 p-7 shadow-xl">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
+            Your Score
+          </p>
+          <p className="mt-2 text-sm text-zinc-400">{myName}</p>
+          <div className="mt-4 flex items-end justify-between gap-4">
             <p
-              className={`text-7xl font-black transition-all duration-200 ease-out ${
+              className={`text-7xl font-black tabular-nums transition-all duration-500 ease-out ${
                 scorePulse === "p1"
-                  ? "scale-[1.2] drop-shadow-[0_0_14px_rgba(255,255,255,0.55)]"
-                  : ""
+                  ? "match-score-pulse scale-[1.24] text-white drop-shadow-[0_0_22px_rgba(255,255,255,0.65)]"
+                  : "text-white"
               }`}
             >
               {myScore}
@@ -987,14 +1069,17 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           </div>
         </div>
 
-        <div className="rounded-[2rem] border border-zinc-800 bg-zinc-950 p-6 shadow-xl">
-          <p className="text-sm text-zinc-400">{opponentName}</p>
-          <div className="mt-3 flex items-end justify-between">
+        <div className="rounded-[2rem] border border-zinc-800 bg-zinc-950/95 p-7 shadow-xl">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
+            Opponent Score
+          </p>
+          <p className="mt-2 text-sm text-zinc-400">{opponentName}</p>
+          <div className="mt-4 flex items-end justify-between gap-4">
             <p
-              className={`text-7xl font-black transition-all duration-200 ease-out ${
+              className={`text-7xl font-black tabular-nums transition-all duration-500 ease-out ${
                 scorePulse === "p2"
-                  ? "scale-[1.2] drop-shadow-[0_0_14px_rgba(255,255,255,0.55)]"
-                  : ""
+                  ? "match-score-pulse scale-[1.24] text-white drop-shadow-[0_0_22px_rgba(255,255,255,0.65)]"
+                  : "text-white"
               }`}
             >
               {opponentScore}
@@ -1007,8 +1092,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       </section>
 
       {!matchEnded ? (
-        <section className="rounded-[2rem] border border-zinc-800 bg-zinc-900 p-6 shadow-xl">
-          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <section className="rounded-[2rem] border border-zinc-800 bg-zinc-900/95 p-7 shadow-xl">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <h2 className="text-2xl font-black">
                 {hasSubmittedPick || myPick ? "Pick Locked" : "Choose Your Lane"}
@@ -1027,22 +1112,33 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             ) : null}
           </div>
 
-          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="mt-7 grid grid-cols-1 gap-4 md:grid-cols-3">
             {LANES.map((lane) => (
               <button
                 key={lane}
                 onClick={() => pick(lane)}
                 disabled={!canPick}
-                className={`group rounded-3xl border px-5 py-8 text-center transition duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${
-                  myPick === lane
-                    ? "scale-[1.02] border-emerald-400 bg-emerald-500/15 shadow-lg shadow-emerald-500/20"
-                    : isSuddenDeath
-                      ? "border-yellow-500/70 bg-black/30 hover:bg-yellow-400 hover:text-black"
-                      : "border-zinc-700 bg-black/30 hover:border-white hover:bg-white hover:text-black"
-                }`}
+                className={`group rounded-3xl border px-5 py-8 text-center ${getLaneButtonClass(
+                  lane,
+                  {
+                    canPick,
+                    myPick,
+                    isSuddenDeath,
+                    revealStage,
+                  }
+                )}`}
               >
                 <p className="text-5xl font-black">{laneEmoji(lane)}</p>
                 <p className="mt-3 text-lg font-black">{lane}</p>
+                {myPick === lane ? (
+                  <p className="mt-2 text-xs font-bold uppercase tracking-[0.18em] text-emerald-200">
+                    Locked
+                  </p>
+                ) : isRevealLocked ? (
+                  <p className="mt-2 text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
+                    Reveal in progress
+                  </p>
+                ) : null}
               </button>
             ))}
           </div>
@@ -1050,20 +1146,27 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       ) : null}
 
       <section
-        className={`rounded-[2rem] border p-6 shadow-xl transition-all duration-300 ${resultStyle(
+        className={`rounded-[2rem] border p-7 shadow-2xl transition-all duration-300 ${resultStyle(
           shownResult?.result
-        )}`}
+        )} ${
+          revealStage === "REVEALED"
+            ? "match-result-reveal-done"
+            : revealStage === "REVEALING"
+              ? "match-result-reveal-active"
+              : ""
+        }`}
       >
-        <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.25em] opacity-70">
+        <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+          <div className="md:max-w-xl">
+            <p className="text-xs font-black uppercase tracking-[0.25em] text-white/60">
               Current Result
             </p>
 
             <h2
-              className={`mt-2 text-4xl font-black transition-all duration-300 ${
-                revealStage === "REVEALING" ? "animate-pulse opacity-70" : ""
-              }`}
+              className={`mt-3 text-4xl font-black transition-all duration-300 md:text-5xl ${resultHeadlineClass(
+                shownResult?.result,
+                revealStage
+              )}`}
             >
               {revealStage === "REVEALING"
                 ? "Revealing..."
@@ -1071,26 +1174,34 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             </h2>
 
             {revealStage !== "REVEALING" && resultFlavorMessage ? (
-              <p className="mt-1 text-sm font-medium italic text-zinc-400">
+              <p className="mt-2 text-sm font-medium italic text-white/70">
                 {resultFlavorMessage}
               </p>
             ) : null}
 
             {shownResult?.statusMessage ? (
-              <p className="mt-2 text-sm opacity-80">
+              <p className="mt-3 text-sm text-white/80">
                 {shownResult.statusMessage}
               </p>
             ) : null}
           </div>
 
-          <div className="grid grid-cols-2 gap-3 text-sm md:w-[420px]">
+          <div className="grid grid-cols-2 gap-4 text-sm md:w-[440px]">
             <div
-              className={`rounded-2xl border border-white/10 bg-black/20 p-4 transition-all duration-300 ${
-                revealStage === "REVEALED" ? "scale-[1.03]" : ""
-              }`}
+              className={`rounded-2xl border bg-black/25 p-4 transition-all duration-300 ${
+                shownResult?.result === "GOAL"
+                  ? "border-emerald-300/40 shadow-[0_0_24px_rgba(52,211,153,0.18)]"
+                  : shownResult?.result === "SAVE"
+                    ? "border-sky-300/35 shadow-[0_0_24px_rgba(56,189,248,0.16)]"
+                    : shownResult?.result === "DRAW"
+                      ? "border-yellow-300/35 shadow-[0_0_22px_rgba(250,204,21,0.14)]"
+                      : "border-white/10"
+              } ${revealStage === "REVEALED" ? "scale-[1.04]" : ""}`}
             >
-              <p className="text-xs opacity-60">Kicker</p>
-              <p className="mt-1 text-3xl font-black">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/55">
+                Kicker
+              </p>
+              <p className="mt-2 text-3xl font-black">
                 {shownResult?.kickerPick
                   ? `${laneEmoji(shownResult.kickerPick)} ${
                       shownResult.kickerPick
@@ -1100,12 +1211,20 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             </div>
 
             <div
-              className={`rounded-2xl border border-white/10 bg-black/20 p-4 transition-all duration-300 ${
-                revealStage === "REVEALED" ? "scale-[1.03]" : ""
-              }`}
+              className={`rounded-2xl border bg-black/25 p-4 transition-all duration-300 ${
+                shownResult?.result === "GOAL"
+                  ? "border-emerald-300/40 shadow-[0_0_24px_rgba(52,211,153,0.18)]"
+                  : shownResult?.result === "SAVE"
+                    ? "border-sky-300/35 shadow-[0_0_24px_rgba(56,189,248,0.16)]"
+                    : shownResult?.result === "DRAW"
+                      ? "border-yellow-300/35 shadow-[0_0_22px_rgba(250,204,21,0.14)]"
+                      : "border-white/10"
+              } ${revealStage === "REVEALED" ? "scale-[1.04]" : ""}`}
             >
-              <p className="text-xs opacity-60">Keeper</p>
-              <p className="mt-1 text-3xl font-black">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/55">
+                Keeper
+              </p>
+              <p className="mt-2 text-3xl font-black">
                 {shownResult?.keeperPick
                   ? `${laneEmoji(shownResult.keeperPick)} ${
                       shownResult.keeperPick
