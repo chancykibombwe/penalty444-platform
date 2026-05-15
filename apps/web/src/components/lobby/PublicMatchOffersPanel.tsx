@@ -17,16 +17,61 @@ type PublicMatchOffer = {
   createdAt: number;
 };
 
+function sortOffers(offers: PublicMatchOffer[]) {
+  return [...offers].sort((a, b) => b.createdAt - a.createdAt);
+}
+
 export default function PublicMatchOffersPanel() {
   const router = useRouter();
 
   const [offers, setOffers] = useState<PublicMatchOffer[]>([]);
+  const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
   const [stakeLabel, setStakeLabel] = useState("Free");
   const [rounds, setRounds] = useState(3);
   const [status, setStatus] = useState("");
   const [creating, setCreating] = useState(false);
   const [joiningOfferId, setJoiningOfferId] = useState<string | null>(null);
+  const [cancellingOfferId, setCancellingOfferId] = useState<string | null>(
+    null
+  );
   const [connected, setConnected] = useState(false);
+
+  function applyAuthoritativeOffers(incomingOffers: PublicMatchOffer[]) {
+    const sortedIncoming = sortOffers(incomingOffers);
+    setOffers(sortedIncoming);
+
+    setJoiningOfferId((currentJoiningId) => {
+      if (!currentJoiningId) return null;
+      const stillExists = sortedIncoming.some(
+        (offer) => offer.offerId === currentJoiningId
+      );
+      return stillExists ? currentJoiningId : null;
+    });
+
+    setCancellingOfferId((currentCancellingId) => {
+      if (!currentCancellingId) return null;
+      const stillExists = sortedIncoming.some(
+        (offer) => offer.offerId === currentCancellingId
+      );
+      return stillExists ? currentCancellingId : null;
+    });
+  }
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadIdentity() {
+      const identity = await getCurrentPlayerIdentity();
+      if (!isMounted) return;
+      setMyPlayerId(identity?.playerId ?? null);
+    }
+
+    loadIdentity();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     const socket = getSocket();
@@ -53,6 +98,7 @@ export default function PublicMatchOffersPanel() {
       setStatus("Could not connect to realtime server.");
       setCreating(false);
       setJoiningOfferId(null);
+      setCancellingOfferId(null);
     }
 
     function onDisconnect(reason: string) {
@@ -61,6 +107,7 @@ export default function PublicMatchOffersPanel() {
       setStatus("Disconnected from server. Trying to reconnect...");
       setCreating(false);
       setJoiningOfferId(null);
+      setCancellingOfferId(null);
     }
 
     function onOffersUpdate(payload: { offers: PublicMatchOffer[] }) {
@@ -69,24 +116,8 @@ export default function PublicMatchOffersPanel() {
         return;
       }
 
-      const incomingOffers = payload.offers;
-
-      console.log("Received publicOffers:update:", incomingOffers.length);
-
-      setOffers((previousOffers) => {
-        const sortedIncoming = [...incomingOffers].sort(
-          (a, b) => b.createdAt - a.createdAt
-        );
-
-        if (sortedIncoming.length === 0 && previousOffers.length > 0) {
-          console.warn(
-            "Ignoring empty public offers overwrite while previous offers exist."
-          );
-          return previousOffers;
-        }
-
-        return sortedIncoming;
-      });
+      console.log("Received publicOffers:update:", payload.offers.length);
+      applyAuthoritativeOffers(payload.offers);
     }
 
     function onOfferCreated(payload: { offer: PublicMatchOffer }) {
@@ -122,14 +153,28 @@ export default function PublicMatchOffersPanel() {
       console.warn("Received publicOffers:error:", payload);
       setCreating(false);
       setJoiningOfferId(null);
+      setCancellingOfferId(null);
       setStatus(payload.message || "Something went wrong.");
       requestLatestOffers();
     }
 
-    function onCancelled() {
-      console.log("Received publicOffer:cancelled");
-      setCreating(false);
+    function onCancelled(payload: { offerId?: string }) {
+      console.log("Received publicOffer:cancelled:", payload);
+
+      const cancelledOfferId = payload?.offerId;
+
+      setOffers((previousOffers) => {
+        const nextOffers = cancelledOfferId
+          ? previousOffers.filter(
+              (offer) => offer.offerId !== cancelledOfferId
+            )
+          : [];
+        return sortOffers(nextOffers);
+      });
+
       setJoiningOfferId(null);
+      setCancellingOfferId(null);
+      setCreating(false);
       clearActiveMatch();
       setStatus("Public offer cancelled.");
       requestLatestOffers();
@@ -139,6 +184,7 @@ export default function PublicMatchOffersPanel() {
       clearActiveMatch();
       setCreating(false);
       setJoiningOfferId(null);
+      setCancellingOfferId(null);
       setStatus(payload.message || "Saved/active match cleared.");
       requestLatestOffers();
     }
@@ -146,6 +192,7 @@ export default function PublicMatchOffersPanel() {
     function onActiveRoomClearError(payload: { message?: string }) {
       setCreating(false);
       setJoiningOfferId(null);
+      setCancellingOfferId(null);
       setStatus(payload.message || "Could not clear active match.");
       requestLatestOffers();
     }
@@ -214,6 +261,8 @@ export default function PublicMatchOffersPanel() {
         return;
       }
 
+      setMyPlayerId(identity.playerId);
+
       socket.once("publicOffer:created", () => {
         window.clearTimeout(timeoutId);
       });
@@ -236,7 +285,7 @@ export default function PublicMatchOffersPanel() {
   }
 
   async function joinOffer(offerId: string) {
-    if (joiningOfferId) return;
+    if (joiningOfferId || cancellingOfferId) return;
 
     const socket = getSocket();
 
@@ -282,6 +331,56 @@ export default function PublicMatchOffersPanel() {
     } catch {
       window.clearTimeout(timeoutId);
       setJoiningOfferId(null);
+      setStatus("Failed to load player identity. Please login again.");
+    }
+  }
+
+  async function cancelOffer(offerId: string) {
+    if (cancellingOfferId || joiningOfferId) return;
+
+    const socket = getSocket();
+
+    if (!socket.connected) {
+      socket.connect();
+      setStatus("Connecting to server. Try again in a second.");
+      return;
+    }
+
+    setCancellingOfferId(offerId);
+    setStatus("Cancelling public offer...");
+
+    const timeoutId = window.setTimeout(() => {
+      setCancellingOfferId(null);
+      setStatus(
+        "No response from server. Check backend terminal for error, then try again."
+      );
+    }, 8000);
+
+    try {
+      const identity = await getCurrentPlayerIdentity();
+
+      if (!identity) {
+        window.clearTimeout(timeoutId);
+        setCancellingOfferId(null);
+        router.replace("/auth/login");
+        return;
+      }
+
+      socket.once("publicOffer:cancelled", () => {
+        window.clearTimeout(timeoutId);
+      });
+
+      socket.once("publicOffers:error", () => {
+        window.clearTimeout(timeoutId);
+      });
+
+      socket.emit("publicOffer:cancel", {
+        offerId,
+        playerId: identity.playerId,
+      });
+    } catch {
+      window.clearTimeout(timeoutId);
+      setCancellingOfferId(null);
       setStatus("Failed to load player identity. Please login again.");
     }
   }
@@ -360,7 +459,7 @@ export default function PublicMatchOffersPanel() {
           <select
             value={stakeLabel}
             onChange={(event) => setStakeLabel(event.target.value)}
-            disabled={creating}
+            disabled={creating || Boolean(cancellingOfferId)}
             className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none disabled:opacity-50"
           >
             <option value="Free">Free</option>
@@ -376,7 +475,7 @@ export default function PublicMatchOffersPanel() {
           <select
             value={rounds}
             onChange={(event) => setRounds(Number(event.target.value))}
-            disabled={creating}
+            disabled={creating || Boolean(cancellingOfferId)}
             className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none disabled:opacity-50"
           >
             <option value={3}>3 rounds</option>
@@ -386,8 +485,9 @@ export default function PublicMatchOffersPanel() {
 
         <div className="flex items-end">
           <button
+            type="button"
             onClick={createOffer}
-            disabled={creating || !connected}
+            disabled={creating || !connected || Boolean(cancellingOfferId)}
             className="w-full rounded-xl bg-white px-4 py-3 font-semibold text-zinc-950 disabled:opacity-50"
           >
             {creating ? "Creating..." : "Create Public Offer"}
@@ -397,6 +497,7 @@ export default function PublicMatchOffersPanel() {
 
       <div className="flex flex-col gap-3 md:flex-row">
         <button
+          type="button"
           onClick={clearSavedMatch}
           className="rounded-xl border border-zinc-700 px-4 py-3 text-sm font-semibold text-white hover:border-zinc-500"
         >
@@ -404,6 +505,7 @@ export default function PublicMatchOffersPanel() {
         </button>
 
         <button
+          type="button"
           onClick={refreshLobby}
           className="rounded-xl border border-zinc-700 px-4 py-3 text-sm font-semibold text-white hover:border-zinc-500"
         >
@@ -425,34 +527,79 @@ export default function PublicMatchOffersPanel() {
             No public offers yet.
           </div>
         ) : (
-          offers.map((offer) => (
-            <div
-              key={offer.offerId}
-              className="flex flex-col gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-5 md:flex-row md:items-center md:justify-between"
-            >
-              <div>
-                <p className="text-lg font-semibold text-white">
-                  {offer.hostUsername}
-                </p>
+          offers.map((offer) => {
+            const isHostWaitingOffer =
+              myPlayerId !== null && offer.hostPlayerId === myPlayerId;
 
-                <p className="mt-1 text-sm text-zinc-400">
-                  Stake: {offer.stakeLabel} • Rounds: {offer.rounds}
-                </p>
-
-                <p className="mt-1 text-xs text-zinc-500">
-                  Room: {offer.roomCode}
-                </p>
-              </div>
-
-              <button
-                onClick={() => joinOffer(offer.offerId)}
-                disabled={joiningOfferId === offer.offerId || !connected}
-                className="rounded-xl border border-zinc-700 px-4 py-3 font-semibold text-white hover:border-zinc-500 disabled:opacity-50"
+            return (
+              <div
+                key={offer.offerId}
+                className={`flex flex-col gap-4 rounded-2xl border p-5 md:flex-row md:items-center md:justify-between ${
+                  isHostWaitingOffer
+                    ? "border-cyan-500/30 bg-cyan-950/15 shadow-[0_0_24px_rgba(34,211,238,0.06)]"
+                    : "border-zinc-800 bg-zinc-950"
+                }`}
               >
-                {joiningOfferId === offer.offerId ? "Joining..." : "Join Offer"}
-              </button>
-            </div>
-          ))
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-lg font-semibold text-white">
+                      {offer.hostUsername}
+                    </p>
+                    {isHostWaitingOffer ? (
+                      <span className="rounded-full border border-cyan-400/40 bg-cyan-950/40 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-cyan-200">
+                        Your offer
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <p className="mt-1 text-sm text-zinc-400">
+                    Stake: {offer.stakeLabel} • Rounds: {offer.rounds}
+                  </p>
+
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Room: {offer.roomCode}
+                  </p>
+
+                  {isHostWaitingOffer ? (
+                    <p className="mt-2 text-xs text-cyan-200/80">
+                      Waiting for an opponent. Cancel anytime before someone
+                      joins.
+                    </p>
+                  ) : null}
+                </div>
+
+                {isHostWaitingOffer ? (
+                  <button
+                    type="button"
+                    onClick={() => cancelOffer(offer.offerId)}
+                    disabled={
+                      cancellingOfferId === offer.offerId || !connected
+                    }
+                    className="rounded-xl border border-red-500/40 bg-red-950/30 px-4 py-3 font-semibold text-red-100 hover:border-red-400/60 hover:bg-red-950/50 disabled:opacity-50"
+                  >
+                    {cancellingOfferId === offer.offerId
+                      ? "Cancelling..."
+                      : "Cancel Offer"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => joinOffer(offer.offerId)}
+                    disabled={
+                      joiningOfferId === offer.offerId ||
+                      Boolean(cancellingOfferId) ||
+                      !connected
+                    }
+                    className="rounded-xl border border-zinc-700 px-4 py-3 font-semibold text-white hover:border-zinc-500 disabled:opacity-50"
+                  >
+                    {joiningOfferId === offer.offerId
+                      ? "Joining..."
+                      : "Join Offer"}
+                  </button>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
     </section>

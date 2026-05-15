@@ -32,10 +32,11 @@ const supabase =
 type Lane = "LEFT" | "CENTER" | "RIGHT";
 type Role = "KICKER" | "KEEPER";
 type ShotResult = "GOAL" | "SAVE" | "DRAW";
-type MatchType = "private" | "public" | "unknown";
+type MatchType = "private" | "public" | "ranked" | "unknown";
 type MatchPhase = "NORMAL" | "SUDDEN_DEATH";
 
 const PICK_TIMEOUT_MS = 10000;
+const EARLY_CANCEL_MS = 5000;
 const MAX_SUDDEN_DEATH_CYCLES = 10;
 
 type RoomPlayer = {
@@ -58,6 +59,8 @@ type Room = {
   suddenDeathRound: number;
   rematchVotes: string[];
   matchEnded: boolean;
+  /** Set once when the first pick-round timer starts (2 players). */
+  matchStartedAt?: number;
   matchType: MatchType;
   stakeLabel: string;
   stakeAmount: number;
@@ -86,12 +89,89 @@ const rooms = new Map<string, Room>();
 const publicOffers = new Map<string, PublicMatchOffer>();
 const playerActiveRooms = new Map<string, string>();
 
+type RankedQueueEntry = {
+  playerId: string;
+  username: string;
+  socketId: string;
+  enqueuedAt: number;
+};
+
+/** FIFO ranked matchmaking (v1: no MMR / stakes). Keyed by `playerId`. */
+const rankedQueue = new Map<string, RankedQueueEntry>();
+
+function removeRankedQueueEntryBySocketId(socketId: string): boolean {
+  for (const [playerId, entry] of rankedQueue.entries()) {
+    if (entry.socketId === socketId) {
+      rankedQueue.delete(playerId);
+      return true;
+    }
+  }
+  return false;
+}
+
+function tryFlushRankedQueue() {
+  while (rankedQueue.size >= 2) {
+    const ids = Array.from(rankedQueue.keys());
+    const idA = ids[0];
+    const idB = ids[1];
+    if (!idA || !idB) return;
+
+    const a = rankedQueue.get(idA);
+    const b = rankedQueue.get(idB);
+    if (!a || !b) return;
+
+    rankedQueue.delete(idA);
+    rankedQueue.delete(idB);
+
+    const socketA = io.sockets.sockets.get(a.socketId);
+    const socketB = io.sockets.sockets.get(b.socketId);
+    const okA = Boolean(socketA?.connected);
+    const okB = Boolean(socketB?.connected);
+
+    if (!okA && !okB) {
+      continue;
+    }
+
+    if (okA && !okB) {
+      rankedQueue.set(a.playerId, a);
+      continue;
+    }
+
+    if (!okA && okB) {
+      rankedQueue.set(b.playerId, b);
+      continue;
+    }
+
+    const p1: RoomPlayer = {
+      playerId: a.playerId,
+      socketId: a.socketId,
+      username: a.username,
+    };
+    const p2: RoomPlayer = {
+      playerId: b.playerId,
+      socketId: b.socketId,
+      username: b.username,
+    };
+
+    try {
+      const { code } = createRoomWithPlayers([p1, p2], 3, "ranked", "Free");
+      io.to(code).emit("ranked:matched", { roomCode: code });
+    } catch (error) {
+      console.error("tryFlushRankedQueue: failed to create ranked room", error);
+      rankedQueue.set(a.playerId, a);
+      rankedQueue.set(b.playerId, b);
+      break;
+    }
+  }
+}
+
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     service: "penalty444-realtime-server",
     rooms: rooms.size,
     publicOffers: publicOffers.size,
+    rankedQueue: rankedQueue.size,
     activePlayers: playerActiveRooms.size,
     connectedSockets: io.engine.clientsCount,
   });
@@ -279,6 +359,12 @@ function emitRoomUpdate(roomCode: string, room: Room) {
 }
 
 function emitMatchState(roomCode: string, room: Room) {
+  const matchStartedAt = room.matchStartedAt;
+  const earlyCancelDeadlineAt =
+    matchStartedAt !== undefined
+      ? matchStartedAt + EARLY_CANCEL_MS
+      : undefined;
+
   io.to(roomCode).emit("match:update", {
     roles: room.roles,
     playerNames: buildPlayerNames(room),
@@ -288,6 +374,9 @@ function emitMatchState(roomCode: string, room: Room) {
     matchEnded: room.matchEnded,
     phase: room.phase,
     suddenDeathRound: room.suddenDeathRound,
+    matchStartedAt,
+    earlyCancelDeadlineAt,
+    matchInstance: room.matchInstance ?? 1,
   });
 }
 
@@ -554,6 +643,8 @@ async function saveMatchResult(room: Room) {
 }
 
 function endMatch(roomCode: string, room: Room) {
+  if (room.matchEnded) return;
+
   clearRoomTimer(room);
 
   room.isResolving = false;
@@ -595,11 +686,77 @@ function endMatch(roomCode: string, room: Room) {
   });
 }
 
+async function refundBothStakes(room: Room) {
+  if (room.stakeSettled) return;
+
+  if (room.stakeAmount <= 0) {
+    room.stakeSettled = true;
+    return;
+  }
+
+  if (room.players.length < 2) return;
+
+  const playerOne = room.players[0];
+  const playerTwo = room.players[1];
+
+  if (!playerOne || !playerTwo) return;
+
+  await unlockStake(playerOne.playerId, room.stakeAmount);
+  await unlockStake(playerTwo.playerId, room.stakeAmount);
+
+  room.stakeSettled = true;
+
+  io.to(room.code).emit("wallet:update", {
+    reason: "early_abort_unlock",
+    roomCode: room.code,
+  });
+}
+
+async function abortMatchEarly(
+  roomCode: string,
+  room: Room,
+  abortedByPlayerId: string
+) {
+  room.matchEnded = true;
+
+  clearRoomTimer(room);
+
+  room.isResolving = false;
+  room.rematchVotes = [];
+  room.picks = {};
+  room.disconnectedPlayerId = undefined;
+  room.disconnectedAt = undefined;
+
+  clearPlayersActiveRoomsForRoom(room);
+
+  room.players.forEach((p) => {
+    if (p?.playerId) {
+      playerActiveRooms.delete(p.playerId);
+    }
+  });
+
+  await refundBothStakes(room);
+
+  io.to(roomCode).emit("match:aborted", {
+    roomCode,
+    abortedBy: abortedByPlayerId,
+    matchInstance: room.matchInstance ?? 1,
+    reason: "early_cancel",
+  });
+
+  emitMatchState(roomCode, room);
+  emitRoomUpdate(roomCode, room);
+}
+
 function startRoundTimer(roomCode: string, room: Room) {
   clearRoomTimer(room);
 
   if (room.matchEnded) return;
   if (room.players.length < 2) return;
+
+  if (room.matchStartedAt === undefined) {
+    room.matchStartedAt = Date.now();
+  }
 
   io.to(roomCode).emit("match:status", {
     message:
@@ -812,6 +969,7 @@ function resetRoomForRematch(roomCode: string, room: Room) {
   room.phase = "NORMAL";
   room.suddenDeathRound = 0;
   room.matchEnded = false;
+  room.matchStartedAt = undefined;
   room.rematchVotes = [];
   room.resultSaved = false;
   room.stakeSettled = room.stakeAmount > 0;
@@ -1310,6 +1468,18 @@ io.on("connection", (socket) => {
         return;
       }
 
+      const waitingRoom = rooms.get(offer.roomCode);
+      if (
+        waitingRoom &&
+        waitingRoom.players.length === 1 &&
+        !waitingRoom.matchEnded
+      ) {
+        clearRoomTimer(waitingRoom);
+        rooms.delete(offer.roomCode);
+      }
+
+      publicOffers.delete(offerId);
+
       await unlockStake(playerId, offer.stakeAmount);
 
       if (offer.stakeAmount > 0) {
@@ -1319,13 +1489,90 @@ io.on("connection", (socket) => {
         });
       }
 
-      publicOffers.delete(offerId);
       clearPlayerActiveRoom(playerId);
       emitPublicOffers("publicOffer:cancel");
 
       socket.emit("publicOffer:cancelled", {
         offerId,
       });
+    }
+  );
+
+  socket.on(
+    "ranked:enqueue",
+    ({
+      playerId,
+      username,
+    }: {
+      playerId?: string;
+      username?: string;
+    }) => {
+      const normalizedId =
+        typeof playerId === "string" ? playerId.trim() : "";
+      if (!normalizedId) {
+        socket.emit("ranked:error", { message: "Missing player ID." });
+        return;
+      }
+
+      if (typeof username !== "string") {
+        socket.emit("ranked:error", { message: "Missing username." });
+        return;
+      }
+
+      const playerName = cleanUsername(username);
+
+      if (rankedQueue.has(normalizedId)) {
+        socket.emit("ranked:error", {
+          message: "You are already in the ranked queue.",
+        });
+        return;
+      }
+
+      const busyRoomCode = getTrackedActiveRoom(normalizedId);
+      if (busyRoomCode) {
+        socket.emit("ranked:error", {
+          message: `You are already in an active match (${busyRoomCode}). Finish or leave before queuing ranked.`,
+        });
+        return;
+      }
+
+      rankedQueue.set(normalizedId, {
+        playerId: normalizedId,
+        username: playerName,
+        socketId: socket.id,
+        enqueuedAt: Date.now(),
+      });
+
+      socket.emit("ranked:queued", {});
+      tryFlushRankedQueue();
+    }
+  );
+
+  socket.on(
+    "ranked:cancel",
+    ({ playerId }: { playerId?: string }) => {
+      const normalizedId =
+        typeof playerId === "string" ? playerId.trim() : "";
+      if (!normalizedId) {
+        socket.emit("ranked:error", { message: "Missing player ID." });
+        return;
+      }
+
+      if (!rankedQueue.has(normalizedId)) {
+        socket.emit("ranked:error", { message: "Not in ranked queue." });
+        return;
+      }
+
+      const entry = rankedQueue.get(normalizedId);
+      if (entry && entry.socketId !== socket.id) {
+        socket.emit("ranked:error", {
+          message: "Cannot cancel another player's queue entry.",
+        });
+        return;
+      }
+
+      rankedQueue.delete(normalizedId);
+      socket.emit("ranked:cancelled", {});
     }
   );
 
@@ -1400,6 +1647,7 @@ io.on("connection", (socket) => {
       io.to(code).emit("match:rematch:update", {
         votes: room.rematchVotes.length,
         required: room.players.length,
+        lastRequesterId: playerId,
       });
 
       if (room.players.length === 2 && room.rematchVotes.length === 2) {
@@ -1409,10 +1657,213 @@ io.on("connection", (socket) => {
     }
   );
 
+  socket.on(
+    "match:rematch:decline",
+    ({
+      roomCode,
+      playerId,
+    }: {
+      roomCode: string;
+      playerId: string;
+    }) => {
+      const code = normalizeRoomCode(roomCode);
+      const room = rooms.get(code);
+
+      if (!room) return;
+      if (!room.matchEnded) return;
+
+      room.rematchVotes = [];
+
+      io.to(code).emit("match:rematch:update", {
+        votes: 0,
+        required: room.players.length,
+        lastRequesterId: null,
+      });
+
+      io.to(code).emit("match:rematch:declined", {
+        declinedBy: playerId,
+      });
+    }
+  );
+
+  socket.on(
+    "match:abortEarly",
+    async ({
+      roomCode,
+      playerId,
+    }: {
+      roomCode: string;
+      playerId: string;
+    }) => {
+      const code = normalizeRoomCode(roomCode);
+      const room = rooms.get(code);
+
+      if (!room) {
+        socket.emit("error:message", { message: "Room not found." });
+        return;
+      }
+
+      if (room.players.length !== 2) {
+        socket.emit("error:message", {
+          message: "Match is not ready to cancel.",
+        });
+        return;
+      }
+
+      if (room.matchEnded) {
+        socket.emit("error:message", {
+          message: "Match has already ended.",
+        });
+        return;
+      }
+
+      if (room.matchStartedAt === undefined) {
+        socket.emit("error:message", {
+          message: "Match has not started yet.",
+        });
+        return;
+      }
+
+      if (Date.now() - room.matchStartedAt >= EARLY_CANCEL_MS) {
+        socket.emit("error:message", {
+          message:
+            "Early cancel window has expired. Use forfeit if you want to leave.",
+        });
+        return;
+      }
+
+      if (room.isResolving) {
+        socket.emit("error:message", {
+          message: "Cannot cancel while a round is resolving.",
+        });
+        return;
+      }
+
+      if (room.picks.KICKER || room.picks.KEEPER) {
+        socket.emit("error:message", {
+          message: "Cannot cancel after a pick has been submitted.",
+        });
+        return;
+      }
+
+      const playerInRoom = room.players.some(
+        (player) => player.playerId === playerId
+      );
+
+      if (!playerInRoom) {
+        socket.emit("error:message", {
+          message: "You are not in this match.",
+        });
+        return;
+      }
+
+      try {
+        await abortMatchEarly(code, room, playerId);
+      } catch (error) {
+        console.error("match:abortEarly failed:", error);
+        socket.emit("error:message", {
+          message: "Failed to cancel match.",
+        });
+      }
+    }
+  );
+
+  socket.on(
+    "match:forfeit",
+    ({
+      roomCode,
+      playerId,
+    }: {
+      roomCode: string;
+      playerId: string;
+    }) => {
+      const code = normalizeRoomCode(roomCode);
+      const room = rooms.get(code);
+
+      if (!room) {
+        socket.emit("error:message", { message: "Room not found." });
+        return;
+      }
+
+      if (room.players.length !== 2) {
+        socket.emit("error:message", {
+          message: "Match is not ready for forfeit.",
+        });
+        return;
+      }
+
+      if (room.matchEnded) {
+        socket.emit("error:message", {
+          message: "Match has already ended.",
+        });
+        return;
+      }
+
+      if (room.matchStartedAt === undefined) {
+        socket.emit("error:message", {
+          message: "Match has not started yet.",
+        });
+        return;
+      }
+
+      if (Date.now() - room.matchStartedAt < EARLY_CANCEL_MS) {
+        socket.emit("error:message", {
+          message:
+            "Use cancel match during the first 5 seconds instead of forfeit.",
+        });
+        return;
+      }
+
+      if (room.isResolving) {
+        socket.emit("error:message", {
+          message: "Cannot forfeit while a round is resolving.",
+        });
+        return;
+      }
+
+      const playerInRoom = room.players.some(
+        (player) => player.playerId === playerId
+      );
+
+      if (!playerInRoom) {
+        socket.emit("error:message", {
+          message: "You are not in this match.",
+        });
+        return;
+      }
+
+      const opponent = room.players.find(
+        (player) => player.playerId !== playerId
+      );
+
+      if (!opponent) {
+        socket.emit("error:message", {
+          message: "Opponent not found.",
+        });
+        return;
+      }
+
+      if (room.disconnectForfeitTimeout) {
+        clearTimeout(room.disconnectForfeitTimeout);
+        room.disconnectForfeitTimeout = undefined;
+      }
+
+      room.disconnectedPlayerId = undefined;
+      room.disconnectedAt = undefined;
+
+      const maxScore = Math.max(...Object.values(room.scores || {}), 0);
+      room.scores[opponent.playerId] = maxScore + 1;
+
+      endMatch(code, room);
+    }
+  );
+
   socket.on("disconnect", async (reason) => {
     console.log(
       `Socket disconnected: ${socket.id}. reason=${reason}. Connected sockets: ${io.engine.clientsCount}`
     );
+
+    removeRankedQueueEntryBySocketId(socket.id);
 
     for (const offer of publicOffers.values()) {
       const room = rooms.get(offer.roomCode);
@@ -1421,11 +1872,14 @@ io.on("connection", (socket) => {
       );
 
       if (host?.socketId === socket.id) {
-        await unlockStake(offer.hostPlayerId, offer.stakeAmount);
+        if (publicOffers.has(offer.offerId)) {
+          publicOffers.delete(offer.offerId);
 
-        publicOffers.delete(offer.offerId);
-        clearPlayerActiveRoom(offer.hostPlayerId);
-        emitPublicOffers("host disconnected, offer removed");
+          await unlockStake(offer.hostPlayerId, offer.stakeAmount);
+
+          clearPlayerActiveRoom(offer.hostPlayerId);
+          emitPublicOffers("host disconnected, offer removed");
+        }
 
         break;
       }

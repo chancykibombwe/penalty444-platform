@@ -32,15 +32,30 @@ type MatchUpdatePayload = {
   phase?: MatchPhase;
   suddenDeathRound?: number;
   suddenRound?: number;
+  matchStartedAt?: number;
+  earlyCancelDeadlineAt?: number;
+  matchInstance?: number;
 };
 
 type MatchEndPayload = {
   scores: Record<string, number>;
 };
 
+type MatchAbortedPayload = {
+  roomCode?: string;
+  abortedBy?: string;
+  matchInstance?: number;
+  reason?: string;
+};
+
 type RematchUpdatePayload = {
   votes: number;
   required: number;
+  lastRequesterId?: string | null;
+};
+
+type RematchDeclinedPayload = {
+  declinedBy: string;
 };
 
 type MatchStatusPayload = {
@@ -273,6 +288,12 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
   const [rematchVotes, setRematchVotes] = useState(0);
   const [rematchRequired, setRematchRequired] = useState(2);
+  const [lastRematchRequesterId, setLastRematchRequesterId] = useState<
+    string | null
+  >(null);
+  const [rematchDeclinedBy, setRematchDeclinedBy] = useState<string | null>(
+    null
+  );
   const [rematchRequested, setRematchRequested] = useState(false);
   const [scorePulse, setScorePulse] = useState<"p1" | "p2" | null>(null);
   const [impactResult, setImpactResult] = useState<
@@ -284,6 +305,28 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const [resultFlavorMessage, setResultFlavorMessage] = useState<string | null>(
     null
   );
+  const [matchStartedAt, setMatchStartedAt] = useState<number | null>(null);
+  const [earlyCancelDeadlineAt, setEarlyCancelDeadlineAt] = useState<
+    number | null
+  >(null);
+  const [matchInstance, setMatchInstance] = useState(1);
+  const [leaveMatchBusy, setLeaveMatchBusy] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [matchAborted, setMatchAborted] = useState(false);
+  const [matchAbortedMessage, setMatchAbortedMessage] = useState<string | null>(
+    null
+  );
+  const [redirectingAfterAbort, setRedirectingAfterAbort] = useState(false);
+
+  const matchAbortedRef = useRef(false);
+  const abortRedirectTimeoutRef = useRef<number | null>(null);
+
+  function clearAbortRedirectTimeout() {
+    if (abortRedirectTimeoutRef.current !== null) {
+      window.clearTimeout(abortRedirectTimeoutRef.current);
+      abortRedirectTimeoutRef.current = null;
+    }
+  }
 
   const clickSound = useMemo(() => new Audio("/sounds/click.mp3"), []);
   const goalSound = useMemo(() => new Audio("/sounds/goal.mp3"), []);
@@ -415,6 +458,18 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setPhase(inferredPhase);
       setSuddenDeathRound(inferredSuddenRound);
 
+      if (typeof data.matchStartedAt === "number") {
+        setMatchStartedAt(data.matchStartedAt);
+      }
+
+      if (typeof data.earlyCancelDeadlineAt === "number") {
+        setEarlyCancelDeadlineAt(data.earlyCancelDeadlineAt);
+      }
+
+      if (typeof data.matchInstance === "number") {
+        setMatchInstance(data.matchInstance);
+      }
+
       if (pickRoundAdvanced) {
         const prev = previousRoundTracked;
         const hadPendingRevealTimer =
@@ -459,6 +514,11 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       }
 
       if (data.matchEnded) {
+        if (matchAbortedRef.current) {
+          clearActiveMatch();
+          return;
+        }
+
         if (disconnectCountdownRef.current !== null) {
           clearDisconnectCountdownVisual();
         }
@@ -641,12 +701,32 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setStatus("Match complete");
       setTimer(null);
       clearActiveMatch();
+      setRematchVotes(0);
+      setRematchRequired(2);
+      setLastRematchRequesterId(null);
+      setRematchDeclinedBy(null);
+      setRematchRequested(false);
+      setLeaveMatchBusy(false);
     }
 
     function onRematchUpdate(payload: RematchUpdatePayload) {
       setRematchVotes(payload.votes);
       setRematchRequired(payload.required);
-      setStatus(`Rematch votes: ${payload.votes}/${payload.required}`);
+      setLastRematchRequesterId(
+        payload.lastRequesterId === undefined
+          ? null
+          : payload.lastRequesterId
+      );
+      if (payload.votes === 0) {
+        setRematchRequested(false);
+      }
+      if (payload.votes > 0) {
+        setRematchDeclinedBy(null);
+      }
+    }
+
+    function onRematchDeclined(payload: RematchDeclinedPayload) {
+      setRematchDeclinedBy(payload.declinedBy);
     }
 
     function onRematchAccepted() {
@@ -674,15 +754,49 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setHasSubmittedPick(false);
       setRematchVotes(0);
       setRematchRequired(2);
+      setLastRematchRequesterId(null);
+      setRematchDeclinedBy(null);
       setRematchRequested(false);
       setRevealStage("IDLE");
       setPhase("NORMAL");
       setSuddenDeathRound(0);
+      setMatchStartedAt(null);
+      setEarlyCancelDeadlineAt(null);
+      matchAbortedRef.current = false;
+      setMatchAborted(false);
+      setMatchAbortedMessage(null);
+      setRedirectingAfterAbort(false);
+      clearAbortRedirectTimeout();
+      setLeaveMatchBusy(false);
       setStatus("Rematch started");
     }
 
     function onErrorMessage(payload: { message: string }) {
+      setLeaveMatchBusy(false);
       setStatus(payload.message);
+    }
+
+    function onMatchAborted(_payload: MatchAbortedPayload) {
+      matchAbortedRef.current = true;
+      setLeaveMatchBusy(false);
+      setMatchAborted(true);
+      setMatchAbortedMessage("No penalty applied. Stakes refunded.");
+      setRedirectingAfterAbort(false);
+
+      if (disconnectCountdownRef.current !== null) {
+        clearDisconnectCountdownVisual();
+      }
+
+      clearMatchResultRevealTimeout();
+      clearActiveMatch();
+      setStatus("Match cancelled. No penalty applied.");
+
+      clearAbortRedirectTimeout();
+      abortRedirectTimeoutRef.current = window.setTimeout(() => {
+        abortRedirectTimeoutRef.current = null;
+        setRedirectingAfterAbort(true);
+        router.push("/lobby");
+      }, 2000);
     }
 
     socket.on("connect", onConnect);
@@ -694,6 +808,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     socket.on("match:end", onMatchEnd);
     socket.on("match:rematch:update", onRematchUpdate);
     socket.on("match:rematch:accepted", onRematchAccepted);
+    socket.on("match:rematch:declined", onRematchDeclined);
+    socket.on("match:aborted", onMatchAborted);
     socket.on("error:message", onErrorMessage);
 
     if (socket.connected) {
@@ -701,6 +817,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     }
 
     return () => {
+      clearAbortRedirectTimeout();
       clearDisconnectCountdownVisual();
       clearMatchResultRevealTimeout();
       socket.off("connect", onConnect);
@@ -712,9 +829,33 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       socket.off("match:end", onMatchEnd);
       socket.off("match:rematch:update", onRematchUpdate);
       socket.off("match:rematch:accepted", onRematchAccepted);
+      socket.off("match:rematch:declined", onRematchDeclined);
+      socket.off("match:aborted", onMatchAborted);
       socket.off("error:message", onErrorMessage);
     };
-  }, [roomCode, identity]);
+  }, [roomCode, identity, router]);
+
+  useEffect(() => {
+    if (
+      matchEnded ||
+      playerCount < 2 ||
+      matchStartedAt === null ||
+      earlyCancelDeadlineAt === null
+    ) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [
+    matchEnded,
+    playerCount,
+    matchStartedAt,
+    earlyCancelDeadlineAt,
+  ]);
 
   useEffect(() => {
     if (timer === null || timer <= 0) return;
@@ -751,6 +892,26 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const myScore = myPlayerId ? activeScores[myPlayerId] ?? 0 : 0;
   const opponentScore = opponentId ? activeScores[opponentId] ?? 0 : 0;
 
+  const showOpponentRematchPrompt = useMemo(() => {
+    return (
+      matchEnded &&
+      !!identity &&
+      rematchVotes >= 1 &&
+      rematchVotes < rematchRequired &&
+      !!lastRematchRequesterId &&
+      lastRematchRequesterId !== myPlayerId &&
+      !rematchRequested
+    );
+  }, [
+    matchEnded,
+    identity,
+    rematchVotes,
+    rematchRequired,
+    lastRematchRequesterId,
+    myPlayerId,
+    rematchRequested,
+  ]);
+
   const normalTurns = maxRounds * 2;
   const isLateGame = round >= maxRounds * 2 - 2;
   const isSuddenDeath = phase === "SUDDEN_DEATH";
@@ -777,6 +938,43 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     revealStage !== "REVEALING" &&
     revealStage !== "REVEALED" &&
     !!identity;
+
+  const matchEndOutcome = useMemo(() => {
+    if (!matchEnded) return null;
+    if (myScore > opponentScore) return "victory" as const;
+    if (myScore < opponentScore) return "defeat" as const;
+    return "draw" as const;
+  }, [matchEnded, myScore, opponentScore]);
+
+  const showLeaveMatchControls = useMemo(() => {
+    return (
+      !matchEnded &&
+      !matchAborted &&
+      !redirectingAfterAbort &&
+      playerCount >= 2 &&
+      !!identity &&
+      matchStartedAt !== null &&
+      earlyCancelDeadlineAt !== null
+    );
+  }, [
+    matchEnded,
+    matchAborted,
+    redirectingAfterAbort,
+    playerCount,
+    identity,
+    matchStartedAt,
+    earlyCancelDeadlineAt,
+  ]);
+
+  const isEarlyCancelWindow = useMemo(() => {
+    if (earlyCancelDeadlineAt === null) return false;
+    return nowMs < earlyCancelDeadlineAt;
+  }, [earlyCancelDeadlineAt, nowMs]);
+
+  const earlyCancelSecondsLeft = useMemo(() => {
+    if (earlyCancelDeadlineAt === null) return 0;
+    return Math.max(0, Math.ceil((earlyCancelDeadlineAt - nowMs) / 1000));
+  }, [earlyCancelDeadlineAt, nowMs]);
 
   function pick(lane: Lane) {
     if (!canPick || !identity) return;
@@ -814,7 +1012,64 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     });
 
     setRematchRequested(true);
-    setStatus("Rematch requested...");
+    setStatus("Waiting for opponent...");
+  }
+
+  function declineRematch() {
+    if (!identity) return;
+
+    const socket = getSocket();
+
+    socket.emit("match:rematch:decline", {
+      roomCode,
+      playerId: identity.playerId,
+    });
+  }
+
+  function abortEarlyMatch() {
+    if (!identity || leaveMatchBusy || !showLeaveMatchControls) return;
+
+    const socket = getSocket();
+
+    if (!socket.connected) {
+      socket.connect();
+      setStatus("Connecting to server. Try again in a second.");
+      return;
+    }
+
+    setLeaveMatchBusy(true);
+    setStatus("Cancelling match...");
+
+    socket.emit("match:abortEarly", {
+      roomCode,
+      playerId: identity.playerId,
+    });
+  }
+
+  function forfeitMatch() {
+    if (!identity || leaveMatchBusy || !showLeaveMatchControls) return;
+
+    const confirmed = window.confirm(
+      "Forfeit this match? This will count as a loss."
+    );
+
+    if (!confirmed) return;
+
+    const socket = getSocket();
+
+    if (!socket.connected) {
+      socket.connect();
+      setStatus("Connecting to server. Try again in a second.");
+      return;
+    }
+
+    setLeaveMatchBusy(true);
+    setStatus("Forfeiting match...");
+
+    socket.emit("match:forfeit", {
+      roomCode,
+      playerId: identity.playerId,
+    });
   }
 
   return (
@@ -917,6 +1172,39 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                     Opponent disconnected. Aborting match in{" "}
                     {disconnectCountdown}s...
                   </p>
+                </div>
+              ) : null}
+
+              {showLeaveMatchControls ? (
+                <div className="mt-3 flex max-w-2xl flex-wrap items-center gap-3">
+                  {isEarlyCancelWindow ? (
+                    <button
+                      type="button"
+                      onClick={abortEarlyMatch}
+                      disabled={leaveMatchBusy}
+                      className="rounded-xl border border-zinc-500 bg-zinc-900 px-4 py-2 text-sm font-bold text-zinc-100 hover:border-zinc-300 disabled:opacity-50"
+                    >
+                      {leaveMatchBusy ? "Cancelling..." : "Cancel Match"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={forfeitMatch}
+                      disabled={leaveMatchBusy}
+                      className="rounded-xl border border-red-500/50 bg-red-950/40 px-4 py-2 text-sm font-bold text-red-100 hover:border-red-400/70 disabled:opacity-50"
+                    >
+                      {leaveMatchBusy ? "Leaving..." : "Forfeit"}
+                    </button>
+                  )}
+                  {isEarlyCancelWindow ? (
+                    <span className="text-xs text-zinc-400">
+                      No penalty for {earlyCancelSecondsLeft}s
+                    </span>
+                  ) : (
+                    <span className="text-xs text-zinc-500">
+                      Counts as a loss
+                    </span>
+                  )}
                 </div>
               ) : null}
             </div>
@@ -1236,28 +1524,151 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         </div>
       </section>
 
-      {matchEnded ? (
-        <section className="rounded-[2rem] border border-emerald-400 bg-emerald-500/10 p-6 shadow-xl">
-          <p className="text-xs font-black uppercase tracking-[0.3em] text-emerald-300">
+      {matchEnded && matchEndOutcome ? (
+        <section
+          className={`rounded-[2rem] border p-8 shadow-2xl md:p-10 ${
+            matchEndOutcome === "victory"
+              ? "border-emerald-400/70 bg-gradient-to-br from-emerald-950/55 via-zinc-950 to-amber-950/35 ring-2 ring-emerald-400/25 shadow-[0_0_48px_rgba(16,185,129,0.22)]"
+              : matchEndOutcome === "defeat"
+                ? "border-red-500/55 bg-gradient-to-br from-red-950/45 via-zinc-950 to-zinc-950 ring-2 ring-red-500/20 shadow-[0_0_40px_rgba(239,68,68,0.15)]"
+                : "border-yellow-400/55 bg-gradient-to-br from-yellow-950/30 via-zinc-950 to-zinc-900 ring-2 ring-yellow-400/20 shadow-[0_0_36px_rgba(234,179,8,0.14)]"
+          }`}
+        >
+          <p
+            className={`text-xs font-black uppercase tracking-[0.3em] ${
+              matchEndOutcome === "victory"
+                ? "text-emerald-300/90"
+                : matchEndOutcome === "defeat"
+                  ? "text-red-300/90"
+                  : "text-yellow-200/90"
+            }`}
+          >
             Match Complete
           </p>
 
-          <h2 className="mt-2 text-4xl font-black">
-            Final Score: {myName} {myScore} - {opponentScore} {opponentName}
+          <h2
+            className={`mt-4 text-5xl font-black tracking-tight md:text-6xl ${
+              matchEndOutcome === "victory"
+                ? "bg-gradient-to-r from-emerald-200 via-emerald-100 to-amber-200 bg-clip-text text-transparent drop-shadow-[0_0_24px_rgba(52,211,153,0.35)]"
+                : matchEndOutcome === "defeat"
+                  ? "text-red-100 drop-shadow-[0_0_20px_rgba(248,113,113,0.25)]"
+                  : "text-yellow-100 drop-shadow-[0_0_18px_rgba(250,204,21,0.2)]"
+            }`}
+          >
+            {matchEndOutcome === "victory"
+              ? "Victory"
+              : matchEndOutcome === "defeat"
+                ? "Defeat"
+                : "Draw"}
           </h2>
 
-          <p className="mt-3 text-sm text-emerald-100">
+          <p
+            className={`mt-3 max-w-xl text-base font-semibold leading-relaxed md:text-lg ${
+              matchEndOutcome === "victory"
+                ? "text-emerald-100/90"
+                : matchEndOutcome === "defeat"
+                  ? "text-zinc-300"
+                  : "text-yellow-100/85"
+            }`}
+          >
+            {matchEndOutcome === "victory"
+              ? `You outscored ${opponentName}.`
+              : matchEndOutcome === "defeat"
+                ? `${opponentName} took this one.`
+                : "Nothing separated both players."}
+          </p>
+
+          <div
+            className={`mt-8 rounded-2xl border px-6 py-6 md:px-8 md:py-8 ${
+              matchEndOutcome === "victory"
+                ? "border-emerald-400/30 bg-black/35"
+                : matchEndOutcome === "defeat"
+                  ? "border-red-500/25 bg-black/40"
+                  : "border-yellow-400/25 bg-black/35"
+            }`}
+          >
+            <p className="text-center text-xs font-bold uppercase tracking-[0.25em] text-zinc-500">
+              Final score
+            </p>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-4 text-center md:gap-8">
+              <div className="min-w-[7rem]">
+                <p className="text-sm font-semibold text-zinc-400">{myName}</p>
+                <p className="mt-1 text-6xl font-black tabular-nums text-white md:text-8xl">
+                  {myScore}
+                </p>
+              </div>
+              <span className="text-4xl font-black text-zinc-600 md:text-5xl">
+                —
+              </span>
+              <div className="min-w-[7rem]">
+                <p className="text-sm font-semibold text-zinc-400">
+                  {opponentName}
+                </p>
+                <p className="mt-1 text-6xl font-black tabular-nums text-white md:text-8xl">
+                  {opponentScore}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <p className="mt-6 text-sm text-zinc-400">
             Rematch votes: {rematchVotes}/{rematchRequired}
           </p>
 
-          <div className="mt-6 flex flex-col gap-3 md:flex-row">
-            <button
-              onClick={requestRematch}
-              disabled={rematchRequested || !identity}
-              className="rounded-2xl bg-white px-5 py-4 font-black text-black disabled:opacity-50"
-            >
-              {rematchRequested ? "Rematch Requested" : "Rematch"}
-            </button>
+          {rematchDeclinedBy && rematchDeclinedBy !== myPlayerId ? (
+            <p className="mt-3 text-sm font-semibold text-zinc-200">
+              Opponent declined rematch.
+            </p>
+          ) : null}
+          {rematchDeclinedBy && rematchDeclinedBy === myPlayerId ? (
+            <p className="mt-3 text-sm font-semibold text-zinc-200">
+              You declined rematch.
+            </p>
+          ) : null}
+
+          {rematchRequested &&
+          rematchVotes < rematchRequired &&
+          !rematchDeclinedBy ? (
+            <p className="mt-3 text-sm font-semibold text-zinc-300">
+              Waiting for opponent...
+            </p>
+          ) : null}
+
+          <div className="mt-6 flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center">
+            {showOpponentRematchPrompt ? (
+              <div className="flex w-full flex-col gap-3 md:max-w-md">
+                <p className="text-center text-sm font-semibold text-zinc-100 md:text-left">
+                  Opponent requested a rematch
+                </p>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={requestRematch}
+                    disabled={!identity}
+                    className="rounded-2xl bg-white px-5 py-4 font-black text-black disabled:opacity-50"
+                  >
+                    Accept
+                  </button>
+                  <button
+                    type="button"
+                    onClick={declineRematch}
+                    disabled={!identity}
+                    className="rounded-2xl border border-white/35 px-5 py-4 font-black text-white hover:bg-white/10 disabled:opacity-50"
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={requestRematch}
+                disabled={rematchRequested || !identity}
+                className="rounded-2xl bg-white px-5 py-4 font-black text-black disabled:opacity-50"
+              >
+                {rematchRequested ? "Rematch Requested" : "Rematch"}
+              </button>
+            )}
 
             <a
               href="/lobby"
@@ -1269,6 +1680,36 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         </section>
       ) : null}
       </div>
+
+      {matchAborted ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+          role="alertdialog"
+          aria-labelledby="match-aborted-title"
+          aria-describedby="match-aborted-desc"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-zinc-600 bg-zinc-950 px-8 py-10 text-center shadow-2xl">
+            <h2
+              id="match-aborted-title"
+              className="text-2xl font-black tracking-tight text-white"
+            >
+              Match Cancelled
+            </h2>
+            <p
+              id="match-aborted-desc"
+              className="mt-3 text-sm leading-relaxed text-zinc-300"
+            >
+              {matchAbortedMessage ??
+                "No penalty applied. Stakes refunded."}
+            </p>
+            {redirectingAfterAbort ? (
+              <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                Returning to lobby...
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

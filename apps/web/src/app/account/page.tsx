@@ -200,6 +200,8 @@ export default function AccountPage() {
   const [matchHistoryNotice, setMatchHistoryNotice] = useState("");
   const [activeSeason, setActiveSeason] = useState<SeasonRow | null>(null);
   const [seasonCountdown, setSeasonCountdown] = useState<string | null>(null);
+  const [seasonStats, setSeasonStats] = useState<PlayerStatsRow | null>(null);
+  const [seasonRank, setSeasonRank] = useState<number | null>(null);
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -214,6 +216,8 @@ export default function AccountPage() {
     async function loadAccount() {
       setLoading(true);
       setMessage("Loading account...");
+      setSeasonStats(null);
+      setSeasonRank(null);
 
       const {
         data: { session },
@@ -228,39 +232,40 @@ export default function AccountPage() {
 
       const [statsResult, rankResult, matchesResult, seasonResult] =
         await Promise.all([
-        supabase
-          .from("player_stats")
-          .select(
-            "user_id, username, matches, wins, losses, draws, goals_for, goals_against, rank_points, tier"
-          )
-          .eq("game_id", "penalty444")
-          .eq("user_id", userId)
-          .maybeSingle(),
-        supabase
-          .from("player_stats")
-          .select("user_id, rank_points, wins, matches, goals_for")
-          .eq("game_id", "penalty444")
-          .order("rank_points", { ascending: false })
-          .order("wins", { ascending: false })
-          .order("matches", { ascending: false })
-          .order("goals_for", { ascending: false }),
-        supabase
-          .from("match_results")
-          .select(
-            "room_code, match_instance, match_type, player_one_id, player_one_username, player_one_score, player_two_id, player_two_username, player_two_score, winner_id, loser_id, is_draw, created_at"
-          )
-          .or(`player_one_id.eq.${userId},player_two_id.eq.${userId}`)
-          .order("created_at", { ascending: false })
-          .limit(10),
-        supabase
-          .from("seasons")
-          .select(
-            "id, game_id, season_number, name, starts_at, ends_at, is_active"
-          )
-          .eq("game_id", "penalty444")
-          .eq("is_active", true)
-          .maybeSingle(),
-      ]);
+          supabase
+            .from("player_stats")
+            .select(
+              "user_id, username, matches, wins, losses, draws, goals_for, goals_against, rank_points, tier"
+            )
+            .eq("game_id", "penalty444")
+            .eq("user_id", userId)
+            .maybeSingle(),
+          supabase
+            .from("player_stats")
+            .select("user_id, rank_points, wins, matches, goals_for")
+            .eq("game_id", "penalty444")
+            .order("rank_points", { ascending: false })
+            .order("wins", { ascending: false })
+            .order("matches", { ascending: false })
+            .order("goals_for", { ascending: false }),
+          supabase
+            .from("match_results")
+            .select(
+              "room_code, match_instance, match_type, player_one_id, player_one_username, player_one_score, player_two_id, player_two_username, player_two_score, winner_id, loser_id, is_draw, created_at"
+            )
+            .or(`player_one_id.eq.${userId},player_two_id.eq.${userId}`)
+            .order("created_at", { ascending: false })
+            .limit(10),
+          supabase
+            .from("seasons")
+            .select(
+              "id, game_id, season_number, name, starts_at, ends_at, is_active"
+            )
+            .eq("game_id", "penalty444")
+            .eq("is_active", true)
+            .order("season_number", { ascending: false })
+            .limit(1),
+        ]);
 
       if (cancelled) return;
 
@@ -287,13 +292,51 @@ export default function AccountPage() {
           ? "Match history is unavailable right now."
           : ""
       );
+
       const season = !seasonResult.error
-        ? (seasonResult.data as SeasonRow | null)
+        ? ((seasonResult.data?.[0] as SeasonRow | undefined) ?? null)
         : null;
       setActiveSeason(season);
       setSeasonCountdown(
         season ? formatSeasonCountdown(season.ends_at) : null
       );
+
+      if (season) {
+        const [seasonStatsResult, seasonRankResult] = await Promise.all([
+          supabase
+            .from("season_player_stats")
+            .select(
+              "user_id, username, matches, wins, losses, draws, goals_for, goals_against, rank_points, tier"
+            )
+            .eq("game_id", "penalty444")
+            .eq("season_id", season.id)
+            .eq("user_id", userId)
+            .maybeSingle(),
+          supabase
+            .from("season_player_stats")
+            .select("user_id, rank_points, wins, matches, goals_for")
+            .eq("game_id", "penalty444")
+            .eq("season_id", season.id)
+            .order("rank_points", { ascending: false })
+            .order("wins", { ascending: false })
+            .order("matches", { ascending: false })
+            .order("goals_for", { ascending: false }),
+        ]);
+
+        if (cancelled) return;
+
+        const currentSeasonStats = !seasonStatsResult.error
+          ? (seasonStatsResult.data as PlayerStatsRow | null)
+          : null;
+        const seasonRankRows = (seasonRankResult.data ?? []) as RankRow[];
+        const seasonRankIndex = seasonRankRows.findIndex(
+          (row) => row.user_id === userId
+        );
+
+        setSeasonStats(currentSeasonStats);
+        setSeasonRank(seasonRankIndex >= 0 ? seasonRankIndex + 1 : null);
+      }
+
       setMessage(
         rankResult.error
           ? `Could not calculate global rank: ${rankResult.error.message}`
@@ -333,6 +376,7 @@ export default function AccountPage() {
   const displayedMatches = account
     ? recentMatches.map((match) => mapMatchForDisplay(match, account.id))
     : [];
+  const seasonStatsTitle = `${activeSeason?.name ?? "Season 1"} Stats`;
 
   return (
     <section className="space-y-8 rounded-[2rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top,_rgba(234,179,8,0.10),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(34,211,238,0.07),_transparent_28%),linear-gradient(180deg,_#050505,_#09090b_42%,_#020202)] p-5 shadow-[0_40px_120px_rgba(0,0,0,0.65)] sm:p-7 lg:p-9">
@@ -443,6 +487,38 @@ export default function AccountPage() {
               </p>
             </div>
           )}
+
+          <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
+            <div className="border-b border-zinc-800/80 px-5 py-4">
+              <h2 className="text-lg font-black text-white">{seasonStatsTitle}</h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                Your current season performance in Penalty444.
+              </p>
+            </div>
+            {seasonStats ? (
+              <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3">
+                <StatCard
+                  label="Season Rank"
+                  value={seasonRank ? `#${seasonRank}` : "—"}
+                />
+                <StatCard label="Season RP" value={seasonStats.rank_points} />
+                <StatCard label="Season Tier" value={seasonStats.tier} />
+                <StatCard label="Season Matches" value={seasonStats.matches} />
+                <StatCard label="Season Wins" value={seasonStats.wins} />
+                <StatCard label="Season Losses" value={seasonStats.losses} />
+                <StatCard label="Season Draws" value={seasonStats.draws} />
+                <StatCard label="Season Goals For" value={seasonStats.goals_for} />
+                <StatCard
+                  label="Season Goals Against"
+                  value={seasonStats.goals_against}
+                />
+              </div>
+            ) : (
+              <p className="px-5 py-6 text-sm text-zinc-500">
+                No Season 1 matches yet.
+              </p>
+            )}
+          </div>
 
           <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
             <div className="border-b border-zinc-800/80 px-5 py-4">

@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import RequireAuth from "../../components/auth/RequireAuth";
 import PublicMatchOffersPanel from "../../components/lobby/PublicMatchOffersPanel";
+import RankedMatchmakingPanel from "../../components/lobby/RankedMatchmakingPanel";
 import CreateRoomPanel from "../../components/lobby/CreateRoomPanel";
 import JoinRoomPanel from "../../components/lobby/JoinRoomPanel";
 
@@ -19,7 +20,8 @@ export default function LobbyPage() {
         <div>
           <h1 className="text-3xl font-bold text-white">Match Hub</h1>
           <p className="mt-2 text-zinc-400">
-            Create public challenges, private rooms, or join with a code.
+            Find a ranked opponent, create public challenges, private rooms, or
+            join with a code.
           </p>
           {hasChallengeContext ? (
             <div className="mt-4 rounded-xl border border-cyan-400/30 bg-cyan-950/20 px-4 py-3 shadow-[0_0_20px_rgba(34,211,238,0.08)]">
@@ -33,6 +35,8 @@ export default function LobbyPage() {
             </div>
           ) : null}
         </div>
+
+        <RankedMatchmakingPanel />
 
         <PublicMatchOffersPanel />
 
