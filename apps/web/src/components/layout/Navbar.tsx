@@ -13,6 +13,7 @@ type NavItem = {
 const baseNavItems: NavItem[] = [
   { href: "/", label: "Home" },
   { href: "/lobby", label: "Lobby" },
+  { href: "/tournaments", label: "Tournaments" },
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/wallet", label: "Wallet" },
 ];
