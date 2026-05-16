@@ -297,7 +297,14 @@ export default function TournamentDetailPage() {
               onUpdated={refresh}
             />
 
-            <TournamentBracketPanel matches={matches} entries={entries} />
+            <TournamentBracketPanel
+              tournamentId={tournament.id}
+              tournamentStatus={tournament.status}
+              matches={matches}
+              entries={entries}
+              currentUserId={currentUserId}
+              onUpdated={refresh}
+            />
           </>
         ) : null}
       </section>

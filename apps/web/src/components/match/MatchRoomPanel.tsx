@@ -22,6 +22,13 @@ type MatchResultPayload = {
   statusMessage?: string;
 };
 
+type MatchType =
+  | "private"
+  | "public"
+  | "ranked"
+  | "tournament"
+  | "unknown";
+
 type MatchUpdatePayload = {
   roles: Record<string, Role>;
   playerNames?: Record<string, string>;
@@ -35,6 +42,7 @@ type MatchUpdatePayload = {
   matchStartedAt?: number;
   earlyCancelDeadlineAt?: number;
   matchInstance?: number;
+  matchType?: MatchType;
 };
 
 type MatchEndPayload = {
@@ -310,6 +318,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     number | null
   >(null);
   const [matchInstance, setMatchInstance] = useState(1);
+  const [matchType, setMatchType] = useState<MatchType>("unknown");
   const [leaveMatchBusy, setLeaveMatchBusy] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [matchAborted, setMatchAborted] = useState(false);
@@ -468,6 +477,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
       if (typeof data.matchInstance === "number") {
         setMatchInstance(data.matchInstance);
+      }
+
+      if (data.matchType) {
+        setMatchType(data.matchType);
       }
 
       if (pickRoundAdvanced) {
@@ -892,7 +905,11 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const myScore = myPlayerId ? activeScores[myPlayerId] ?? 0 : 0;
   const opponentScore = opponentId ? activeScores[opponentId] ?? 0 : 0;
 
+  const isTournamentMatch = matchType === "tournament";
+
   const showOpponentRematchPrompt = useMemo(() => {
+    if (isTournamentMatch) return false;
+
     return (
       matchEnded &&
       !!identity &&
@@ -903,6 +920,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       !rematchRequested
     );
   }, [
+    isTournamentMatch,
     matchEnded,
     identity,
     rematchVotes,
@@ -967,9 +985,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   ]);
 
   const isEarlyCancelWindow = useMemo(() => {
+    if (isTournamentMatch) return false;
     if (earlyCancelDeadlineAt === null) return false;
     return nowMs < earlyCancelDeadlineAt;
-  }, [earlyCancelDeadlineAt, nowMs]);
+  }, [isTournamentMatch, earlyCancelDeadlineAt, nowMs]);
 
   const earlyCancelSecondsLeft = useMemo(() => {
     if (earlyCancelDeadlineAt === null) return 0;
@@ -1126,6 +1145,12 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                 <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs font-bold text-zinc-300">
                   Room {roomCode}
                 </span>
+
+                {isTournamentMatch ? (
+                  <span className="rounded-full border border-amber-500/45 bg-amber-950/40 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-amber-200">
+                    Tournament Match
+                  </span>
+                ) : null}
 
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-bold ${
@@ -1611,22 +1636,25 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             </div>
           </div>
 
-          <p className="mt-6 text-sm text-zinc-400">
-            Rematch votes: {rematchVotes}/{rematchRequired}
-          </p>
+          {!isTournamentMatch ? (
+            <p className="mt-6 text-sm text-zinc-400">
+              Rematch votes: {rematchVotes}/{rematchRequired}
+            </p>
+          ) : null}
 
-          {rematchDeclinedBy && rematchDeclinedBy !== myPlayerId ? (
+          {!isTournamentMatch && rematchDeclinedBy && rematchDeclinedBy !== myPlayerId ? (
             <p className="mt-3 text-sm font-semibold text-zinc-200">
               Opponent declined rematch.
             </p>
           ) : null}
-          {rematchDeclinedBy && rematchDeclinedBy === myPlayerId ? (
+          {!isTournamentMatch && rematchDeclinedBy && rematchDeclinedBy === myPlayerId ? (
             <p className="mt-3 text-sm font-semibold text-zinc-200">
               You declined rematch.
             </p>
           ) : null}
 
-          {rematchRequested &&
+          {!isTournamentMatch &&
+          rematchRequested &&
           rematchVotes < rematchRequired &&
           !rematchDeclinedBy ? (
             <p className="mt-3 text-sm font-semibold text-zinc-300">
@@ -1635,7 +1663,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           ) : null}
 
           <div className="mt-6 flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center">
-            {showOpponentRematchPrompt ? (
+            {!isTournamentMatch && showOpponentRematchPrompt ? (
               <div className="flex w-full flex-col gap-3 md:max-w-md">
                 <p className="text-center text-sm font-semibold text-zinc-100 md:text-left">
                   Opponent requested a rematch
@@ -1659,7 +1687,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                   </button>
                 </div>
               </div>
-            ) : (
+            ) : !isTournamentMatch ? (
               <button
                 type="button"
                 onClick={requestRematch}
@@ -1668,7 +1696,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               >
                 {rematchRequested ? "Rematch Requested" : "Rematch"}
               </button>
-            )}
+            ) : null}
 
             <a
               href="/lobby"

@@ -23,6 +23,7 @@ const io = new Server(server, {
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const realtimeInternalSecret = process.env.REALTIME_INTERNAL_SECRET ?? "";
 
 const supabase =
   supabaseUrl && supabaseServiceRoleKey
@@ -32,7 +33,7 @@ const supabase =
 type Lane = "LEFT" | "CENTER" | "RIGHT";
 type Role = "KICKER" | "KEEPER";
 type ShotResult = "GOAL" | "SAVE" | "DRAW";
-type MatchType = "private" | "public" | "ranked" | "unknown";
+type MatchType = "private" | "public" | "ranked" | "tournament" | "unknown";
 type MatchPhase = "NORMAL" | "SUDDEN_DEATH";
 
 const PICK_TIMEOUT_MS = 10000;
@@ -62,6 +63,10 @@ type Room = {
   /** Set once when the first pick-round timer starts (2 players). */
   matchStartedAt?: number;
   matchType: MatchType;
+  tournamentMatchId?: string;
+  tournamentId?: string;
+  /** Auth user ids allowed in this bracket slot (exactly two for v1). */
+  allowedPlayerIds?: string[];
   stakeLabel: string;
   stakeAmount: number;
   stakeSettled: boolean;
@@ -86,6 +91,8 @@ type PublicMatchOffer = {
 };
 
 const rooms = new Map<string, Room>();
+/** Bracket slot id → active realtime room code (in-process idempotency). */
+const tournamentMatchRooms = new Map<string, string>();
 const publicOffers = new Map<string, PublicMatchOffer>();
 const playerActiveRooms = new Map<string, string>();
 
@@ -165,11 +172,93 @@ function tryFlushRankedQueue() {
   }
 }
 
+function isAuthorizedInternalRequest(req: express.Request): boolean {
+  if (!realtimeInternalSecret) {
+    return false;
+  }
+
+  const headerSecret = req.headers["x-realtime-internal-secret"];
+  if (typeof headerSecret !== "string" || headerSecret.length === 0) {
+    return false;
+  }
+
+  return headerSecret === realtimeInternalSecret;
+}
+
+app.post("/internal/tournament-rooms", (req, res) => {
+    if (!isAuthorizedInternalRequest(req)) {
+      res.status(401).json({ error: "Unauthorized." });
+      return;
+    }
+
+    const body = req.body as {
+      tournamentId?: string;
+      tournamentMatchId?: string;
+      allowedPlayerIds?: string[];
+      maxRounds?: number;
+    };
+
+    const tournamentId =
+      typeof body.tournamentId === "string" ? body.tournamentId.trim() : "";
+    const tournamentMatchId =
+      typeof body.tournamentMatchId === "string"
+        ? body.tournamentMatchId.trim()
+        : "";
+    const allowedPlayerIds = Array.isArray(body.allowedPlayerIds)
+      ? body.allowedPlayerIds
+      : [];
+    const maxRounds =
+      typeof body.maxRounds === "number" && body.maxRounds > 0
+        ? body.maxRounds
+        : 3;
+
+    if (!tournamentId || !tournamentMatchId) {
+      res.status(400).json({
+        error: "tournamentId and tournamentMatchId are required.",
+      });
+      return;
+    }
+
+    const existingCode = tournamentMatchRooms.get(tournamentMatchId);
+    if (existingCode && rooms.has(existingCode)) {
+      res.json({ roomCode: existingCode, existing: true });
+      return;
+    }
+
+    if (existingCode && !rooms.has(existingCode)) {
+      tournamentMatchRooms.delete(tournamentMatchId);
+    }
+
+    try {
+      const { code } = createTournamentRoom({
+        players: [],
+        maxRounds,
+        tournamentMatchId,
+        tournamentId,
+        allowedPlayerIds,
+      });
+
+      tournamentMatchRooms.set(tournamentMatchId, code);
+
+      res.json({ roomCode: code, existing: false });
+    } catch (error) {
+      console.error("POST /internal/tournament-rooms failed:", error);
+      res.status(400).json({
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to create tournament room.",
+      });
+    }
+  }
+);
+
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     service: "penalty444-realtime-server",
     rooms: rooms.size,
+    tournamentMatchRooms: tournamentMatchRooms.size,
     publicOffers: publicOffers.size,
     rankedQueue: rankedQueue.size,
     activePlayers: playerActiveRooms.size,
@@ -358,12 +447,23 @@ function emitRoomUpdate(roomCode: string, room: Room) {
   });
 }
 
+function isTournamentRoom(room: Room): boolean {
+  return room.matchType === "tournament";
+}
+
+function isPlayerAllowedInTournamentRoom(room: Room, playerId: string): boolean {
+  const normalizedId = playerId.trim();
+  if (!normalizedId) return false;
+  const allowed = room.allowedPlayerIds ?? [];
+  return allowed.includes(normalizedId);
+}
+
 function emitMatchState(roomCode: string, room: Room) {
   const matchStartedAt = room.matchStartedAt;
   const earlyCancelDeadlineAt =
-    matchStartedAt !== undefined
-      ? matchStartedAt + EARLY_CANCEL_MS
-      : undefined;
+    isTournamentRoom(room) || matchStartedAt === undefined
+      ? undefined
+      : matchStartedAt + EARLY_CANCEL_MS;
 
   io.to(roomCode).emit("match:update", {
     roles: room.roles,
@@ -377,6 +477,7 @@ function emitMatchState(roomCode: string, room: Room) {
     matchStartedAt,
     earlyCancelDeadlineAt,
     matchInstance: room.matchInstance ?? 1,
+    matchType: room.matchType,
   });
 }
 
@@ -519,6 +620,108 @@ function createRoomWithPlayers(
     matchType,
     stakeLabel,
     stakeAmount,
+    stakeSettled: false,
+    resultSaved: false,
+    isResolving: false,
+  };
+
+  if (firstPlayer) {
+    room.roles[firstPlayer.playerId] = "KICKER";
+    room.scores[firstPlayer.playerId] = 0;
+  }
+
+  if (secondPlayer) {
+    room.roles[secondPlayer.playerId] = "KEEPER";
+    room.scores[secondPlayer.playerId] = 0;
+  }
+
+  rooms.set(code, room);
+
+  for (const player of players) {
+    const playerSocket = io.sockets.sockets.get(player.socketId);
+    playerSocket?.join(code);
+    setPlayerActiveRoom(player.playerId, code);
+  }
+
+  emitRoomUpdate(code, room);
+  emitMatchState(code, room);
+
+  if (room.players.length === 2) {
+    startRoundTimer(code, room);
+  }
+
+  return { code, room };
+}
+
+type CreateTournamentRoomParams = {
+  players: RoomPlayer[];
+  maxRounds?: number;
+  tournamentMatchId: string;
+  tournamentId: string;
+  allowedPlayerIds: string[];
+};
+
+/**
+ * Creates an in-memory tournament bracket room (no stakes, no rematch / early cancel).
+ * Intended for Phase B API / internal bridge; not exposed to clients directly in v1.
+ */
+export function createTournamentRoom({
+  players,
+  maxRounds = 3,
+  tournamentMatchId,
+  tournamentId,
+  allowedPlayerIds,
+}: CreateTournamentRoomParams) {
+  const normalizedAllowed = allowedPlayerIds
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
+
+  if (normalizedAllowed.length !== 2) {
+    throw new Error(
+      "Tournament rooms require exactly two allowed player IDs."
+    );
+  }
+
+  const uniqueAllowed = new Set(normalizedAllowed);
+  if (uniqueAllowed.size !== 2) {
+    throw new Error("Tournament allowed player IDs must be distinct.");
+  }
+
+  for (const player of players) {
+    if (!uniqueAllowed.has(player.playerId.trim())) {
+      throw new Error(
+        "Initial tournament room players must be in allowedPlayerIds."
+      );
+    }
+  }
+
+  if (players.length > 2) {
+    throw new Error("Tournament rooms cannot start with more than two players.");
+  }
+
+  const code = generateRoomCode();
+  const firstPlayer = players[0];
+  const secondPlayer = players[1];
+
+  const room: Room = {
+    code,
+    matchInstance: 1,
+    players: [...players],
+    roles: {},
+    picks: {},
+    scores: {},
+    round: 1,
+    maxRounds,
+    phase: "NORMAL",
+    suddenDeathRound: 0,
+    rematchVotes: [],
+    matchEnded: false,
+    matchType: "tournament",
+    tournamentMatchId,
+    tournamentId,
+    allowedPlayerIds: normalizedAllowed,
+    stakeLabel: "Free",
+    stakeAmount: 0,
     stakeSettled: false,
     resultSaved: false,
     isResolving: false,
@@ -958,6 +1161,10 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
 }
 
 function resetRoomForRematch(roomCode: string, room: Room) {
+  if (isTournamentRoom(room)) {
+    return;
+  }
+
   clearRoomTimer(room);
 
   room.isResolving = false;
@@ -1114,6 +1321,13 @@ io.on("connection", (socket) => {
 
       if (!room) {
         socket.emit("error:message", { message: "Room not found" });
+        return;
+      }
+
+      if (isTournamentRoom(room) && !isPlayerAllowedInTournamentRoom(room, playerId)) {
+        socket.emit("error:message", {
+          message: "You are not authorized to join this tournament match.",
+        });
         return;
       }
 
@@ -1632,6 +1846,13 @@ io.on("connection", (socket) => {
       if (!room) return;
       if (!room.matchEnded) return;
 
+      if (isTournamentRoom(room)) {
+        socket.emit("error:message", {
+          message: "Tournament matches do not allow rematches.",
+        });
+        return;
+      }
+
       if (room.stakeAmount > 0) {
         socket.emit("error:message", {
           message:
@@ -1672,6 +1893,13 @@ io.on("connection", (socket) => {
       if (!room) return;
       if (!room.matchEnded) return;
 
+      if (isTournamentRoom(room)) {
+        socket.emit("error:message", {
+          message: "Tournament matches do not allow rematches.",
+        });
+        return;
+      }
+
       room.rematchVotes = [];
 
       io.to(code).emit("match:rematch:update", {
@@ -1700,6 +1928,13 @@ io.on("connection", (socket) => {
 
       if (!room) {
         socket.emit("error:message", { message: "Room not found." });
+        return;
+      }
+
+      if (isTournamentRoom(room)) {
+        socket.emit("error:message", {
+          message: "Tournament matches cannot be cancelled.",
+        });
         return;
       }
 
