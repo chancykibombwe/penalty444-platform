@@ -44,6 +44,23 @@ async function authenticateUser(accessToken: string) {
   return { user: data.user, error: null };
 }
 
+async function rollbackTournamentBracket(
+  admin: ReturnType<typeof createAdminClient>,
+  tournamentId: string
+) {
+  const { error } = await admin
+    .from("tournament_matches")
+    .delete()
+    .eq("tournament_id", tournamentId);
+
+  if (error) {
+    console.error(
+      `[tournament start] bracket rollback failed for ${tournamentId}:`,
+      error.message
+    );
+  }
+}
+
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { id: tournamentId } = await context.params;
@@ -206,10 +223,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
 
       if (!parentId || !matchId) {
+        await rollbackTournamentBracket(admin, tournamentId);
         return NextResponse.json(
           {
-            error:
-              "Failed to link bracket rounds. Partial bracket may exist; contact support.",
+            error: "Failed to link bracket rounds. Bracket was rolled back.",
           },
           { status: 500 }
         );
@@ -221,7 +238,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
         .eq("id", matchId);
 
       if (linkError) {
-        return NextResponse.json({ error: linkError.message }, { status: 500 });
+        await rollbackTournamentBracket(admin, tournamentId);
+        return NextResponse.json(
+          {
+            error: `Failed to link bracket rounds. Bracket was rolled back. ${linkError.message}`,
+          },
+          { status: 500 }
+        );
       }
     }
 

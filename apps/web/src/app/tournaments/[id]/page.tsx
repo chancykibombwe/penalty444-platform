@@ -16,6 +16,8 @@ import type {
 import { getCurrentPlayerIdentity } from "../../../lib/auth/playerIdentity";
 import { supabase } from "../../../lib/supabase/client";
 
+const OPEN_ENTRY_STATUSES = new Set(["registration", "check_in"]);
+
 function statusBadgeClass(status: string) {
   switch (status) {
     case "registration":
@@ -277,6 +279,15 @@ export default function TournamentDetailPage() {
             {tournament.status !== "cancelled" ? (
               <section className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
                 <h2 className="text-lg font-bold text-white">Participation</h2>
+                {isHost ? (
+                  <p className="mt-1 text-xs text-zinc-400">
+                    {OPEN_ENTRY_STATUSES.has(tournament.status)
+                      ? "As host you can register and check in here. Start and cancel are under Creator controls below—not in this section."
+                      : tournament.status === "in_progress"
+                        ? "You play bracket matches like any participant. Creator start/cancel are only available before the event goes live."
+                        : "Open Manage from the list or use Creator controls when available."}
+                  </p>
+                ) : null}
                 <div className="mt-3">
                   <TournamentEntryActions
                     tournament={tournament}

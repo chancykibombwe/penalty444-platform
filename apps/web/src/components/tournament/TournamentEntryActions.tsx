@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { supabase } from "../../lib/supabase/client";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
 import type { TournamentEntryRow, TournamentRow } from "./TournamentListPanel";
@@ -34,20 +34,17 @@ export default function TournamentEntryActions({
   const isWithdrawn = myEntry?.status === "withdrawn";
 
   const canJoin =
-    !isHost &&
     isOpen &&
     !isCancelled &&
     !myEntry &&
     !isFull &&
     tournament.status === "registration";
   const canCheckIn =
-    !isHost &&
     isOpen &&
     !isCancelled &&
     tournament.status === "check_in" &&
     myEntry?.status === "registered";
   const canWithdraw =
-    !isHost &&
     isOpen &&
     !isCancelled &&
     myEntry &&
@@ -55,7 +52,6 @@ export default function TournamentEntryActions({
     (myEntry.status === "registered" || myEntry.status === "checked_in");
 
   const canJoinAgain =
-    !isHost &&
     isOpen &&
     !isCancelled &&
     !!myEntry &&
@@ -100,7 +96,7 @@ export default function TournamentEntryActions({
     if (!canCheckIn || !myEntry || busy) return;
 
     setBusy(true);
-    setMessage("Checking in...");
+    setMessage("Getting ready...");
 
     try {
       const identity = await getCurrentPlayerIdentity();
@@ -118,17 +114,18 @@ export default function TournamentEntryActions({
           checked_in_at: checkedInAt,
         })
         .eq("id", myEntry.id)
-        .eq("user_id", identity.playerId);
+        .eq("user_id", identity.playerId)
+        .eq("status", "registered");
 
       if (error) {
         setMessage(error.message);
         return;
       }
 
-      setMessage("Checked in. Ready for bracket start.");
+      setMessage("Ready for tournament start.");
       onUpdated();
     } catch {
-      setMessage("Failed to check in.");
+      setMessage("Failed to mark ready.");
     } finally {
       setBusy(false);
     }
@@ -208,21 +205,20 @@ export default function TournamentEntryActions({
     }
   }
 
-  if (isCancelled) {
-    return (
-      <p className="text-xs text-red-300/90">
-        This tournament was cancelled.
-      </p>
-    );
+  function hostManageMessage() {
+    if (isOpen) {
+      return "You are hosting this event. Join or mark ready below to compete. Open Manage on the detail page to start or cancel before the bracket goes live.";
+    }
+    if (tournament.status === "in_progress") {
+      return "Bracket is live. You compete like any other player—use Manage to view the full bracket.";
+    }
+    return "You are hosting this event. Open Manage for tournament details.";
   }
 
-  if (isHost) {
-    return (
-      <div className="space-y-2">
-        <p className="text-xs text-amber-200/80">
-          You are hosting this tournament. Players register below; use Manage
-          to start or cancel the event.
-        </p>
+  const hostManageStrip =
+    isHost && !isCancelled ? (
+      <div className="space-y-2 border-b border-zinc-800 pb-3">
+        <p className="text-xs text-amber-200/80">{hostManageMessage()}</p>
         <Link
           href={`/tournaments/${tournament.id}`}
           className="inline-flex rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2 text-sm font-bold text-zinc-950 hover:from-amber-400 hover:to-orange-500"
@@ -230,12 +226,24 @@ export default function TournamentEntryActions({
           Manage Tournament
         </Link>
       </div>
+    ) : null;
+
+  if (isCancelled) {
+    return (
+      <div className="space-y-2">
+        {hostManageStrip}
+        <p className="text-xs text-red-300/90">
+          This tournament was cancelled.
+        </p>
+      </div>
     );
   }
 
+  let participantContent: ReactNode = null;
+
   if (isWithdrawn && myEntry) {
-    return (
-      <div className="space-y-2">
+    participantContent = (
+      <>
         <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
           Your status:{" "}
           <span className="text-zinc-300">withdrawn</span>
@@ -253,14 +261,11 @@ export default function TournamentEntryActions({
             {busy ? "Rejoining…" : "Join Again"}
           </button>
         ) : null}
-        {message ? <p className="text-xs text-zinc-400">{message}</p> : null}
-      </div>
+      </>
     );
-  }
-
-  if (myEntry) {
-    return (
-      <div className="space-y-2">
+  } else if (myEntry) {
+    participantContent = (
+      <>
         <p className="text-xs font-semibold uppercase tracking-wide text-amber-200/80">
           Your status:{" "}
           <span className="text-amber-100">
@@ -276,7 +281,7 @@ export default function TournamentEntryActions({
               disabled={busy}
               className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2 text-sm font-bold text-zinc-950 disabled:opacity-50"
             >
-              {busy ? "Checking in…" : "Check In"}
+              {busy ? "Getting ready…" : "Ready"}
             </button>
           ) : null}
 
@@ -291,34 +296,26 @@ export default function TournamentEntryActions({
             </button>
           ) : null}
         </div>
-
-        {message ? <p className="text-xs text-zinc-400">{message}</p> : null}
-      </div>
+      </>
     );
-  }
-
-  if (!isOpen) {
-    return (
+  } else if (!isOpen) {
+    participantContent = (
       <p className="text-xs text-zinc-500">
         Registration closed for this event.
       </p>
     );
-  }
-
-  if (isFull) {
-    return <p className="text-xs text-zinc-500">Tournament is full.</p>;
-  }
-
-  if (tournament.status === "check_in") {
-    return (
+  } else if (isFull) {
+    participantContent = (
+      <p className="text-xs text-zinc-500">Tournament is full.</p>
+    );
+  } else if (tournament.status === "check_in") {
+    participantContent = (
       <p className="text-xs text-zinc-500">
-        Check-in is open but you are not registered.
+        Ready-up is open but you are not registered.
       </p>
     );
-  }
-
-  return (
-    <div className="space-y-2">
+  } else {
+    participantContent = (
       <button
         type="button"
         onClick={handleJoin}
@@ -327,6 +324,13 @@ export default function TournamentEntryActions({
       >
         {busy ? "Joining…" : "Join Tournament"}
       </button>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {hostManageStrip}
+      {participantContent}
       {message ? <p className="text-xs text-zinc-400">{message}</p> : null}
     </div>
   );

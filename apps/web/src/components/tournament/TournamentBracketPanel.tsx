@@ -66,7 +66,8 @@ type MatchRoomActionProps = {
   tournamentId: string;
   match: TournamentMatchRow;
   isParticipant: boolean;
-  canOpenRoom: boolean;
+  canEnterMatch: boolean;
+  canJoinMatch: boolean;
   onUpdated?: () => void;
 };
 
@@ -74,18 +75,19 @@ function MatchRoomAction({
   tournamentId,
   match,
   isParticipant,
-  canOpenRoom,
+  canEnterMatch,
+  canJoinMatch,
   onUpdated,
 }: MatchRoomActionProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  if (!isParticipant || !canOpenRoom) {
+  if (!isParticipant) {
     return null;
   }
 
-  if (match.room_code) {
+  if (match.room_code && canJoinMatch) {
     return (
       <Link
         href={`/match/${match.room_code}`}
@@ -94,6 +96,10 @@ function MatchRoomAction({
         Join Match
       </Link>
     );
+  }
+
+  if (!canEnterMatch) {
+    return null;
   }
 
   async function handleEnterMatch() {
@@ -246,14 +252,20 @@ export default function TournamentBracketPanel({
               const bothPlayersAssigned =
                 Boolean(match.entry_one_id) && Boolean(match.entry_two_id);
 
-              const canOpenRoom =
+              const canEnterMatch =
                 tournamentInProgress &&
                 bothPlayersAssigned &&
                 !match.winner_entry_id &&
-                !isTerminalMatchStatus(match.status) &&
-                (match.status === "pending" ||
-                  match.status === "ready" ||
-                  match.status === "in_progress");
+                !match.room_code &&
+                match.status === "ready";
+
+              const canJoinMatch =
+                tournamentInProgress &&
+                bothPlayersAssigned &&
+                !match.winner_entry_id &&
+                Boolean(match.room_code) &&
+                match.status === "in_progress" &&
+                !isTerminalMatchStatus(match.status);
 
               return (
                 <li
@@ -296,7 +308,8 @@ export default function TournamentBracketPanel({
                     tournamentId={tournamentId}
                     match={match}
                     isParticipant={isParticipant}
-                    canOpenRoom={canOpenRoom}
+                    canEnterMatch={canEnterMatch}
+                    canJoinMatch={canJoinMatch}
                     onUpdated={onUpdated}
                   />
                 </li>
