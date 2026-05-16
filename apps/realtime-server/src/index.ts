@@ -71,6 +71,8 @@ type Room = {
   stakeAmount: number;
   stakeSettled: boolean;
   resultSaved: boolean;
+  /** Set after tournament bracket row is advanced (idempotency). */
+  bracketAdvanced?: boolean;
   timeout?: NodeJS.Timeout;
   isResolving: boolean;
   resolveContinuationTimeout?: NodeJS.Timeout;
@@ -774,23 +776,27 @@ async function resolveActivePenalty444SeasonId(): Promise<string | null> {
   return data?.[0]?.id ?? null;
 }
 
-async function saveMatchResult(room: Room) {
-  if (!supabase) {
-    console.warn("Supabase backend client is not configured. Match not saved.");
-    return;
-  }
+type ResolvedMatchOutcome = {
+  firstPlayer: RoomPlayer;
+  secondPlayer: RoomPlayer;
+  firstScore: number;
+  secondScore: number;
+  isDraw: boolean;
+  winner: RoomPlayer | null;
+  loser: RoomPlayer | null;
+};
 
-  if (room.resultSaved) return;
-  if (room.players.length < 2) return;
+/** Same winner/score rules as saveMatchResult (gameplay, forfeit, disconnect forfeit). */
+function resolveMatchOutcome(room: Room): ResolvedMatchOutcome | null {
+  if (room.players.length < 2) return null;
 
   const firstPlayer = room.players[0];
   const secondPlayer = room.players[1];
 
-  if (!firstPlayer || !secondPlayer) return;
+  if (!firstPlayer || !secondPlayer) return null;
 
   const firstScore = room.scores[firstPlayer.playerId] || 0;
   const secondScore = room.scores[secondPlayer.playerId] || 0;
-
   const isDraw = firstScore === secondScore;
 
   const winner = isDraw
@@ -804,6 +810,368 @@ async function saveMatchResult(room: Room) {
     : firstScore > secondScore
       ? secondPlayer
       : firstPlayer;
+
+  return {
+    firstPlayer,
+    secondPlayer,
+    firstScore,
+    secondScore,
+    isDraw,
+    winner,
+    loser,
+  };
+}
+
+async function advanceTournamentFromRoom(room: Room) {
+  if (room.matchType !== "tournament") return;
+  if (room.bracketAdvanced) return;
+
+  if (!room.tournamentMatchId || !room.tournamentId) {
+    console.warn("[tournament advance] missing tournament ids on room", {
+      roomCode: room.code,
+    });
+    return;
+  }
+
+  if (!supabase) {
+    console.warn(
+      "[tournament advance] Supabase not configured; bracket not updated."
+    );
+    return;
+  }
+
+  const outcome = resolveMatchOutcome(room);
+
+  if (!outcome) {
+    console.warn("[tournament advance] could not resolve match outcome", {
+      roomCode: room.code,
+      tournamentMatchId: room.tournamentMatchId,
+    });
+    return;
+  }
+
+  if (outcome.isDraw || !outcome.winner) {
+    console.warn(
+      "[tournament advance] draw or no winner; slot not completed",
+      {
+        roomCode: room.code,
+        tournamentMatchId: room.tournamentMatchId,
+        firstScore: outcome.firstScore,
+        secondScore: outcome.secondScore,
+      }
+    );
+    return;
+  }
+
+  const winnerUserId = outcome.winner.playerId;
+  const completedAt = new Date().toISOString();
+
+  const { data: slot, error: slotError } = await supabase
+    .from("tournament_matches")
+    .select(
+      "id, tournament_id, entry_one_id, entry_two_id, slot_index, next_match_id, winner_entry_id, room_code, status"
+    )
+    .eq("id", room.tournamentMatchId)
+    .maybeSingle();
+
+  if (slotError) {
+    console.error(
+      "[tournament advance] failed to load tournament match:",
+      slotError.message
+    );
+    return;
+  }
+
+  if (!slot) {
+    console.warn("[tournament advance] tournament match row not found", {
+      tournamentMatchId: room.tournamentMatchId,
+      roomCode: room.code,
+    });
+    return;
+  }
+
+  if (slot.tournament_id !== room.tournamentId) {
+    console.warn("[tournament advance] tournament id mismatch on slot", {
+      roomTournamentId: room.tournamentId,
+      slotTournamentId: slot.tournament_id,
+    });
+    return;
+  }
+
+  if (slot.room_code && slot.room_code !== room.code) {
+    console.warn("[tournament advance] room_code mismatch", {
+      expected: room.code,
+      stored: slot.room_code,
+      tournamentMatchId: room.tournamentMatchId,
+    });
+  }
+
+  if (!slot.entry_one_id || !slot.entry_two_id) {
+    console.warn("[tournament advance] slot missing both entries", {
+      tournamentMatchId: slot.id,
+    });
+    return;
+  }
+
+  const { data: entryRows, error: entriesError } = await supabase
+    .from("tournament_entries")
+    .select("id, user_id")
+    .in("id", [slot.entry_one_id, slot.entry_two_id]);
+
+  if (entriesError) {
+    console.error(
+      "[tournament advance] failed to load entries:",
+      entriesError.message
+    );
+    return;
+  }
+
+  const winnerEntry = (entryRows ?? []).find(
+    (row) => row.user_id === winnerUserId
+  );
+
+  if (!winnerEntry) {
+    console.warn(
+      "[tournament advance] winner auth user is not a slot participant",
+      {
+        winnerUserId,
+        tournamentMatchId: slot.id,
+      }
+    );
+    return;
+  }
+
+  const winnerEntryId = winnerEntry.id;
+
+  if (slot.winner_entry_id && slot.winner_entry_id !== winnerEntryId) {
+    console.warn("[tournament advance] slot already has a different winner", {
+      tournamentMatchId: slot.id,
+      existingWinnerEntryId: slot.winner_entry_id,
+      winnerEntryId,
+    });
+    room.bracketAdvanced = true;
+    return;
+  }
+
+  let nextMatchId = slot.next_match_id;
+
+  if (!slot.winner_entry_id) {
+    const { data: completedRow, error: completeError } = await supabase
+      .from("tournament_matches")
+      .update({
+        winner_entry_id: winnerEntryId,
+        status: "completed",
+        completed_at: completedAt,
+      })
+      .eq("id", slot.id)
+      .is("winner_entry_id", null)
+      .select("id, next_match_id")
+      .maybeSingle();
+
+    if (completeError) {
+      console.error(
+        "[tournament advance] failed to complete slot:",
+        completeError.message
+      );
+      return;
+    }
+
+    if (completedRow) {
+      nextMatchId = completedRow.next_match_id;
+      console.log("[tournament advance] slot completed", {
+        tournamentMatchId: slot.id,
+        winnerEntryId,
+        roomCode: room.code,
+      });
+    } else {
+      const { data: racedSlot, error: racedError } = await supabase
+        .from("tournament_matches")
+        .select("id, winner_entry_id, next_match_id")
+        .eq("id", slot.id)
+        .maybeSingle();
+
+      if (racedError || !racedSlot?.winner_entry_id) {
+        console.error(
+          "[tournament advance] slot completion race could not be resolved"
+        );
+        return;
+      }
+
+      if (racedSlot.winner_entry_id !== winnerEntryId) {
+        console.warn(
+          "[tournament advance] slot completed by another winner in race",
+          {
+            tournamentMatchId: slot.id,
+            winnerEntryId: racedSlot.winner_entry_id,
+          }
+        );
+        room.bracketAdvanced = true;
+        return;
+      }
+
+      nextMatchId = racedSlot.next_match_id;
+    }
+  }
+
+  if (!nextMatchId) {
+    const { error: tournamentError } = await supabase
+      .from("tournaments")
+      .update({
+        status: "completed",
+        winner_id: winnerUserId,
+        updated_at: completedAt,
+      })
+      .eq("id", room.tournamentId)
+      .eq("status", "in_progress");
+
+    if (tournamentError) {
+      console.error(
+        "[tournament advance] failed to complete tournament:",
+        tournamentError.message
+      );
+      return;
+    }
+
+    console.log("[tournament advance] tournament completed", {
+      tournamentId: room.tournamentId,
+      winnerUserId,
+    });
+    room.bracketAdvanced = true;
+    return;
+  }
+
+  const { data: parent, error: parentError } = await supabase
+    .from("tournament_matches")
+    .select("id, entry_one_id, entry_two_id, status")
+    .eq("id", nextMatchId)
+    .maybeSingle();
+
+  if (parentError) {
+    console.error(
+      "[tournament advance] failed to load parent slot:",
+      parentError.message
+    );
+    return;
+  }
+
+  if (!parent) {
+    console.warn("[tournament advance] parent match row not found", {
+      nextMatchId,
+      childMatchId: slot.id,
+    });
+    room.bracketAdvanced = true;
+    return;
+  }
+
+  const feederIsEntryOne = slot.slot_index % 2 === 0;
+  const feederColumn = feederIsEntryOne ? "entry_one_id" : "entry_two_id";
+  const existingFeeder = feederIsEntryOne
+    ? parent.entry_one_id
+    : parent.entry_two_id;
+
+  if (existingFeeder && existingFeeder !== winnerEntryId) {
+    console.warn("[tournament advance] conflicting parent feeder value", {
+      parentMatchId: parent.id,
+      feederColumn,
+      existingFeeder,
+      winnerEntryId,
+    });
+    room.bracketAdvanced = true;
+    return;
+  }
+
+  if (!existingFeeder) {
+    const feederPatch = feederIsEntryOne
+      ? { entry_one_id: winnerEntryId }
+      : { entry_two_id: winnerEntryId };
+
+    let feederQuery = supabase
+      .from("tournament_matches")
+      .update(feederPatch)
+      .eq("id", parent.id);
+
+    feederQuery = feederIsEntryOne
+      ? feederQuery.is("entry_one_id", null)
+      : feederQuery.is("entry_two_id", null);
+
+    const { error: feederError } = await feederQuery;
+
+    if (feederError) {
+      console.error(
+        "[tournament advance] failed to set parent feeder:",
+        feederError.message
+      );
+      return;
+    }
+
+    console.log("[tournament advance] parent feeder set", {
+      parentMatchId: parent.id,
+      feederColumn,
+      winnerEntryId,
+    });
+  }
+
+  const { data: parentAfter, error: parentAfterError } = await supabase
+    .from("tournament_matches")
+    .select("id, entry_one_id, entry_two_id, status")
+    .eq("id", parent.id)
+    .maybeSingle();
+
+  if (parentAfterError || !parentAfter) {
+    console.error(
+      "[tournament advance] failed to reload parent slot:",
+      parentAfterError?.message
+    );
+    room.bracketAdvanced = true;
+    return;
+  }
+
+  if (
+    parentAfter.entry_one_id &&
+    parentAfter.entry_two_id &&
+    parentAfter.status === "pending"
+  ) {
+    const { error: readyError } = await supabase
+      .from("tournament_matches")
+      .update({ status: "ready" })
+      .eq("id", parent.id)
+      .eq("status", "pending");
+
+    if (readyError) {
+      console.error(
+        "[tournament advance] failed to mark parent ready:",
+        readyError.message
+      );
+    } else {
+      console.log("[tournament advance] parent slot ready", {
+        parentMatchId: parent.id,
+      });
+    }
+  }
+
+  room.bracketAdvanced = true;
+}
+
+async function saveMatchResult(room: Room) {
+  if (!supabase) {
+    console.warn("Supabase backend client is not configured. Match not saved.");
+    return;
+  }
+
+  if (room.resultSaved) return;
+
+  const outcome = resolveMatchOutcome(room);
+  if (!outcome) return;
+
+  const {
+    firstPlayer,
+    secondPlayer,
+    firstScore,
+    secondScore,
+    isDraw,
+    winner,
+    loser,
+  } = outcome;
 
   const seasonId = await resolveActivePenalty444SeasonId();
   if (!seasonId) {
@@ -843,6 +1211,12 @@ async function saveMatchResult(room: Room) {
 
   room.resultSaved = true;
   console.log(`Saved match result for room ${room.code}`);
+
+  try {
+    await advanceTournamentFromRoom(room);
+  } catch (advanceError) {
+    console.error("Tournament advancement crashed:", advanceError);
+  }
 }
 
 function endMatch(roomCode: string, room: Room) {

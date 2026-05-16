@@ -250,7 +250,10 @@ export default function TournamentBracketPanel({
                 tournamentInProgress &&
                 bothPlayersAssigned &&
                 !match.winner_entry_id &&
-                !isTerminalMatchStatus(match.status);
+                !isTerminalMatchStatus(match.status) &&
+                (match.status === "pending" ||
+                  match.status === "ready" ||
+                  match.status === "in_progress");
 
               return (
                 <li
@@ -277,6 +280,15 @@ export default function TournamentBracketPanel({
                   {match.winner_entry_id ? (
                     <p className="mt-2 text-xs text-emerald-300">
                       Winner: {entryLabel(match.winner_entry_id, entryById)}
+                    </p>
+                  ) : null}
+
+                  {match.status === "ready" &&
+                  !match.room_code &&
+                  bothPlayersAssigned &&
+                  !isParticipant ? (
+                    <p className="mt-2 text-xs text-amber-200/80">
+                      Ready — waiting for players to enter match
                     </p>
                   ) : null}
 
