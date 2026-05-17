@@ -14,8 +14,8 @@ export default function TournamentsPage() {
         <div>
           <h1 className="text-3xl font-bold text-white">Tournaments</h1>
           <p className="mt-2 text-zinc-400">
-            Create or join a single-elimination event. Brackets and match rooms
-            will open in a later phase.
+            Create or join single-elimination events. Browse active tournaments
+            or review completed brackets.
           </p>
         </div>
 

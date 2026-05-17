@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase/client";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
 import TournamentEntryActions from "./TournamentEntryActions";
@@ -17,6 +17,8 @@ export type TournamentRow = {
   created_by: string;
   starts_at: string | null;
   created_at: string;
+  winner_id: string | null;
+  updated_at: string;
 };
 
 export type TournamentEntryRow = {
@@ -27,6 +29,18 @@ export type TournamentEntryRow = {
   status: string;
   checked_in_at: string | null;
 };
+
+export type TournamentListFilter = "active" | "registration" | "completed" | "mine";
+
+const FILTER_OPTIONS: { id: TournamentListFilter; label: string }[] = [
+  { id: "active", label: "Active" },
+  { id: "registration", label: "Registration" },
+  { id: "completed", label: "Completed" },
+  { id: "mine", label: "Mine" },
+];
+
+const ACTIVE_STATUSES = new Set(["registration", "check_in", "in_progress"]);
+const REGISTRATION_STATUSES = new Set(["registration", "check_in"]);
 
 export function formatTournamentStatus(status: string): string {
   switch (status) {
@@ -87,6 +101,136 @@ function formatStartsAt(value: string | null) {
   });
 }
 
+export function resolveChampionUsername(
+  tournament: Pick<TournamentRow, "winner_id">,
+  entries: TournamentEntryRow[]
+): string | null {
+  if (!tournament.winner_id) {
+    return null;
+  }
+
+  const winnerEntry = entries.find(
+    (entry) => entry.user_id === tournament.winner_id
+  );
+  return winnerEntry?.username ?? null;
+}
+
+function formatCompletedAt(value: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  const now = Date.now();
+  const diffMs = now - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 1) {
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    if (diffHours < 1) {
+      const diffMinutes = Math.max(1, Math.floor(diffMs / (1000 * 60)));
+      return `${diffMinutes}m ago`;
+    }
+    return `${diffHours}h ago`;
+  }
+
+  if (diffDays < 7) {
+    return `${diffDays}d ago`;
+  }
+
+  return date.toLocaleDateString(undefined, {
+    dateStyle: "medium",
+  });
+}
+
+function passesStatusFilter(
+  tournament: TournamentRow,
+  filter: TournamentListFilter
+): boolean {
+  if (tournament.status === "cancelled") {
+    return false;
+  }
+
+  if (tournament.status === "draft" && filter !== "mine") {
+    return false;
+  }
+
+  switch (filter) {
+    case "active":
+      return ACTIVE_STATUSES.has(tournament.status);
+    case "registration":
+      return REGISTRATION_STATUSES.has(tournament.status);
+    case "completed":
+      return tournament.status === "completed";
+    case "mine":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function isMineTournament(
+  tournament: TournamentRow,
+  currentUserId: string | null,
+  myEntriesByTournament: Map<string, TournamentEntryRow>
+): boolean {
+  if (!currentUserId) {
+    return false;
+  }
+
+  return (
+    tournament.created_by === currentUserId ||
+    myEntriesByTournament.has(tournament.id)
+  );
+}
+
+function getSectionCopy(filter: TournamentListFilter) {
+  switch (filter) {
+    case "active":
+      return {
+        title: "Active Tournaments",
+        description:
+          "Join, mark Ready, or follow brackets for events in progress.",
+      };
+    case "registration":
+      return {
+        title: "Registration Open",
+        description:
+          "Sign up or get Ready before the host starts the bracket.",
+      };
+    case "completed":
+      return {
+        title: "Tournament History",
+        description: "Finished events and champions from past brackets.",
+      };
+    case "mine":
+      return {
+        title: "My Tournaments",
+        description:
+          "Events you host or joined, including drafts and history.",
+      };
+    default:
+      return {
+        title: "Tournaments",
+        description: "Browse penalty444 tournaments.",
+      };
+  }
+}
+
+function getEmptyMessage(filter: TournamentListFilter) {
+  switch (filter) {
+    case "active":
+      return "No active tournaments right now. Try Registration or create one above.";
+    case "registration":
+      return "No tournaments are open for registration.";
+    case "completed":
+      return "No completed tournaments yet.";
+    case "mine":
+      return "You have not joined or hosted any tournaments yet.";
+    default:
+      return "No tournaments found.";
+  }
+}
+
 type TournamentListPanelProps = {
   listVersion?: number;
 };
@@ -105,6 +249,7 @@ export default function TournamentListPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [filter, setFilter] = useState<TournamentListFilter>("active");
 
   const refresh = useCallback(() => {
     setRefreshKey((value) => value + 1);
@@ -127,7 +272,7 @@ export default function TournamentListPanel({
       const { data: tournamentRows, error: tournamentError } = await supabase
         .from("tournaments")
         .select(
-          "id, game_id, name, status, format, max_players, rounds_per_match, created_by, starts_at, created_at"
+          "id, game_id, name, status, format, max_players, rounds_per_match, created_by, starts_at, created_at, winner_id, updated_at"
         )
         .eq("game_id", "penalty444")
         .neq("status", "cancelled")
@@ -198,6 +343,38 @@ export default function TournamentListPanel({
     };
   }, [refreshKey, listVersion]);
 
+  const filteredTournaments = useMemo(() => {
+    const matched = tournaments.filter((tournament) => {
+      if (!passesStatusFilter(tournament, filter)) {
+        return false;
+      }
+
+      if (filter === "mine") {
+        return isMineTournament(
+          tournament,
+          currentUserId,
+          myEntriesByTournament
+        );
+      }
+
+      return true;
+    });
+
+    if (filter === "completed") {
+      return [...matched].sort(
+        (a, b) =>
+          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      );
+    }
+
+    return [...matched].sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [tournaments, filter, currentUserId, myEntriesByTournament]);
+
+  const sectionCopy = getSectionCopy(filter);
+
   return (
     <section className="space-y-6 rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 shadow-2xl">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -205,10 +382,10 @@ export default function TournamentListPanel({
           <p className="text-sm font-medium uppercase tracking-wide text-zinc-500">
             Events
           </p>
-          <h2 className="mt-2 text-2xl font-bold text-white">Open Tournaments</h2>
-          <p className="mt-2 text-zinc-400">
-            Join tournaments and get Ready before the bracket starts.
-          </p>
+          <h2 className="mt-2 text-2xl font-bold text-white">
+            {sectionCopy.title}
+          </h2>
+          <p className="mt-2 text-zinc-400">{sectionCopy.description}</p>
         </div>
 
         <button
@@ -221,6 +398,26 @@ export default function TournamentListPanel({
         </button>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {FILTER_OPTIONS.map((option) => {
+          const isSelected = filter === option.id;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setFilter(option.id)}
+              className={`rounded-full border px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+                isSelected
+                  ? "border-amber-500/60 bg-amber-950/40 text-amber-100"
+                  : "border-zinc-700 bg-zinc-950/60 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+              }`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+
       {error ? (
         <div className="rounded-xl border border-red-500/40 bg-red-950/30 px-4 py-3 text-sm text-red-200">
           {error}
@@ -229,13 +426,13 @@ export default function TournamentListPanel({
 
       {loading ? (
         <p className="text-sm text-zinc-400">Loading tournaments...</p>
-      ) : tournaments.length === 0 ? (
+      ) : filteredTournaments.length === 0 ? (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/80 px-4 py-8 text-center text-sm text-zinc-400">
-          No tournaments yet. Create one above to get started.
+          {getEmptyMessage(filter)}
         </div>
       ) : (
         <ul className="space-y-4">
-          {tournaments.map((tournament) => {
+          {filteredTournaments.map((tournament) => {
             const entries = entriesByTournament.get(tournament.id) ?? [];
             const registeredCount = entries.filter(
               (entry) => entry.status !== "withdrawn"
@@ -244,21 +441,38 @@ export default function TournamentListPanel({
             const isHost =
               Boolean(currentUserId) &&
               currentUserId === tournament.created_by;
+            const isCompleted = tournament.status === "completed";
+            const championUsername = resolveChampionUsername(
+              tournament,
+              entries
+            );
 
             return (
               <li
                 key={tournament.id}
-                className={`rounded-2xl border bg-zinc-950/60 p-5 ${
-                  isHost ? "border-amber-500/35" : "border-zinc-800"
+                className={`rounded-2xl border p-5 ${
+                  isCompleted
+                    ? "border-zinc-700/80 bg-zinc-950/35"
+                    : isHost
+                      ? "border-amber-500/35 bg-zinc-950/60"
+                      : "border-zinc-800 bg-zinc-950/60"
                 }`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-lg font-bold text-white">
+                      <h3
+                        className={`text-lg font-bold ${
+                          isCompleted ? "text-zinc-200" : "text-white"
+                        }`}
+                      >
                         <Link
                           href={`/tournaments/${tournament.id}`}
-                          className="hover:text-amber-200"
+                          className={
+                            isCompleted
+                              ? "hover:text-zinc-100"
+                              : "hover:text-amber-200"
+                          }
                         >
                           {tournament.name}
                         </Link>
@@ -282,42 +496,80 @@ export default function TournamentListPanel({
                   </span>
                 </div>
 
-                <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
-                  <div>
-                    <dt className="text-xs uppercase tracking-wide text-zinc-500">
-                      Registered
-                    </dt>
-                    <dd className="mt-1 font-semibold text-white">
-                      {registeredCount} / {tournament.max_players}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs uppercase tracking-wide text-zinc-500">
-                      Starts
-                    </dt>
-                    <dd className="mt-1 font-semibold text-white">
-                      {formatStartsAt(tournament.starts_at)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs uppercase tracking-wide text-zinc-500">
-                      Format
-                    </dt>
-                    <dd className="mt-1 font-semibold capitalize text-white">
-                      {tournament.format.replace("_", " ")}
-                    </dd>
-                  </div>
-                </dl>
+                {isCompleted ? (
+                  <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-zinc-500">
+                        Champion
+                      </dt>
+                      <dd className="mt-1 font-semibold text-emerald-300/90">
+                        {championUsername ?? "Champion TBD"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-zinc-500">
+                        Completed
+                      </dt>
+                      <dd className="mt-1 font-semibold text-zinc-300">
+                        {formatCompletedAt(tournament.updated_at)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-zinc-500">
+                        Players
+                      </dt>
+                      <dd className="mt-1 font-semibold text-zinc-300">
+                        {registeredCount}
+                      </dd>
+                    </div>
+                  </dl>
+                ) : (
+                  <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-zinc-500">
+                        Registered
+                      </dt>
+                      <dd className="mt-1 font-semibold text-white">
+                        {registeredCount} / {tournament.max_players}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-zinc-500">
+                        Starts
+                      </dt>
+                      <dd className="mt-1 font-semibold text-white">
+                        {formatStartsAt(tournament.starts_at)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-zinc-500">
+                        Format
+                      </dt>
+                      <dd className="mt-1 font-semibold capitalize text-white">
+                        {tournament.format.replace("_", " ")}
+                      </dd>
+                    </div>
+                  </dl>
+                )}
 
                 <div className="mt-4 border-t border-zinc-800 pt-4">
-                  <TournamentEntryActions
-                    tournament={tournament}
-                    currentUserId={currentUserId}
-                    myEntry={myEntry}
-                    registeredCount={registeredCount}
-                    onUpdated={refresh}
-                    showHostStrip
-                  />
+                  {isCompleted ? (
+                    <Link
+                      href={`/tournaments/${tournament.id}`}
+                      className="inline-flex text-sm font-bold text-amber-300/90 hover:text-amber-200"
+                    >
+                      View Bracket →
+                    </Link>
+                  ) : (
+                    <TournamentEntryActions
+                      tournament={tournament}
+                      currentUserId={currentUserId}
+                      myEntry={myEntry}
+                      registeredCount={registeredCount}
+                      onUpdated={refresh}
+                      showHostStrip
+                    />
+                  )}
                 </div>
               </li>
             );
