@@ -4,7 +4,11 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { supabase } from "../../lib/supabase/client";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
-import type { TournamentEntryRow, TournamentRow } from "./TournamentListPanel";
+import {
+  formatEntryStatus,
+  type TournamentEntryRow,
+  type TournamentRow,
+} from "./TournamentListPanel";
 
 const OPEN_ENTRY_STATUSES = new Set(["registration", "check_in"]);
 
@@ -14,6 +18,8 @@ type TournamentEntryActionsProps = {
   myEntry: TournamentEntryRow | null;
   registeredCount: number;
   onUpdated: () => void;
+  /** List cards: short host hint + link to detail. Detail page omits this. */
+  showHostStrip?: boolean;
 };
 
 export default function TournamentEntryActions({
@@ -22,6 +28,7 @@ export default function TournamentEntryActions({
   myEntry,
   registeredCount,
   onUpdated,
+  showHostStrip = false,
 }: TournamentEntryActionsProps) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -205,25 +212,21 @@ export default function TournamentEntryActions({
     }
   }
 
-  function hostManageMessage() {
-    if (isOpen) {
-      return "You are hosting this event. Join or mark ready below to compete. Open Manage on the detail page to start or cancel before the bracket goes live.";
-    }
-    if (tournament.status === "in_progress") {
-      return "Bracket is live. You compete like any other player—use Manage to view the full bracket.";
-    }
-    return "You are hosting this event. Open Manage for tournament details.";
-  }
-
   const hostManageStrip =
-    isHost && !isCancelled ? (
+    showHostStrip && isHost && !isCancelled ? (
       <div className="space-y-2 border-b border-zinc-800 pb-3">
-        <p className="text-xs text-amber-200/80">{hostManageMessage()}</p>
+        <p className="text-xs text-amber-200/80">
+          {isOpen
+            ? "Hosting — join and mark Ready below. Open the tournament page to start the bracket."
+            : tournament.status === "in_progress"
+              ? "Hosting — play your bracket matches on the tournament page."
+              : "Hosting — open the tournament page for details."}
+        </p>
         <Link
           href={`/tournaments/${tournament.id}`}
           className="inline-flex rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2 text-sm font-bold text-zinc-950 hover:from-amber-400 hover:to-orange-500"
         >
-          Manage Tournament
+          Open Tournament
         </Link>
       </div>
     ) : null;
@@ -246,7 +249,9 @@ export default function TournamentEntryActions({
       <>
         <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
           Your status:{" "}
-          <span className="text-zinc-300">withdrawn</span>
+          <span className="text-zinc-300">
+            {formatEntryStatus("withdrawn")}
+          </span>
         </p>
         <p className="text-xs text-zinc-500">
           You are no longer registered for this event.
@@ -269,7 +274,7 @@ export default function TournamentEntryActions({
         <p className="text-xs font-semibold uppercase tracking-wide text-amber-200/80">
           Your status:{" "}
           <span className="text-amber-100">
-            {myEntry.status.replace("_", " ")}
+            {formatEntryStatus(myEntry.status)}
           </span>
         </p>
 
@@ -311,7 +316,7 @@ export default function TournamentEntryActions({
   } else if (tournament.status === "check_in") {
     participantContent = (
       <p className="text-xs text-zinc-500">
-        Ready-up is open but you are not registered.
+        Ready Phase is open but you are not registered.
       </p>
     );
   } else {

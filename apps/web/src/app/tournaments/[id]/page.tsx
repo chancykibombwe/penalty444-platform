@@ -2,37 +2,59 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import RequireAuth from "../../../components/auth/RequireAuth";
 import TournamentAdminActions from "../../../components/tournament/TournamentAdminActions";
 import TournamentBracketPanel, {
   type TournamentMatchRow,
 } from "../../../components/tournament/TournamentBracketPanel";
 import TournamentEntryActions from "../../../components/tournament/TournamentEntryActions";
-import type {
-  TournamentEntryRow,
-  TournamentRow,
+import {
+  formatTournamentStatus,
+  statusBadgeClass,
+  type TournamentEntryRow,
 } from "../../../components/tournament/TournamentListPanel";
-import { getCurrentPlayerIdentity } from "../../../lib/auth/playerIdentity";
-import { supabase } from "../../../lib/supabase/client";
+import {
+  type TournamentDetailRow,
+  useTournamentDetailSync,
+} from "../../../lib/tournament/useTournamentDetailSync";
 
-const OPEN_ENTRY_STATUSES = new Set(["registration", "check_in"]);
-
-function statusBadgeClass(status: string) {
-  switch (status) {
-    case "registration":
-      return "border-emerald-500/40 bg-emerald-950/30 text-emerald-200";
-    case "check_in":
-      return "border-amber-500/40 bg-amber-950/30 text-amber-200";
-    case "in_progress":
-      return "border-cyan-500/40 bg-cyan-950/30 text-cyan-200";
-    case "completed":
-      return "border-zinc-500/40 bg-zinc-800/50 text-zinc-300";
-    case "cancelled":
-      return "border-red-500/40 bg-red-950/30 text-red-200";
-    default:
-      return "border-zinc-600/40 bg-zinc-900 text-zinc-400";
+function resolveChampionName(
+  tournament: TournamentDetailRow,
+  matches: TournamentMatchRow[],
+  entries: TournamentEntryRow[]
+): string | null {
+  if (tournament.status !== "completed") {
+    return null;
   }
+
+  if (tournament.winner_id) {
+    const winnerEntry = entries.find(
+      (entry) => entry.user_id === tournament.winner_id
+    );
+    if (winnerEntry?.username) {
+      return winnerEntry.username;
+    }
+  }
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  const maxRound = Math.max(...matches.map((match) => match.round_number));
+  const finalMatches = matches
+    .filter((match) => match.round_number === maxRound)
+    .sort((a, b) => a.slot_index - b.slot_index);
+  const finalMatch = finalMatches[0];
+
+  if (!finalMatch?.winner_entry_id) {
+    return null;
+  }
+
+  const championEntry = entries.find(
+    (entry) => entry.id === finalMatch.winner_entry_id
+  );
+  return championEntry?.username ?? null;
 }
 
 export default function TournamentDetailPage() {
@@ -40,121 +62,16 @@ export default function TournamentDetailPage() {
   const tournamentId =
     typeof params.id === "string" ? params.id : params.id?.[0] ?? "";
 
-  const [tournament, setTournament] = useState<TournamentRow | null>(null);
-  const [entries, setEntries] = useState<TournamentEntryRow[]>([]);
-  const [matches, setMatches] = useState<TournamentMatchRow[]>([]);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [creatorUsername, setCreatorUsername] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  const refresh = useCallback(() => {
-    setRefreshKey((value) => value + 1);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      if (!tournamentId) {
-        setError("Missing tournament id.");
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-      setError("");
-      setCreatorUsername(null);
-
-      const identity = await getCurrentPlayerIdentity();
-      if (!cancelled) {
-        setCurrentUserId(identity?.playerId ?? null);
-      }
-
-      const { data: tournamentRow, error: tournamentError } = await supabase
-        .from("tournaments")
-        .select(
-          "id, game_id, name, status, format, max_players, rounds_per_match, created_by, starts_at, created_at"
-        )
-        .eq("id", tournamentId)
-        .maybeSingle();
-
-      if (cancelled) return;
-
-      if (tournamentError) {
-        setError(tournamentError.message);
-        setLoading(false);
-        return;
-      }
-
-      if (!tournamentRow) {
-        setError("Tournament not found.");
-        setLoading(false);
-        return;
-      }
-
-      const [entriesResult, matchesResult] = await Promise.all([
-        supabase
-          .from("tournament_entries")
-          .select(
-            "id, tournament_id, user_id, username, status, checked_in_at"
-          )
-          .eq("tournament_id", tournamentId)
-          .order("checked_in_at", { ascending: true, nullsFirst: false }),
-        supabase
-          .from("tournament_matches")
-          .select(
-            "id, tournament_id, round_number, slot_index, entry_one_id, entry_two_id, room_code, status, winner_entry_id, next_match_id"
-          )
-          .eq("tournament_id", tournamentId)
-          .order("round_number", { ascending: true })
-          .order("slot_index", { ascending: true }),
-      ]);
-
-      if (cancelled) return;
-
-      if (entriesResult.error) {
-        setError(entriesResult.error.message);
-        setLoading(false);
-        return;
-      }
-
-      if (matchesResult.error) {
-        setError(matchesResult.error.message);
-        setLoading(false);
-        return;
-      }
-
-      const row = tournamentRow as TournamentRow;
-      setTournament(row);
-      setEntries((entriesResult.data ?? []) as TournamentEntryRow[]);
-      setMatches((matchesResult.data ?? []) as TournamentMatchRow[]);
-
-      const isViewerHost =
-        identity?.playerId != null && identity.playerId === row.created_by;
-      if (isViewerHost) {
-        setCreatorUsername(null);
-      } else {
-        const { data: creatorProfile } = await supabase
-          .from("profiles")
-          .select("username")
-          .eq("id", row.created_by)
-          .maybeSingle();
-        if (!cancelled) {
-          setCreatorUsername(creatorProfile?.username ?? null);
-        }
-      }
-
-      setLoading(false);
-    }
-
-    load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [tournamentId, refreshKey]);
+  const {
+    tournament,
+    entries,
+    matches,
+    currentUserId,
+    creatorUsername,
+    loading,
+    error,
+    refresh,
+  } = useTournamentDetailSync(tournamentId);
 
   const activeEntries = useMemo(
     () => entries.filter((entry) => entry.status !== "withdrawn"),
@@ -178,6 +95,17 @@ export default function TournamentDetailPage() {
     tournament != null &&
     currentUserId === tournament.created_by;
 
+  const bracketFirst =
+    tournament != null &&
+    (tournament.status === "in_progress" || matches.length > 0);
+
+  const readyCount = checkedInEntries.length;
+
+  const championName = useMemo(() => {
+    if (!tournament) return null;
+    return resolveChampionName(tournament, matches, entries);
+  }, [tournament, matches, entries]);
+
   return (
     <RequireAuth>
       <section className="space-y-8">
@@ -198,6 +126,17 @@ export default function TournamentDetailPage() {
           </div>
         ) : tournament ? (
           <>
+            {tournament.status === "completed" && championName ? (
+              <div className="rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-950/60 via-zinc-950 to-zinc-950 px-6 py-5 shadow-lg shadow-emerald-950/40 ring-1 ring-emerald-500/20">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-300/90">
+                  Champion
+                </p>
+                <p className="mt-1 text-2xl font-bold text-white">
+                  {championName}
+                </p>
+              </div>
+            ) : null}
+
             <header
               className={`rounded-2xl border bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 ${
                 tournament.status === "cancelled"
@@ -233,9 +172,9 @@ export default function TournamentDetailPage() {
                   </p>
                 </div>
                 <span
-                  className={`rounded-lg border px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${statusBadgeClass(tournament.status)}`}
+                  className={`shrink-0 rounded-xl border px-3.5 py-2 text-sm font-bold tracking-wide shadow-md ${statusBadgeClass(tournament.status)}`}
                 >
-                  {tournament.status.replace("_", " ")}
+                  {formatTournamentStatus(tournament.status)}
                 </span>
               </div>
 
@@ -251,71 +190,119 @@ export default function TournamentDetailPage() {
                 </p>
               ) : null}
 
-              <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+              <dl className="mt-5 flex flex-wrap gap-x-8 gap-y-3 border-t border-zinc-800/80 pt-4 text-sm">
                 <div>
-                  <dt className="text-xs uppercase text-zinc-500">Entries</dt>
-                  <dd className="mt-1 font-semibold text-white">
-                    {registeredCount} active · {checkedInEntries.length} checked
-                    in
+                  <dt className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                    Registered
+                  </dt>
+                  <dd className="mt-0.5 font-semibold text-white">
+                    {registeredCount}
+                    {tournament.max_players
+                      ? ` / ${tournament.max_players}`
+                      : null}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-xs uppercase text-zinc-500">Starts</dt>
-                  <dd className="mt-1 font-semibold text-white">
+                  <dt className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                    Ready
+                  </dt>
+                  <dd className="mt-0.5 font-semibold text-white">
+                    {readyCount}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                    Starts
+                  </dt>
+                  <dd className="mt-0.5 font-semibold text-white">
                     {tournament.starts_at
                       ? new Date(tournament.starts_at).toLocaleString()
                       : "TBD"}
                   </dd>
                 </div>
-                <div>
-                  <dt className="text-xs uppercase text-zinc-500">Matches</dt>
-                  <dd className="mt-1 font-semibold text-white">
-                    {matches.length}
-                  </dd>
-                </div>
+                {matches.length > 0 ? (
+                  <div>
+                    <dt className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                      Bracket
+                    </dt>
+                    <dd className="mt-0.5 font-semibold text-white">
+                      {matches.length} matches
+                    </dd>
+                  </div>
+                ) : null}
               </dl>
             </header>
 
-            {tournament.status !== "cancelled" ? (
-              <section className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
-                <h2 className="text-lg font-bold text-white">Participation</h2>
-                {isHost ? (
-                  <p className="mt-1 text-xs text-zinc-400">
-                    {OPEN_ENTRY_STATUSES.has(tournament.status)
-                      ? "As host you can register and check in here. Start and cancel are under Creator controls below—not in this section."
-                      : tournament.status === "in_progress"
-                        ? "You play bracket matches like any participant. Creator start/cancel are only available before the event goes live."
-                        : "Open Manage from the list or use Creator controls when available."}
-                  </p>
+            {bracketFirst ? (
+              <>
+                <TournamentBracketPanel
+                  tournamentId={tournament.id}
+                  tournamentStatus={tournament.status}
+                  matches={matches}
+                  entries={entries}
+                  currentUserId={currentUserId}
+                  onUpdated={refresh}
+                  prominent
+                />
+                {tournament.status !== "cancelled" ? (
+                  <section className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
+                    <h2 className="text-base font-bold text-white">
+                      Participation
+                    </h2>
+                    <div className="mt-3">
+                      <TournamentEntryActions
+                        tournament={tournament}
+                        currentUserId={currentUserId}
+                        myEntry={myEntry}
+                        registeredCount={registeredCount}
+                        onUpdated={refresh}
+                      />
+                    </div>
+                  </section>
                 ) : null}
-                <div className="mt-3">
-                  <TournamentEntryActions
-                    tournament={tournament}
-                    currentUserId={currentUserId}
-                    myEntry={myEntry}
-                    registeredCount={registeredCount}
-                    onUpdated={refresh}
-                  />
-                </div>
-              </section>
-            ) : null}
-
-            <TournamentAdminActions
-              tournament={tournament}
-              currentUserId={currentUserId}
-              checkedInEntries={checkedInEntries}
-              existingMatchCount={matches.length}
-              onUpdated={refresh}
-            />
-
-            <TournamentBracketPanel
-              tournamentId={tournament.id}
-              tournamentStatus={tournament.status}
-              matches={matches}
-              entries={entries}
-              currentUserId={currentUserId}
-              onUpdated={refresh}
-            />
+                <TournamentAdminActions
+                  tournament={tournament}
+                  currentUserId={currentUserId}
+                  checkedInEntries={checkedInEntries}
+                  existingMatchCount={matches.length}
+                  onUpdated={refresh}
+                />
+              </>
+            ) : (
+              <>
+                {tournament.status !== "cancelled" ? (
+                  <section className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
+                    <h2 className="text-lg font-bold text-white">
+                      Participation
+                    </h2>
+                    <div className="mt-3">
+                      <TournamentEntryActions
+                        tournament={tournament}
+                        currentUserId={currentUserId}
+                        myEntry={myEntry}
+                        registeredCount={registeredCount}
+                        onUpdated={refresh}
+                      />
+                    </div>
+                  </section>
+                ) : null}
+                <TournamentAdminActions
+                  tournament={tournament}
+                  currentUserId={currentUserId}
+                  checkedInEntries={checkedInEntries}
+                  existingMatchCount={matches.length}
+                  onUpdated={refresh}
+                />
+                <TournamentBracketPanel
+                  tournamentId={tournament.id}
+                  tournamentStatus={tournament.status}
+                  matches={matches}
+                  entries={entries}
+                  currentUserId={currentUserId}
+                  onUpdated={refresh}
+                />
+              </>
+            )}
           </>
         ) : null}
       </section>

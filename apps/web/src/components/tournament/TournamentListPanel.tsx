@@ -28,17 +28,39 @@ export type TournamentEntryRow = {
   checked_in_at: string | null;
 };
 
-function formatStartsAt(value: string | null) {
-  if (!value) return "TBD";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "TBD";
-  return date.toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+export function formatTournamentStatus(status: string): string {
+  switch (status) {
+    case "registration":
+      return "Registration";
+    case "check_in":
+      return "Ready Phase";
+    case "in_progress":
+      return "Live";
+    case "completed":
+      return "Completed";
+    case "cancelled":
+      return "Cancelled";
+    case "draft":
+      return "Draft";
+    default:
+      return status.replace(/_/g, " ");
+  }
 }
 
-function statusBadgeClass(status: string) {
+export function formatEntryStatus(status: string): string {
+  switch (status) {
+    case "registered":
+      return "Registered";
+    case "checked_in":
+      return "Ready";
+    case "withdrawn":
+      return "Withdrawn";
+    default:
+      return status.replace(/_/g, " ");
+  }
+}
+
+export function statusBadgeClass(status: string) {
   switch (status) {
     case "registration":
       return "border-emerald-500/40 bg-emerald-950/30 text-emerald-200";
@@ -53,6 +75,16 @@ function statusBadgeClass(status: string) {
     default:
       return "border-zinc-600/40 bg-zinc-900 text-zinc-400";
   }
+}
+
+function formatStartsAt(value: string | null) {
+  if (!value) return "TBD";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "TBD";
+  return date.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 }
 
 type TournamentListPanelProps = {
@@ -175,8 +207,7 @@ export default function TournamentListPanel({
           </p>
           <h2 className="mt-2 text-2xl font-bold text-white">Open Tournaments</h2>
           <p className="mt-2 text-zinc-400">
-            Register during registration. Check in when the host opens the
-            window.
+            Join tournaments and get Ready before the bracket starts.
           </p>
         </div>
 
@@ -245,9 +276,9 @@ export default function TournamentListPanel({
                   </div>
 
                   <span
-                    className={`rounded-lg border px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${statusBadgeClass(tournament.status)}`}
+                    className={`rounded-lg border px-2.5 py-1 text-xs font-bold tracking-wide ${statusBadgeClass(tournament.status)}`}
                   >
-                    {tournament.status.replace("_", " ")}
+                    {formatTournamentStatus(tournament.status)}
                   </span>
                 </div>
 
@@ -285,6 +316,7 @@ export default function TournamentListPanel({
                     myEntry={myEntry}
                     registeredCount={registeredCount}
                     onUpdated={refresh}
+                    showHostStrip
                   />
                 </div>
               </li>

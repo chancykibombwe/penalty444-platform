@@ -27,7 +27,37 @@ type TournamentBracketPanelProps = {
   entries: TournamentEntryRow[];
   currentUserId: string | null;
   onUpdated?: () => void;
+  prominent?: boolean;
 };
+
+function formatMatchStatus(status: string): string {
+  switch (status) {
+    case "ready":
+      return "Ready";
+    case "in_progress":
+      return "Live";
+    case "pending":
+      return "Pending";
+    case "completed":
+      return "Completed";
+    case "walkover":
+      return "Walkover";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return status.replace(/_/g, " ");
+  }
+}
+
+function bracketSectionClass(prominent: boolean, hasMatches: boolean) {
+  if (prominent && hasMatches) {
+    return "space-y-10 rounded-2xl border border-amber-500/25 bg-gradient-to-br from-zinc-950 via-zinc-900/90 to-black p-8 shadow-xl ring-1 ring-amber-500/15";
+  }
+  if (prominent) {
+    return "rounded-2xl border border-zinc-800 bg-zinc-950/60 p-6";
+  }
+  return "space-y-8 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-6";
+}
 
 function entryLabel(
   entryId: string | null,
@@ -38,20 +68,56 @@ function entryLabel(
   return entry?.username ?? "Unknown";
 }
 
-function matchStatusClass(status: string) {
+function getMatchCardClasses(
+  status: string,
+  options: { isParticipant: boolean; isFinal: boolean }
+): string {
+  const classes = [
+    "rounded-xl border px-4 py-3 transition-shadow",
+  ];
+
+  if (options.isFinal) {
+    classes.push(
+      "bg-gradient-to-br from-amber-950/35 via-zinc-950/90 to-zinc-950 md:min-w-[300px]"
+    );
+  }
+
   switch (status) {
+    case "ready":
+      classes.push(
+        "border-amber-500/55 bg-amber-950/25 shadow-[0_0_20px_rgba(245,158,11,0.22)] ring-1 ring-amber-500/35"
+      );
+      break;
+    case "in_progress":
+      classes.push(
+        "border-cyan-500/55 bg-cyan-950/25 shadow-[0_0_20px_rgba(34,211,238,0.22)] ring-1 ring-cyan-500/35"
+      );
+      break;
     case "completed":
     case "walkover":
-      return "border-emerald-500/35 bg-emerald-950/20";
-    case "in_progress":
-      return "border-cyan-500/35 bg-cyan-950/20";
-    case "ready":
-      return "border-amber-500/35 bg-amber-950/20";
+      classes.push("border-emerald-500/20 bg-emerald-950/10");
+      break;
     case "cancelled":
-      return "border-red-500/35 bg-red-950/20";
+      classes.push("border-red-500/35 bg-red-950/20");
+      break;
     default:
-      return "border-zinc-700 bg-zinc-950/50";
+      classes.push("border-zinc-700/80 bg-zinc-950/50");
+      break;
   }
+
+  if (options.isFinal && (status === "completed" || status === "walkover")) {
+    classes.push("border-emerald-500/35 shadow-[0_0_24px_rgba(16,185,129,0.12)]");
+  } else if (options.isFinal) {
+    classes.push("border-amber-400/40 shadow-md");
+  }
+
+  if (options.isParticipant) {
+    classes.push(
+      "ring-2 ring-amber-400/75 shadow-lg shadow-amber-500/20"
+    );
+  }
+
+  return classes.join(" ");
 }
 
 function isTerminalMatchStatus(status: string) {
@@ -174,6 +240,7 @@ export default function TournamentBracketPanel({
   entries,
   currentUserId,
   onUpdated,
+  prominent = false,
 }: TournamentBracketPanelProps) {
   const entryById = useMemo(() => {
     const map = new Map<string, TournamentEntryRow>();
@@ -208,116 +275,173 @@ export default function TournamentBracketPanel({
 
   const tournamentInProgress = tournamentStatus === "in_progress";
 
+  const sectionClass = bracketSectionClass(prominent, matches.length > 0);
+  const titleClass = prominent
+    ? "text-2xl font-bold text-white"
+    : "text-xl font-bold text-white";
+
   if (matches.length === 0) {
     return (
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-6">
-        <h2 className="text-xl font-bold text-white">Bracket</h2>
+      <section className={sectionClass}>
+        <h2 className={titleClass}>Bracket</h2>
         <p className="mt-2 text-sm text-zinc-400">
-          No matches yet. The creator can start the tournament after check-in
-          when the checked-in count is a power of two (2, 4, 8, …).
+          No matches yet. The creator can start after the Ready Phase when the
+          Ready player count is a power of two (2, 4, 8, …).
         </p>
       </section>
     );
   }
 
   return (
-    <section className="space-y-8 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-6">
+    <section className={sectionClass}>
       <div>
-        <h2 className="text-xl font-bold text-white">Bracket</h2>
+        <h2 className={titleClass}>Bracket</h2>
         <p className="mt-1 text-sm text-zinc-400">
-          Single elimination · winners advance in a later phase
+          Single elimination · winners advance as matches finish
         </p>
       </div>
 
-      {rounds.map(({ roundNumber, matches: roundMatches }) => (
-        <div key={roundNumber} className="space-y-3">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-amber-200/90">
-            {getRoundLabel(roundNumber, totalRounds)}
-          </h3>
+      <div className="flex flex-col gap-8 md:flex-row md:items-start md:gap-5 md:overflow-x-auto md:pb-2">
+        {rounds.map(({ roundNumber, matches: roundMatches }) => {
+          const isFinalRound =
+            totalRounds > 0 && roundNumber === totalRounds;
 
-          <ul className="grid gap-3 md:grid-cols-2">
-            {roundMatches.map((match) => {
-              const entryOne = match.entry_one_id
-                ? entryById.get(match.entry_one_id)
-                : null;
-              const entryTwo = match.entry_two_id
-                ? entryById.get(match.entry_two_id)
-                : null;
+          return (
+            <div
+              key={roundNumber}
+              className="flex flex-col gap-3 md:min-w-[280px] md:shrink-0"
+            >
+              <h3 className="text-sm font-bold uppercase tracking-wider text-amber-200/90">
+                {getRoundLabel(roundNumber, totalRounds)}
+              </h3>
 
-              const isParticipant =
-                Boolean(currentUserId) &&
-                (entryOne?.user_id === currentUserId ||
-                  entryTwo?.user_id === currentUserId);
+              <ul className="flex flex-col gap-3">
+                {roundMatches.map((match) => {
+                  const entryOne = match.entry_one_id
+                    ? entryById.get(match.entry_one_id)
+                    : null;
+                  const entryTwo = match.entry_two_id
+                    ? entryById.get(match.entry_two_id)
+                    : null;
 
-              const bothPlayersAssigned =
-                Boolean(match.entry_one_id) && Boolean(match.entry_two_id);
+                  const isParticipant =
+                    Boolean(currentUserId) &&
+                    (entryOne?.user_id === currentUserId ||
+                      entryTwo?.user_id === currentUserId);
 
-              const canEnterMatch =
-                tournamentInProgress &&
-                bothPlayersAssigned &&
-                !match.winner_entry_id &&
-                !match.room_code &&
-                match.status === "ready";
+                  const bothPlayersAssigned =
+                    Boolean(match.entry_one_id) &&
+                    Boolean(match.entry_two_id);
 
-              const canJoinMatch =
-                tournamentInProgress &&
-                bothPlayersAssigned &&
-                !match.winner_entry_id &&
-                Boolean(match.room_code) &&
-                match.status === "in_progress" &&
-                !isTerminalMatchStatus(match.status);
+                  const canEnterMatch =
+                    tournamentInProgress &&
+                    bothPlayersAssigned &&
+                    !match.winner_entry_id &&
+                    !match.room_code &&
+                    match.status === "ready";
 
-              return (
-                <li
-                  key={match.id}
-                  className={`rounded-xl border px-4 py-3 ${matchStatusClass(match.status)}`}
-                >
-                  <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-wide text-zinc-500">
-                    <span>Slot {match.slot_index + 1}</span>
-                    <span className="capitalize">
-                      {match.status.replace("_", " ")}
-                    </span>
-                  </div>
+                  const canJoinMatch =
+                    tournamentInProgress &&
+                    bothPlayersAssigned &&
+                    !match.winner_entry_id &&
+                    Boolean(match.room_code) &&
+                    match.status === "in_progress" &&
+                    !isTerminalMatchStatus(match.status);
 
-                  <div className="mt-2 space-y-1 text-sm">
-                    <p className="font-semibold text-white">
-                      {entryLabel(match.entry_one_id, entryById)}
-                    </p>
-                    <p className="text-xs text-zinc-500">vs</p>
-                    <p className="font-semibold text-white">
-                      {entryLabel(match.entry_two_id, entryById)}
-                    </p>
-                  </div>
+                  const isFinal = isFinalRound;
+                  const isCompletedFinal =
+                    isFinal &&
+                    isTerminalMatchStatus(match.status) &&
+                    Boolean(match.winner_entry_id);
 
-                  {match.winner_entry_id ? (
-                    <p className="mt-2 text-xs text-emerald-300">
-                      Winner: {entryLabel(match.winner_entry_id, entryById)}
-                    </p>
-                  ) : null}
+                  return (
+                    <li
+                      key={match.id}
+                      className={getMatchCardClasses(match.status, {
+                        isParticipant,
+                        isFinal,
+                      })}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {isFinal ? (
+                            <span className="rounded-md border border-amber-500/50 bg-amber-950/50 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-200">
+                              Final
+                            </span>
+                          ) : (
+                            <span className="text-xs uppercase tracking-wide text-zinc-500">
+                              Slot {match.slot_index + 1}
+                            </span>
+                          )}
+                          {isParticipant ? (
+                            <span className="rounded-md border border-amber-400/60 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-100">
+                              Your Match
+                            </span>
+                          ) : null}
+                        </div>
+                        <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                          {formatMatchStatus(match.status)}
+                        </span>
+                      </div>
 
-                  {match.status === "ready" &&
-                  !match.room_code &&
-                  bothPlayersAssigned &&
-                  !isParticipant ? (
-                    <p className="mt-2 text-xs text-amber-200/80">
-                      Ready — waiting for players to enter match
-                    </p>
-                  ) : null}
+                      <div className="mt-2 space-y-1 text-sm">
+                        <p
+                          className={`font-semibold ${
+                            match.winner_entry_id === match.entry_one_id
+                              ? "text-emerald-300"
+                              : "text-white"
+                          }`}
+                        >
+                          {entryLabel(match.entry_one_id, entryById)}
+                        </p>
+                        <p className="text-xs text-zinc-500">vs</p>
+                        <p
+                          className={`font-semibold ${
+                            match.winner_entry_id === match.entry_two_id
+                              ? "text-emerald-300"
+                              : "text-white"
+                          }`}
+                        >
+                          {entryLabel(match.entry_two_id, entryById)}
+                        </p>
+                      </div>
 
-                  <MatchRoomAction
-                    tournamentId={tournamentId}
-                    match={match}
-                    isParticipant={isParticipant}
-                    canEnterMatch={canEnterMatch}
-                    canJoinMatch={canJoinMatch}
-                    onUpdated={onUpdated}
-                  />
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
+                      {isCompletedFinal ? (
+                        <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-emerald-300/90">
+                          Champion decided
+                        </p>
+                      ) : match.winner_entry_id ? (
+                        <p className="mt-2 text-xs text-emerald-400/80">
+                          Winner:{" "}
+                          {entryLabel(match.winner_entry_id, entryById)}
+                        </p>
+                      ) : null}
+
+                      {match.status === "ready" &&
+                      !match.room_code &&
+                      bothPlayersAssigned &&
+                      !isParticipant ? (
+                        <p className="mt-2 text-xs text-amber-200/80">
+                          Ready — waiting for players to enter match
+                        </p>
+                      ) : null}
+
+                      <MatchRoomAction
+                        tournamentId={tournamentId}
+                        match={match}
+                        isParticipant={isParticipant}
+                        canEnterMatch={canEnterMatch}
+                        canJoinMatch={canJoinMatch}
+                        onUpdated={onUpdated}
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }

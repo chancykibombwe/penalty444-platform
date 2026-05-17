@@ -33,14 +33,25 @@ export default function TournamentAdminActions({
   const isCancelled = tournament.status === "cancelled";
   const canCancel = CANCELLABLE_STATUSES.has(tournament.status);
   const isCheckInPhase = tournament.status === "check_in";
-  const checkedInCount = checkedInEntries.length;
-  const countIsValid = isPowerOfTwo(checkedInCount);
+  const readyCount = checkedInEntries.length;
+  const countIsValid = isPowerOfTwo(readyCount);
   const canStart =
     !isCancelled &&
     isCheckInPhase &&
     existingMatchCount === 0 &&
-    checkedInCount >= 2 &&
+    readyCount >= 2 &&
     countIsValid;
+
+  const showActions =
+    !isCancelled && (canStart || canCancel) && tournament.status !== "completed";
+
+  if (isCancelled) {
+    return null;
+  }
+
+  if (!showActions && tournament.status === "in_progress") {
+    return null;
+  }
 
   async function handleStartTournament() {
     if (busy || !canStart) return;
@@ -93,8 +104,8 @@ export default function TournamentAdminActions({
 
       setMessage(
         payload?.matchCount
-          ? `Tournament started. ${payload.matchCount} bracket slots created.`
-          : "Tournament started. Bracket is live."
+          ? `Bracket is Live. ${payload.matchCount} slots created.`
+          : "Bracket is Live."
       );
       onUpdated();
     } catch {
@@ -108,7 +119,7 @@ export default function TournamentAdminActions({
     if (busy || !canCancel) return;
 
     const confirmed = window.confirm(
-      "Cancel this tournament? Registered players will no longer be able to join or check in."
+      "Cancel this tournament? Players will no longer be able to join or mark Ready."
     );
 
     if (!confirmed) return;
@@ -151,77 +162,56 @@ export default function TournamentAdminActions({
     }
   }
 
+  if (!showActions) {
+    return message ? (
+      <p className="text-xs text-zinc-400">{message}</p>
+    ) : null;
+  }
+
   return (
-    <section
-      className={`rounded-2xl border p-5 ${
-        isCancelled
-          ? "border-red-500/40 bg-red-950/20"
-          : "border-amber-500/30 bg-amber-950/15"
-      }`}
-    >
-      <h2 className="text-lg font-bold text-amber-100">Creator controls</h2>
-
-      {isCancelled ? (
-        <p className="mt-2 text-sm font-semibold text-red-200">
-          This tournament has been cancelled. Bracket start and registration are
-          closed.
-        </p>
-      ) : (
-        <>
-          <p className="mt-1 text-sm text-zinc-400">
-            Start the bracket when check-in is complete, or cancel before the
-            event goes live.
-          </p>
-
-          <ul className="mt-3 space-y-1 text-sm text-zinc-300">
-            <li>
-              Checked in:{" "}
-              <span className="font-semibold text-white">{checkedInCount}</span>
-              {!countIsValid && checkedInCount > 0 ? (
-                <span className="text-red-300"> — not a power of two</span>
-              ) : null}
-            </li>
-            <li>
-              Bracket rows:{" "}
-              <span className="font-semibold text-white">
-                {existingMatchCount}
-              </span>
-            </li>
-          </ul>
-
-          <div className="mt-4 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={handleStartTournament}
-              disabled={busy || !canStart}
-              className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-5 py-3 font-bold text-zinc-950 disabled:opacity-50"
-            >
-              {busy ? "Working…" : "Start Tournament"}
-            </button>
-
-            {canCancel ? (
-              <button
-                type="button"
-                onClick={handleCancelTournament}
-                disabled={busy}
-                className="rounded-xl border border-red-500/50 bg-red-950/40 px-5 py-3 font-bold text-red-100 hover:border-red-400/70 disabled:opacity-50"
-              >
-                {busy ? "Working…" : "Cancel Tournament"}
-              </button>
-            ) : null}
-          </div>
-
-          {!isCheckInPhase && tournament.status !== "in_progress" ? (
-            <p className="mt-2 text-xs text-zinc-500">
-              Set tournament status to{" "}
-              <code className="text-zinc-400">check_in</code> before starting
-              the bracket.
-            </p>
+    <section className="rounded-xl border border-amber-500/20 bg-amber-950/10 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-amber-100">Creator</h2>
+        <p className="text-xs text-zinc-400">
+          <span className="text-zinc-500">Ready</span>{" "}
+          <span className="font-semibold text-white">{readyCount}</span>
+          <span className="mx-1.5 text-zinc-600">·</span>
+          <span className="text-zinc-500">Bracket slots</span>{" "}
+          <span className="font-semibold text-white">{existingMatchCount}</span>
+          {!countIsValid && readyCount > 0 ? (
+            <span className="text-red-300"> (need 2, 4, 8…)</span>
           ) : null}
-        </>
-      )}
+        </p>
+      </div>
 
-      {message ? <p className="mt-3 text-sm text-zinc-300">{message}</p> : null}
+      <p className="mt-1 text-xs text-zinc-500">
+        Start when players are Ready in a power-of-two field, or cancel before
+        Live.
+      </p>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={handleStartTournament}
+          disabled={busy || !canStart}
+          className="rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2 text-sm font-bold text-zinc-950 disabled:opacity-50"
+        >
+          {busy ? "Working…" : "Start Tournament"}
+        </button>
+
+        {canCancel ? (
+          <button
+            type="button"
+            onClick={handleCancelTournament}
+            disabled={busy}
+            className="rounded-lg border border-red-500/50 bg-red-950/40 px-4 py-2 text-sm font-semibold text-red-100 hover:border-red-400/70 disabled:opacity-50"
+          >
+            {busy ? "Working…" : "Cancel"}
+          </button>
+        ) : null}
+      </div>
+
+      {message ? <p className="mt-2 text-xs text-zinc-400">{message}</p> : null}
     </section>
   );
 }
