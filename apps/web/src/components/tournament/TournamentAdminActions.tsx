@@ -8,6 +8,13 @@ import type { TournamentEntryRow, TournamentRow } from "./TournamentListPanel";
 const CANCELLABLE_STATUSES = new Set(["draft", "registration", "check_in"]);
 const STARTABLE_STATUSES = new Set(["registration", "check_in"]);
 
+function formatScheduledStart(startsAt: string): string {
+  return new Date(startsAt).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
 type TournamentAdminActionsProps = {
   tournament: TournamentRow;
   currentUserId: string | null;
@@ -64,26 +71,26 @@ export default function TournamentAdminActions({
 
   const isCancelled = tournament.status === "cancelled";
   const canCancel = CANCELLABLE_STATUSES.has(tournament.status);
-  const isStartablePhase = STARTABLE_STATUSES.has(tournament.status);
+  const isPreStart = STARTABLE_STATUSES.has(tournament.status);
+  const hasScheduledStart = Boolean(tournament.starts_at);
   const activeCount = registeredEntryCount ?? 0;
   const withinCapacity = activeCount <= tournament.max_players;
   const canStart =
     !isCancelled &&
-    isStartablePhase &&
+    isPreStart &&
     existingMatchCount === 0 &&
     registeredEntryCount !== null &&
     activeCount >= 2 &&
     withinCapacity;
 
-  const showActions =
-    !isCancelled && (canStart || canCancel) && tournament.status !== "completed";
-
   if (isCancelled) {
     return null;
   }
 
-  if (!showActions && tournament.status === "in_progress") {
-    return null;
+  if (tournament.status === "completed" || tournament.status === "in_progress") {
+    return message ? (
+      <p className="text-xs text-zinc-400">{message}</p>
+    ) : null;
   }
 
   async function handleStartTournament() {
@@ -200,7 +207,7 @@ export default function TournamentAdminActions({
     }
   }
 
-  if (!showActions) {
+  if (!isPreStart) {
     return message ? (
       <p className="text-xs text-zinc-400">{message}</p>
     ) : null;
@@ -219,35 +226,43 @@ export default function TournamentAdminActions({
           <span className="text-zinc-500">Ready</span>{" "}
           <span className="font-semibold text-white">{readyCount}</span>
           <span className="text-zinc-500"> (optional)</span>
-          <span className="mx-1.5 text-zinc-600">·</span>
-          <span className="text-zinc-500">Bracket slots</span>{" "}
-          <span className="font-semibold text-white">{existingMatchCount}</span>
-          {registeredEntryCount !== null && activeCount > 0 && !withinCapacity ? (
-            <span className="text-red-300">
-              {" "}
-              (over max {tournament.max_players})
-            </span>
-          ) : registeredEntryCount !== null && activeCount < 2 ? (
-            <span className="text-red-300"> (need at least 2 registered)</span>
-          ) : null}
         </p>
       </div>
 
-      <p className="mt-1 text-xs text-zinc-500">
-        Start uses registered players only (withdrawn are excluded). Ready is
-        optional and does not affect seeding. BYEs fill open slots up to the{" "}
-        {tournament.max_players}-player bracket.
-      </p>
+      {hasScheduledStart ? (
+        <div className="mt-3 space-y-1 rounded-lg border border-amber-500/25 bg-amber-950/20 px-3 py-2.5">
+          <p className="text-sm font-medium text-amber-100">
+            This tournament starts automatically at{" "}
+            {formatScheduledStart(tournament.starts_at!)}.
+          </p>
+          <p className="text-xs text-zinc-400">
+            Players can register until it begins.
+          </p>
+        </div>
+      ) : (
+        <p className="mt-3 rounded-lg border border-amber-600/40 bg-amber-950/30 px-3 py-2.5 text-sm text-amber-100">
+          No start time set. This tournament cannot auto-start.
+        </p>
+      )}
+
+      {!hasScheduledStart ? (
+        <p className="mt-2 text-xs text-zinc-500">
+          Use Start Tournament below when you are ready to open the bracket
+          manually.
+        </p>
+      ) : null}
 
       <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={handleStartTournament}
-          disabled={busy || !canStart}
-          className="rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2 text-sm font-bold text-zinc-950 disabled:opacity-50"
-        >
-          {busy ? "Working…" : "Start Tournament"}
-        </button>
+        {!hasScheduledStart ? (
+          <button
+            type="button"
+            onClick={handleStartTournament}
+            disabled={busy || !canStart}
+            className="rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2 text-sm font-bold text-zinc-950 disabled:opacity-50"
+          >
+            {busy ? "Working…" : "Start Tournament"}
+          </button>
+        ) : null}
 
         {canCancel ? (
           <button
@@ -260,6 +275,32 @@ export default function TournamentAdminActions({
           </button>
         ) : null}
       </div>
+
+      {hasScheduledStart ? (
+        <details className="mt-3 group">
+          <summary className="cursor-pointer text-xs font-medium text-zinc-500 hover:text-zinc-400">
+            Manual start (override)
+          </summary>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleStartTournament}
+              disabled={busy || !canStart}
+              className="rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:border-zinc-500 disabled:opacity-50"
+            >
+              {busy ? "Working…" : "Start now"}
+            </button>
+            {registeredEntryCount !== null && activeCount < 2 ? (
+              <span className="text-xs text-red-300">Need at least 2 registered</span>
+            ) : null}
+            {registeredEntryCount !== null && activeCount > 0 && !withinCapacity ? (
+              <span className="text-xs text-red-300">
+                Over max {tournament.max_players} players
+              </span>
+            ) : null}
+          </div>
+        </details>
+      ) : null}
 
       {message ? <p className="mt-2 text-xs text-zinc-400">{message}</p> : null}
     </section>

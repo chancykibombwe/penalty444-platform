@@ -42,7 +42,7 @@ export function entryLabel(
 }
 
 /**
- * Side label for bracket display: player name, BYE (null vs opponent), or TBD.
+ * Side label for bracket display: player name, Free Pass (null vs opponent), or TBD.
  */
 export function matchEntrySideLabel(
   entryOneId: string | null,
@@ -55,7 +55,7 @@ export function matchEntrySideLabel(
     return entryLabel(entryId, entryById);
   }
   if (isByeSlot(entryOneId, entryTwoId, side)) {
-    return "BYE";
+    return "Free Pass";
   }
   return "TBD";
 }

@@ -44,6 +44,61 @@ type TournamentBracketPanelProps = {
   prominent?: boolean;
 };
 
+function getParticipantActionReason(options: {
+  isParticipant: boolean;
+  tournamentInProgress: boolean;
+  match: TournamentMatchRow;
+  playable: boolean;
+  canEnterMatch: boolean;
+  canJoinMatch: boolean;
+}): string | null {
+  const {
+    isParticipant,
+    tournamentInProgress,
+    match,
+    playable,
+    canEnterMatch,
+    canJoinMatch,
+  } = options;
+
+  if (!isParticipant) {
+    if (match.status === "ready" && playable && !match.room_code) {
+      return "This is not your match.";
+    }
+    return null;
+  }
+
+  if (canEnterMatch || canJoinMatch) {
+    return null;
+  }
+
+  if (!match.entry_one_id || !match.entry_two_id) {
+    return "Waiting for opponent assignment.";
+  }
+
+  if (!tournamentInProgress) {
+    return "Tournament has not started yet.";
+  }
+
+  if (isTerminalMatchStatus(match.status)) {
+    return null;
+  }
+
+  if (!playable) {
+    return null;
+  }
+
+  if (match.status === "in_progress" && match.room_code) {
+    return "Match room is open — use Join Match when available.";
+  }
+
+  if (match.status === "pending") {
+    return "Waiting for the previous round to finish.";
+  }
+
+  return "This match is not open for you yet.";
+}
+
 export default function TournamentBracketPanel({
   tournamentId,
   tournamentStatus,
@@ -60,6 +115,16 @@ export default function TournamentBracketPanel({
     }
     return map;
   }, [entries]);
+
+  const myEntry = useMemo(() => {
+    if (!currentUserId) return null;
+    return entries.find((entry) => entry.user_id === currentUserId) ?? null;
+  }, [entries, currentUserId]);
+
+  const myEntryId = myEntry?.id ?? null;
+  const tournamentInProgress = tournamentStatus === "in_progress";
+  const myEntryActive =
+    myEntry != null && myEntry.status !== "withdrawn";
 
   const rounds = useMemo(() => {
     const byRound = new Map<number, TournamentMatchRow[]>();
@@ -84,7 +149,60 @@ export default function TournamentBracketPanel({
       ? getTotalRounds(getBracketSizeFromRoundOneMatchCount(roundOneMatchCount))
       : 0;
 
-  const tournamentInProgress = tournamentStatus === "in_progress";
+  const playerBracketState = useMemo(() => {
+    if (!myEntryId || !myEntryActive || !tournamentInProgress) {
+      return {
+        readyMatch: null as TournamentMatchRow | null,
+        hasActivePlayableMatch: false,
+        advancedByBye: false,
+      };
+    }
+
+    let readyMatch: TournamentMatchRow | null = null;
+    let hasActivePlayableMatch = false;
+    let advancedByBye = false;
+
+    for (const match of matches) {
+      const isParticipant =
+        match.entry_one_id === myEntryId || match.entry_two_id === myEntryId;
+
+      if (!isParticipant) continue;
+
+      const playable = canMatchBePlayed(match);
+      const canEnter =
+        playable &&
+        !match.winner_entry_id &&
+        !match.room_code &&
+        match.status === "ready";
+      const canJoin =
+        playable &&
+        !match.winner_entry_id &&
+        Boolean(match.room_code) &&
+        match.status === "in_progress" &&
+        !isTerminalMatchStatus(match.status);
+
+      if (canEnter || canJoin) {
+        hasActivePlayableMatch = true;
+      }
+
+      if (canEnter && !readyMatch) {
+        readyMatch = match;
+      }
+
+      if (
+        isWalkoverByeMatch(
+          match.entry_one_id,
+          match.entry_two_id,
+          match.status
+        ) &&
+        match.winner_entry_id === myEntryId
+      ) {
+        advancedByBye = true;
+      }
+    }
+
+    return { readyMatch, hasActivePlayableMatch, advancedByBye };
+  }, [matches, myEntryId, myEntryActive, tournamentInProgress]);
 
   const sectionClass = bracketSectionClass(prominent, matches.length > 0);
   const titleClass = prominent
@@ -96,12 +214,25 @@ export default function TournamentBracketPanel({
       <section className={sectionClass}>
         <h2 className={titleClass}>Bracket</h2>
         <p className="mt-2 text-sm text-zinc-400">
-          No matches yet. The creator can start after the Ready Phase when the
-          Ready player count is a power of two (2, 4, 8, …).
+          No matches yet. The bracket appears when the tournament starts at the
+          scheduled time.
         </p>
       </section>
     );
   }
+
+  const showReadyBanner = Boolean(playerBracketState.readyMatch);
+  const showByeWaiting =
+    myEntryActive &&
+    tournamentInProgress &&
+    playerBracketState.advancedByBye &&
+    !playerBracketState.hasActivePlayableMatch;
+  const showWaitingForNext =
+    myEntryActive &&
+    tournamentInProgress &&
+    !playerBracketState.readyMatch &&
+    !showByeWaiting &&
+    !playerBracketState.hasActivePlayableMatch;
 
   return (
     <section className={sectionClass}>
@@ -111,6 +242,35 @@ export default function TournamentBracketPanel({
           Single elimination · winners advance as matches finish
         </p>
       </div>
+
+      {showReadyBanner && playerBracketState.readyMatch ? (
+        <div className="rounded-xl border-2 border-amber-400/60 bg-gradient-to-r from-amber-950/80 via-amber-900/30 to-zinc-950 px-4 py-4 shadow-lg shadow-amber-950/30">
+          <p className="text-lg font-bold text-amber-50">Your match is ready</p>
+          <p className="mt-1 text-sm text-amber-100/90">
+            Enter before the deadline to avoid forfeiting.
+          </p>
+          <div className="mt-3">
+            <TournamentMatchRoomAction
+              tournamentId={tournamentId}
+              match={playerBracketState.readyMatch}
+              isParticipant
+              canEnterMatch
+              canJoinMatch={false}
+              onUpdated={onUpdated}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {showByeWaiting ? (
+        <p className="rounded-lg border border-zinc-700 bg-zinc-900/60 px-3 py-2 text-sm text-zinc-300">
+          You advanced automatically. Waiting for the next round.
+        </p>
+      ) : null}
+
+      {showWaitingForNext ? (
+        <p className="text-sm text-zinc-400">Waiting for your next match.</p>
+      ) : null}
 
       <div className="flex flex-col gap-8 md:flex-row md:items-start md:gap-5 md:overflow-x-auto md:pb-2">
         {rounds.map(({ roundNumber, matches: roundMatches }) => {
@@ -166,6 +326,18 @@ export default function TournamentBracketPanel({
                     match.status === "in_progress" &&
                     !isTerminalMatchStatus(match.status);
 
+                  const isYourReadyMatch =
+                    playerBracketState.readyMatch?.id === match.id;
+
+                  const actionUnavailableReason = getParticipantActionReason({
+                    isParticipant,
+                    tournamentInProgress,
+                    match,
+                    playable,
+                    canEnterMatch,
+                    canJoinMatch,
+                  });
+
                   const isFinal = isFinalRound;
                   const isCompletedFinal =
                     isFinal &&
@@ -175,10 +347,10 @@ export default function TournamentBracketPanel({
                   return (
                     <li
                       key={match.id}
-                      className={getMatchCardClasses(match.status, {
+                      className={`${getMatchCardClasses(match.status, {
                         isParticipant,
                         isFinal,
-                      })}
+                      })}${isYourReadyMatch ? " ring-2 ring-amber-400/70" : ""}`}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-2">
@@ -240,11 +412,11 @@ export default function TournamentBracketPanel({
                         </p>
                       ) : isWalkoverBye ? (
                         <p className="mt-2 text-xs text-zinc-500">
-                          Advanced by BYE — no match required.
+                          Advanced by Free Pass — no match required.
                         </p>
                       ) : isBye ? (
                         <p className="mt-2 text-xs text-zinc-500">
-                          BYE — no match required for this slot.
+                          Free Pass — no match required for this slot.
                         </p>
                       ) : null}
 
@@ -268,12 +440,19 @@ export default function TournamentBracketPanel({
                         </p>
                       ) : null}
 
+                      {!isParticipant && actionUnavailableReason ? (
+                        <p className="mt-2 text-xs text-zinc-500">
+                          {actionUnavailableReason}
+                        </p>
+                      ) : null}
+
                       <TournamentMatchRoomAction
                         tournamentId={tournamentId}
                         match={match}
                         isParticipant={isParticipant}
                         canEnterMatch={canEnterMatch}
                         canJoinMatch={canJoinMatch}
+                        actionUnavailableReason={actionUnavailableReason}
                         onUpdated={onUpdated}
                       />
                     </li>
@@ -287,3 +466,5 @@ export default function TournamentBracketPanel({
     </section>
   );
 }
+
+

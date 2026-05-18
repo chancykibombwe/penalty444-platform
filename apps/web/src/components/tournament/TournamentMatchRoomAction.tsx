@@ -11,6 +11,7 @@ export type TournamentMatchRoomActionProps = {
   isParticipant: boolean;
   canEnterMatch: boolean;
   canJoinMatch: boolean;
+  actionUnavailableReason?: string | null;
   onUpdated?: () => void;
 };
 
@@ -20,6 +21,7 @@ export default function TournamentMatchRoomAction({
   isParticipant,
   canEnterMatch,
   canJoinMatch,
+  actionUnavailableReason = null,
   onUpdated,
 }: TournamentMatchRoomActionProps) {
   const router = useRouter();
@@ -142,6 +144,11 @@ export default function TournamentMatchRoomAction({
   }
 
   if (!canEnterMatch) {
+    if (actionUnavailableReason) {
+      return (
+        <p className="mt-3 text-xs text-amber-200/80">{actionUnavailableReason}</p>
+      );
+    }
     return null;
   }
 

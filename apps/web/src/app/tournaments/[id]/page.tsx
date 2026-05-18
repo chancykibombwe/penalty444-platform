@@ -141,6 +141,19 @@ export default function TournamentDetailPage() {
                 </p>
               ) : null}
 
+              {tournament.starts_at &&
+              (tournament.status === "registration" ||
+                tournament.status === "check_in") ? (
+                <p className="mt-4 rounded-xl border border-amber-500/25 bg-amber-950/20 px-4 py-3 text-sm text-amber-100/95">
+                  Starts automatically at{" "}
+                  {new Date(tournament.starts_at).toLocaleString(undefined, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                  . Register before the bracket opens.
+                </p>
+              ) : null}
+
               {myEntry?.status === "withdrawn" ? (
                 <p className="mt-4 rounded-xl border border-zinc-600 bg-zinc-900/80 px-4 py-3 text-sm text-zinc-300">
                   You have withdrawn from this tournament.

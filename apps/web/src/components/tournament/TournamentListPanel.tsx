@@ -441,6 +441,12 @@ export default function TournamentListPanel({
             const isHost =
               Boolean(currentUserId) &&
               currentUserId === tournament.created_by;
+            const isLive = tournament.status === "in_progress";
+            const isActiveParticipant =
+              myEntry != null &&
+              (myEntry.status === "registered" ||
+                myEntry.status === "checked_in");
+            const showLiveAccess = isLive && (isHost || isActiveParticipant);
             const isCompleted = tournament.status === "completed";
             const championUsername = resolveChampionUsername(
               tournament,
@@ -561,14 +567,43 @@ export default function TournamentListPanel({
                       View Bracket →
                     </Link>
                   ) : (
-                    <TournamentEntryActions
-                      tournament={tournament}
-                      currentUserId={currentUserId}
-                      myEntry={myEntry}
-                      registeredCount={registeredCount}
-                      onUpdated={refresh}
-                      showHostStrip
-                    />
+                    <div className="space-y-4">
+                      {showLiveAccess ? (
+                        <div className="space-y-2 rounded-xl border border-cyan-500/30 bg-cyan-950/20 px-3 py-3">
+                          {isActiveParticipant ? (
+                            <>
+                              <p className="text-sm font-semibold text-cyan-100">
+                                Your tournament is live.
+                              </p>
+                              <p className="text-xs text-zinc-400">
+                                Open the tournament page to play your bracket
+                                match.
+                              </p>
+                            </>
+                          ) : isHost ? (
+                            <p className="text-xs text-amber-200/90">
+                              Hosting — open the tournament page to manage and
+                              play bracket matches.
+                            </p>
+                          ) : null}
+                          <Link
+                            href={`/tournaments/${tournament.id}`}
+                            className="inline-flex rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2 text-sm font-bold text-zinc-950 hover:from-amber-400 hover:to-orange-500"
+                          >
+                            Open Tournament
+                          </Link>
+                        </div>
+                      ) : null}
+
+                      <TournamentEntryActions
+                        tournament={tournament}
+                        currentUserId={currentUserId}
+                        myEntry={myEntry}
+                        registeredCount={registeredCount}
+                        onUpdated={refresh}
+                        showHostStrip={isHost && !isLive}
+                      />
+                    </div>
                   )}
                 </div>
               </li>
@@ -579,3 +614,4 @@ export default function TournamentListPanel({
     </section>
   );
 }
+
