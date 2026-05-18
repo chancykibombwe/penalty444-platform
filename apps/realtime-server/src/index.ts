@@ -33,7 +33,7 @@ import {
   clearRoomTimer,
   startRoundTimer,
 } from "./gameplay/timers";
-import { cleanUsername, normalizeRoomCode } from "./room/codes";
+import { normalizeRoomCode } from "./room/codes";
 import {
   bindRoomLifecycle,
   clearPlayerActiveRoom,
@@ -55,6 +55,10 @@ import {
   registerRankedHandlers,
   removeRankedQueueEntryBySocketId,
 } from "./socket/ranked";
+import {
+  bindRoomSocketHandlers,
+  registerRoomSocketHandlers,
+} from "./socket/rooms";
 import {
   bindStakesSocketServer,
   getStakeAmount,
@@ -910,6 +914,20 @@ bindRankedHandlers({
   getTrackedActiveRoom,
 });
 
+bindRoomSocketHandlers({
+  io,
+  createRoomWithPlayers,
+  getTrackedActiveRoom,
+  playerIsBusyInDifferentRoom,
+  setPlayerActiveRoom,
+  clearPlayerActiveRoom,
+  isTournamentRoom,
+  isPlayerAllowedInTournamentRoom,
+  emitRoomUpdate,
+  emitMatchState,
+  startRoundTimer,
+});
+
 function resetRoomForRematch(roomCode: string, room: Room) {
   if (isTournamentRoom(room)) {
     return;
@@ -968,198 +986,7 @@ io.on("connection", (socket) => {
 
   registerPublicOfferHandlers(socket);
   registerRankedHandlers(socket);
-
-  socket.on(
-    "activeRoom:clear",
-    ({ playerId }: { playerId?: string }) => {
-      try {
-        if (typeof playerId !== "string" || !playerId.trim()) {
-          socket.emit("activeRoom:clear:error", {
-            message:
-              "Player ID is missing. Unable to clear stale active room.",
-          });
-          return;
-        }
-
-        const normalizedPlayerId = playerId.trim();
-
-        clearPlayerActiveRoom(normalizedPlayerId);
-
-        socket.emit("activeRoom:cleared", {
-          message:
-            "Your stale active-room entry was cleared locally. Wallet stakes were not modified. You can create or join a match again.",
-        });
-      } catch (error) {
-        console.error("activeRoom:clear crashed:", error);
-
-        socket.emit("activeRoom:clear:error", {
-          message:
-            error instanceof Error
-              ? error.message
-              : "Something went wrong while clearing stale active room.",
-        });
-      }
-    }
-  );
-
-  socket.on(
-    "room:create",
-    ({
-      playerId,
-      username,
-    }: {
-      playerId: string;
-      username?: string;
-    }) => {
-      const busyRoomCode = getTrackedActiveRoom(playerId);
-
-      if (busyRoomCode) {
-        socket.emit("error:message", {
-          message: `You are already in an active room (${busyRoomCode}). Finish or leave that match first.`,
-        });
-        return;
-      }
-
-      const playerName = cleanUsername(username);
-
-      const { code } = createRoomWithPlayers(
-        [
-          {
-            playerId,
-            socketId: socket.id,
-            username: playerName,
-          },
-        ],
-        3,
-        "private",
-        "Free"
-      );
-
-      setPlayerActiveRoom(playerId, code);
-
-      socket.emit("room:created", {
-        roomCode: code,
-      });
-
-      socket.emit("room:joined", {
-        roomCode: code,
-      });
-    }
-  );
-
-  socket.on(
-    "room:join",
-    ({
-      roomCode,
-      playerId,
-      username,
-    }: {
-      roomCode: string;
-      playerId: string;
-      username?: string;
-    }) => {
-      const code = normalizeRoomCode(roomCode);
-      const playerName = cleanUsername(username);
-
-      if (!code) {
-        socket.emit("error:message", { message: "Room code is required" });
-        return;
-      }
-
-      const room = rooms.get(code);
-
-      if (!room) {
-        socket.emit("error:message", { message: "Room not found" });
-        return;
-      }
-
-      if (isTournamentRoom(room) && !isPlayerAllowedInTournamentRoom(room, playerId)) {
-        socket.emit("error:message", {
-          message: "You are not authorized to join this tournament match.",
-        });
-        return;
-      }
-
-      const existingPlayer = room.players.find(
-        (player) => player.playerId === playerId
-      );
-
-      if (existingPlayer) {
-        existingPlayer.socketId = socket.id;
-        existingPlayer.username = playerName;
-
-        setPlayerActiveRoom(playerId, code);
-
-        if (room.disconnectedPlayerId === playerId) {
-          if (room.disconnectForfeitTimeout) {
-            clearTimeout(room.disconnectForfeitTimeout);
-            room.disconnectForfeitTimeout = undefined;
-          }
-
-          room.disconnectedPlayerId = undefined;
-          room.disconnectedAt = undefined;
-
-          io.to(code).emit("match:status", {
-            message: "Opponent reconnected. Match continues.",
-            phase: room.phase,
-            suddenDeathRound: room.suddenDeathRound,
-          });
-
-          // Keep reconnect logic simple: always restart the round timer.
-          startRoundTimer(code, room);
-        }
-
-        socket.join(code);
-        socket.emit("room:joined", { roomCode: code });
-
-        emitRoomUpdate(code, room);
-        emitMatchState(code, room);
-        return;
-      }
-
-      const busyDifferentRoomCode = playerIsBusyInDifferentRoom(playerId, code);
-
-      if (busyDifferentRoomCode) {
-        socket.emit("error:message", {
-          message: `You are already in another active room (${busyDifferentRoomCode}). Finish or leave that match first.`,
-        });
-        return;
-      }
-
-      if (room.matchEnded) {
-        socket.emit("error:message", {
-          message: "This match has already ended.",
-        });
-        return;
-      }
-
-      if (room.players.length >= 2) {
-        socket.emit("error:message", { message: "Room is full" });
-        return;
-      }
-
-      room.players.push({
-        playerId,
-        socketId: socket.id,
-        username: playerName,
-      });
-
-      room.roles[playerId] = "KEEPER";
-      room.scores[playerId] = 0;
-
-      setPlayerActiveRoom(playerId, code);
-
-      socket.join(code);
-      socket.emit("room:joined", { roomCode: code });
-
-      emitRoomUpdate(code, room);
-      emitMatchState(code, room);
-
-      if (room.players.length === 2) {
-        startRoundTimer(code, room);
-      }
-    }
-  );
+  registerRoomSocketHandlers(socket);
 
   socket.on(
     "match:pick",
