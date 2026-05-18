@@ -1,0 +1,16 @@
+const DEFAULT_MATCH_JOIN_MS = 15 * 60 * 1000;
+
+function parsePositiveInt(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+/** Deadline for both players to open a ready match (env override: TOURNAMENT_MATCH_JOIN_MS). */
+export const TOURNAMENT_MATCH_JOIN_MS =
+  parsePositiveInt(process.env.TOURNAMENT_MATCH_JOIN_MS) ?? DEFAULT_MATCH_JOIN_MS;
+
+/** ISO timestamp when a ready match must be opened by (now + join window). */
+export function computePlayBy(now: Date = new Date()): string {
+  return new Date(now.getTime() + TOURNAMENT_MATCH_JOIN_MS).toISOString();
+}

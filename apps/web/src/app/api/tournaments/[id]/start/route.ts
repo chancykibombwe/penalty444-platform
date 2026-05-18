@@ -1,13 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  bracketSlotKey,
-  generateSingleEliminationBracket,
-  getParentSlot,
-  getTotalRounds,
-  isPowerOfTwo,
-} from "@/lib/tournament/bracket";
+import { startTournament } from "@/lib/tournament/startTournament";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -44,24 +37,6 @@ async function authenticateUser(accessToken: string) {
   return { user: data.user, error: null };
 }
 
-async function rollbackTournamentBracket(
-  admin: ReturnType<typeof createAdminClient>,
-  tournamentId: string
-): Promise<void> {
-  const { error } = await admin
-    .from("tournament_matches")
-    .delete()
-    .eq("tournament_id", tournamentId);
-
-  if (error) {
-    console.error(
-      `[tournament start] bracket rollback failed for ${tournamentId}:`,
-      error.message
-    );
-    throw new Error(error.message);
-  }
-}
-
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { id: tournamentId } = await context.params;
@@ -86,236 +61,29 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const admin = createAdminClient();
+    const result = await startTournament({
+      tournamentId,
+      requestedByUserId: user.id,
+      requireCreator: true,
+      source: "manual",
+    });
 
-    const { data: tournament, error: tournamentError } = await admin
-      .from("tournaments")
-      .select("id, created_by, status")
-      .eq("id", tournamentId)
-      .maybeSingle();
-
-    if (tournamentError) {
-      return NextResponse.json(
-        { error: tournamentError.message },
-        { status: 500 }
-      );
-    }
-
-    if (!tournament) {
-      return NextResponse.json(
-        { error: "Tournament not found." },
-        { status: 404 }
-      );
-    }
-
-    if (tournament.created_by !== user.id) {
-      return NextResponse.json(
-        { error: "Only the tournament creator can start the bracket." },
-        { status: 403 }
-      );
-    }
-
-    if (tournament.status !== "check_in") {
-      return NextResponse.json(
-        { error: "Tournament must be in check-in status before starting." },
-        { status: 409 }
-      );
-    }
-
-    const { count: existingMatchCount, error: matchCountError } = await admin
-      .from("tournament_matches")
-      .select("id", { count: "exact", head: true })
-      .eq("tournament_id", tournamentId);
-
-    if (matchCountError) {
-      return NextResponse.json(
-        { error: matchCountError.message },
-        { status: 500 }
-      );
-    }
-
-    if ((existingMatchCount ?? 0) > 0) {
-      return NextResponse.json(
-        { error: "Bracket already exists for this tournament." },
-        { status: 409 }
-      );
-    }
-
-    const { data: checkedInRows, error: entriesError } = await admin
-      .from("tournament_entries")
-      .select("id, checked_in_at")
-      .eq("tournament_id", tournamentId)
-      .eq("status", "checked_in")
-      .order("checked_in_at", { ascending: true });
-
-    if (entriesError) {
-      return NextResponse.json({ error: entriesError.message }, { status: 500 });
-    }
-
-    const checkedInCount = checkedInRows?.length ?? 0;
-
-    if (checkedInCount < 2) {
+    if (!result.ok) {
       return NextResponse.json(
         {
-          error:
-            "At least 2 checked-in players are required to start the bracket.",
+          error: result.error,
+          ...(result.rollbackFailed ? { rollbackFailed: true } : {}),
+          ...(result.detail ? { detail: result.detail } : {}),
         },
-        { status: 400 }
-      );
-    }
-
-    if (!isPowerOfTwo(checkedInCount)) {
-      return NextResponse.json(
-        {
-          error: `Need a power-of-two number of checked-in players (2, 4, 8, …). Currently: ${checkedInCount}.`,
-        },
-        { status: 400 }
-      );
-    }
-
-    const entryIds = (checkedInRows ?? []).map((row) => row.id);
-
-    let drafts;
-    try {
-      drafts = generateSingleEliminationBracket(entryIds);
-    } catch (error) {
-      return NextResponse.json(
-        {
-          error:
-            error instanceof Error
-              ? error.message
-              : "Bracket generation failed.",
-        },
-        { status: 400 }
-      );
-    }
-
-    const { data: insertedRows, error: insertError } = await admin
-      .from("tournament_matches")
-      .insert(
-        drafts.map((draft) => ({
-          tournament_id: tournamentId,
-          round_number: draft.round_number,
-          slot_index: draft.slot_index,
-          entry_one_id: draft.entry_one_id,
-          entry_two_id: draft.entry_two_id,
-          status: draft.status,
-        }))
-      )
-      .select("id, round_number, slot_index");
-
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 });
-    }
-
-    if (!insertedRows?.length) {
-      return NextResponse.json(
-        { error: "No bracket rows were created." },
-        { status: 500 }
-      );
-    }
-
-    const idBySlot = new Map<string, string>();
-    for (const row of insertedRows) {
-      idBySlot.set(bracketSlotKey(row.round_number, row.slot_index), row.id);
-    }
-
-    const totalRounds = getTotalRounds(checkedInCount);
-
-    for (const draft of drafts) {
-      if (draft.round_number >= totalRounds) continue;
-
-      const parent = getParentSlot(draft.round_number, draft.slot_index);
-      const parentId = idBySlot.get(
-        bracketSlotKey(parent.round_number, parent.slot_index)
-      );
-      const matchId = idBySlot.get(
-        bracketSlotKey(draft.round_number, draft.slot_index)
-      );
-
-      if (!parentId || !matchId) {
-        try {
-          await rollbackTournamentBracket(admin, tournamentId);
-        } catch (rollbackError) {
-          return NextResponse.json(
-            {
-              error:
-                "Failed to link bracket rounds and bracket rollback also failed. The tournament may be stuck with a partial bracket.",
-              rollbackFailed: true,
-              detail:
-                rollbackError instanceof Error
-                  ? rollbackError.message
-                  : undefined,
-            },
-            { status: 500 }
-          );
-        }
-        return NextResponse.json(
-          {
-            error: "Failed to link bracket rounds. Bracket was rolled back.",
-          },
-          { status: 500 }
-        );
-      }
-
-      const { error: linkError } = await admin
-        .from("tournament_matches")
-        .update({ next_match_id: parentId })
-        .eq("id", matchId);
-
-      if (linkError) {
-        try {
-          await rollbackTournamentBracket(admin, tournamentId);
-        } catch (rollbackError) {
-          return NextResponse.json(
-            {
-              error:
-                "Failed to link bracket rounds and bracket rollback also failed. The tournament may be stuck with a partial bracket.",
-              rollbackFailed: true,
-              detail:
-                rollbackError instanceof Error
-                  ? rollbackError.message
-                  : undefined,
-            },
-            { status: 500 }
-          );
-        }
-        return NextResponse.json(
-          {
-            error: `Failed to link bracket rounds. Bracket was rolled back. ${linkError.message}`,
-          },
-          { status: 500 }
-        );
-      }
-    }
-
-    const { data: updatedTournament, error: statusError } = await admin
-      .from("tournaments")
-      .update({ status: "in_progress" })
-      .eq("id", tournamentId)
-      .eq("status", "check_in")
-      .select("id")
-      .maybeSingle();
-
-    if (statusError) {
-      return NextResponse.json({ error: statusError.message }, { status: 500 });
-    }
-
-    if (!updatedTournament) {
-      return NextResponse.json(
-        {
-          error:
-            "Bracket was created but tournament status could not be updated. It may have already started.",
-        },
-        { status: 409 }
+        { status: result.status }
       );
     }
 
     return NextResponse.json({
       ok: true,
-      tournamentId,
-      matchCount: insertedRows.length,
-      playerCount: checkedInCount,
+      tournamentId: result.tournamentId,
+      matchCount: result.matchCount,
+      playerCount: result.playerCount,
     });
   } catch (error) {
     console.error("POST /api/tournaments/[id]/start failed:", error);

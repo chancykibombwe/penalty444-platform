@@ -1,4 +1,5 @@
 import type { TournamentEntryRow } from "../../components/tournament/TournamentListPanel";
+import { isByeMatch, isByeSlot, isVoidMatchStatus } from "./bracket";
 
 export function formatMatchStatus(status: string): string {
   switch (status) {
@@ -12,6 +13,8 @@ export function formatMatchStatus(status: string): string {
       return "Completed";
     case "walkover":
       return "Walkover";
+    case "void":
+      return "No winner";
     case "cancelled":
       return "Cancelled";
     default:
@@ -36,6 +39,25 @@ export function entryLabel(
   if (!entryId) return "TBD";
   const entry = entryById.get(entryId);
   return entry?.username ?? "Unknown";
+}
+
+/**
+ * Side label for bracket display: player name, BYE (null vs opponent), or TBD.
+ */
+export function matchEntrySideLabel(
+  entryOneId: string | null,
+  entryTwoId: string | null,
+  entryById: Map<string, TournamentEntryRow>,
+  side: 1 | 2
+): string {
+  const entryId = side === 1 ? entryOneId : entryTwoId;
+  if (entryId) {
+    return entryLabel(entryId, entryById);
+  }
+  if (isByeSlot(entryOneId, entryTwoId, side)) {
+    return "BYE";
+  }
+  return "TBD";
 }
 
 export function getMatchCardClasses(
@@ -67,6 +89,9 @@ export function getMatchCardClasses(
     case "walkover":
       classes.push("border-emerald-500/20 bg-emerald-950/10");
       break;
+    case "void":
+      classes.push("border-zinc-600/50 bg-zinc-900/60");
+      break;
     case "cancelled":
       classes.push("border-red-500/35 bg-red-950/20");
       break;
@@ -94,6 +119,20 @@ export function isTerminalMatchStatus(status: string) {
   return (
     status === "completed" ||
     status === "walkover" ||
+    status === "void" ||
     status === "cancelled"
   );
+}
+
+export function isVoidMatch(status: string): boolean {
+  return isVoidMatchStatus(status);
+}
+
+/** Walkover caused by a round-1 BYE (one null side). */
+export function isWalkoverByeMatch(
+  entryOneId: string | null,
+  entryTwoId: string | null,
+  status: string
+): boolean {
+  return status === "walkover" && isByeMatch(entryOneId, entryTwoId);
 }

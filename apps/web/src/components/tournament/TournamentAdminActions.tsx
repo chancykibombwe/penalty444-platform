@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase/client";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
-import { isPowerOfTwo } from "../../lib/tournament/bracket";
 import type { TournamentEntryRow, TournamentRow } from "./TournamentListPanel";
 
 const CANCELLABLE_STATUSES = new Set(["draft", "registration", "check_in"]);
+const STARTABLE_STATUSES = new Set(["registration", "check_in"]);
 
 type TournamentAdminActionsProps = {
   tournament: TournamentRow;
@@ -25,6 +25,38 @@ export default function TournamentAdminActions({
 }: TournamentAdminActionsProps) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [registeredEntryCount, setRegisteredEntryCount] = useState<number | null>(
+    null
+  );
+
+  const readyCount = checkedInEntries.length;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadActiveEntryCount() {
+      const { count, error } = await supabase
+        .from("tournament_entries")
+        .select("id", { count: "exact", head: true })
+        .eq("tournament_id", tournament.id)
+        .in("status", ["registered", "checked_in"]);
+
+      if (cancelled) return;
+
+      if (error) {
+        setRegisteredEntryCount(null);
+        return;
+      }
+
+      setRegisteredEntryCount(count ?? 0);
+    }
+
+    void loadActiveEntryCount();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tournament.id, tournament.status]);
 
   if (!currentUserId || currentUserId !== tournament.created_by) {
     return null;
@@ -32,15 +64,16 @@ export default function TournamentAdminActions({
 
   const isCancelled = tournament.status === "cancelled";
   const canCancel = CANCELLABLE_STATUSES.has(tournament.status);
-  const isCheckInPhase = tournament.status === "check_in";
-  const readyCount = checkedInEntries.length;
-  const countIsValid = isPowerOfTwo(readyCount);
+  const isStartablePhase = STARTABLE_STATUSES.has(tournament.status);
+  const activeCount = registeredEntryCount ?? 0;
+  const withinCapacity = activeCount <= tournament.max_players;
   const canStart =
     !isCancelled &&
-    isCheckInPhase &&
+    isStartablePhase &&
     existingMatchCount === 0 &&
-    readyCount >= 2 &&
-    countIsValid;
+    registeredEntryCount !== null &&
+    activeCount >= 2 &&
+    withinCapacity;
 
   const showActions =
     !isCancelled && (canStart || canCancel) && tournament.status !== "completed";
@@ -95,6 +128,7 @@ export default function TournamentAdminActions({
       const payload = (await response.json().catch(() => null)) as {
         error?: string;
         matchCount?: number;
+        playerCount?: number;
       } | null;
 
       if (!response.ok) {
@@ -104,7 +138,11 @@ export default function TournamentAdminActions({
 
       setMessage(
         payload?.matchCount
-          ? `Bracket is Live. ${payload.matchCount} slots created.`
+          ? `Bracket is Live. ${payload.matchCount} slots created${
+              payload.playerCount
+                ? ` for ${payload.playerCount} registered players.`
+                : "."
+            }`
           : "Bracket is Live."
       );
       onUpdated();
@@ -173,20 +211,32 @@ export default function TournamentAdminActions({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-amber-100">Creator</h2>
         <p className="text-xs text-zinc-400">
+          <span className="text-zinc-500">Registered</span>{" "}
+          <span className="font-semibold text-white">
+            {registeredEntryCount === null ? "…" : activeCount}
+          </span>
+          <span className="mx-1.5 text-zinc-600">·</span>
           <span className="text-zinc-500">Ready</span>{" "}
           <span className="font-semibold text-white">{readyCount}</span>
+          <span className="text-zinc-500"> (optional)</span>
           <span className="mx-1.5 text-zinc-600">·</span>
           <span className="text-zinc-500">Bracket slots</span>{" "}
           <span className="font-semibold text-white">{existingMatchCount}</span>
-          {!countIsValid && readyCount > 0 ? (
-            <span className="text-red-300"> (need 2, 4, 8…)</span>
+          {registeredEntryCount !== null && activeCount > 0 && !withinCapacity ? (
+            <span className="text-red-300">
+              {" "}
+              (over max {tournament.max_players})
+            </span>
+          ) : registeredEntryCount !== null && activeCount < 2 ? (
+            <span className="text-red-300"> (need at least 2 registered)</span>
           ) : null}
         </p>
       </div>
 
       <p className="mt-1 text-xs text-zinc-500">
-        Start when players are Ready in a power-of-two field, or cancel before
-        Live.
+        Start uses registered players only (withdrawn are excluded). Ready is
+        optional and does not affect seeding. BYEs fill open slots up to the{" "}
+        {tournament.max_players}-player bracket.
       </p>
 
       <div className="mt-3 flex flex-wrap gap-2">

@@ -1,13 +1,22 @@
 "use client";
 
 import { useMemo } from "react";
-import { getRoundLabel, getTotalRounds } from "../../lib/tournament/bracket";
+import {
+  canMatchBePlayed,
+  getBracketSizeFromRoundOneMatchCount,
+  getRoundLabel,
+  getTotalRounds,
+  isByeMatch,
+  isVoidMatchStatus,
+} from "../../lib/tournament/bracket";
 import {
   bracketSectionClass,
   entryLabel,
   formatMatchStatus,
   getMatchCardClasses,
   isTerminalMatchStatus,
+  isWalkoverByeMatch,
+  matchEntrySideLabel,
 } from "../../lib/tournament/matchDisplay";
 import type { TournamentEntryRow } from "./TournamentListPanel";
 import TournamentMatchRoomAction from "./TournamentMatchRoomAction";
@@ -72,7 +81,7 @@ export default function TournamentBracketPanel({
     rounds.find((round) => round.roundNumber === 1)?.matches.length ?? 0;
   const totalRounds =
     roundOneMatchCount > 0
-      ? getTotalRounds(roundOneMatchCount * 2)
+      ? getTotalRounds(getBracketSizeFromRoundOneMatchCount(roundOneMatchCount))
       : 0;
 
   const tournamentInProgress = tournamentStatus === "in_progress";
@@ -131,20 +140,27 @@ export default function TournamentBracketPanel({
                     (entryOne?.user_id === currentUserId ||
                       entryTwo?.user_id === currentUserId);
 
-                  const bothPlayersAssigned =
-                    Boolean(match.entry_one_id) &&
-                    Boolean(match.entry_two_id);
+                  const playable = canMatchBePlayed(match);
+                  const isVoid = isVoidMatchStatus(match.status);
+                  const isWalkoverBye = isWalkoverByeMatch(
+                    match.entry_one_id,
+                    match.entry_two_id,
+                    match.status
+                  );
+                  const isBye =
+                    isWalkoverBye ||
+                    isByeMatch(match.entry_one_id, match.entry_two_id);
 
                   const canEnterMatch =
                     tournamentInProgress &&
-                    bothPlayersAssigned &&
+                    playable &&
                     !match.winner_entry_id &&
                     !match.room_code &&
                     match.status === "ready";
 
                   const canJoinMatch =
                     tournamentInProgress &&
-                    bothPlayersAssigned &&
+                    playable &&
                     !match.winner_entry_id &&
                     Boolean(match.room_code) &&
                     match.status === "in_progress" &&
@@ -194,7 +210,12 @@ export default function TournamentBracketPanel({
                               : "text-white"
                           }`}
                         >
-                          {entryLabel(match.entry_one_id, entryById)}
+                          {matchEntrySideLabel(
+                            match.entry_one_id,
+                            match.entry_two_id,
+                            entryById,
+                            1
+                          )}
                         </p>
                         <p className="text-xs text-zinc-500">vs</p>
                         <p
@@ -204,9 +225,28 @@ export default function TournamentBracketPanel({
                               : "text-white"
                           }`}
                         >
-                          {entryLabel(match.entry_two_id, entryById)}
+                          {matchEntrySideLabel(
+                            match.entry_one_id,
+                            match.entry_two_id,
+                            entryById,
+                            2
+                          )}
                         </p>
                       </div>
+
+                      {isVoid ? (
+                        <p className="mt-2 text-xs text-zinc-400">
+                          Void — both players absent; no winner from this match.
+                        </p>
+                      ) : isWalkoverBye ? (
+                        <p className="mt-2 text-xs text-zinc-500">
+                          Advanced by BYE — no match required.
+                        </p>
+                      ) : isBye ? (
+                        <p className="mt-2 text-xs text-zinc-500">
+                          BYE — no match required for this slot.
+                        </p>
+                      ) : null}
 
                       {isCompletedFinal ? (
                         <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-emerald-300/90">
@@ -221,7 +261,7 @@ export default function TournamentBracketPanel({
 
                       {match.status === "ready" &&
                       !match.room_code &&
-                      bothPlayersAssigned &&
+                      playable &&
                       !isParticipant ? (
                         <p className="mt-2 text-xs text-amber-200/80">
                           Ready — waiting for players to enter match

@@ -33,7 +33,6 @@ import {
   clearRoomTimer,
   startRoundTimer,
 } from "./gameplay/timers";
-import { normalizeRoomCode } from "./room/codes";
 import {
   bindRoomLifecycle,
   clearPlayerActiveRoom,
@@ -59,6 +58,7 @@ import {
   bindMatchActionHandlers,
   registerMatchActionHandlers,
 } from "./socket/matchActions";
+import { bindRematchHandlers, registerRematchHandlers } from "./socket/rematch";
 import {
   bindRoomSocketHandlers,
   registerRoomSocketHandlers,
@@ -939,50 +939,13 @@ bindMatchActionHandlers({
   isTournamentRoom,
 });
 
-function resetRoomForRematch(roomCode: string, room: Room) {
-  if (isTournamentRoom(room)) {
-    return;
-  }
-
-  clearRoomTimer(room);
-
-  room.isResolving = false;
-
-  room.matchInstance = (room.matchInstance ?? 1) + 1;
-
-  room.picks = {};
-  room.round = 1;
-  room.phase = "NORMAL";
-  room.suddenDeathRound = 0;
-  room.matchEnded = false;
-  room.matchStartedAt = undefined;
-  room.rematchVotes = [];
-  room.resultSaved = false;
-  room.stakeSettled = room.stakeAmount > 0;
-  room.scores = {};
-  room.disconnectedPlayerId = undefined;
-  room.disconnectedAt = undefined;
-  room.disconnectForfeitTimeout = undefined;
-
-  const first = room.players[0];
-  const second = room.players[1];
-
-  if (first) {
-    room.roles[first.playerId] = "KICKER";
-    room.scores[first.playerId] = 0;
-    setPlayerActiveRoom(first.playerId, roomCode);
-  }
-
-  if (second) {
-    room.roles[second.playerId] = "KEEPER";
-    room.scores[second.playerId] = 0;
-    setPlayerActiveRoom(second.playerId, roomCode);
-  }
-
-  emitRoomUpdate(roomCode, room);
-  emitMatchState(roomCode, room);
-  startRoundTimer(roomCode, room);
-}
+bindRematchHandlers({
+  io,
+  startRoundTimer,
+  emitMatchState,
+  emitRoomUpdate,
+  isTournamentRoom,
+});
 
 io.on("connection", (socket) => {
   console.log(
@@ -999,89 +962,7 @@ io.on("connection", (socket) => {
   registerRankedHandlers(socket);
   registerRoomSocketHandlers(socket);
   registerMatchActionHandlers(socket);
-
-  socket.on(
-    "match:rematch",
-    ({
-      roomCode,
-      playerId,
-    }: {
-      roomCode: string;
-      playerId: string;
-    }) => {
-      const code = normalizeRoomCode(roomCode);
-      const room = rooms.get(code);
-
-      if (!room) return;
-      if (!room.matchEnded) return;
-
-      if (isTournamentRoom(room)) {
-        socket.emit("error:message", {
-          message: "Tournament matches do not allow rematches.",
-        });
-        return;
-      }
-
-      if (room.stakeAmount > 0) {
-        socket.emit("error:message", {
-          message:
-            "Staked rematch is not enabled yet. Return to lobby and create a new offer.",
-        });
-        return;
-      }
-
-      if (!room.rematchVotes.includes(playerId)) {
-        room.rematchVotes.push(playerId);
-      }
-
-      io.to(code).emit("match:rematch:update", {
-        votes: room.rematchVotes.length,
-        required: room.players.length,
-        lastRequesterId: playerId,
-      });
-
-      if (room.players.length === 2 && room.rematchVotes.length === 2) {
-        io.to(code).emit("match:rematch:accepted");
-        resetRoomForRematch(code, room);
-      }
-    }
-  );
-
-  socket.on(
-    "match:rematch:decline",
-    ({
-      roomCode,
-      playerId,
-    }: {
-      roomCode: string;
-      playerId: string;
-    }) => {
-      const code = normalizeRoomCode(roomCode);
-      const room = rooms.get(code);
-
-      if (!room) return;
-      if (!room.matchEnded) return;
-
-      if (isTournamentRoom(room)) {
-        socket.emit("error:message", {
-          message: "Tournament matches do not allow rematches.",
-        });
-        return;
-      }
-
-      room.rematchVotes = [];
-
-      io.to(code).emit("match:rematch:update", {
-        votes: 0,
-        required: room.players.length,
-        lastRequesterId: null,
-      });
-
-      io.to(code).emit("match:rematch:declined", {
-        declinedBy: playerId,
-      });
-    }
-  );
+  registerRematchHandlers(socket);
 
   socket.on("disconnect", async (reason) => {
     console.log(
