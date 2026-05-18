@@ -7,6 +7,7 @@ import {
   getTotalRounds,
 } from "@/lib/tournament/bracket";
 import { computePlayBy } from "@/lib/tournament/deadlines";
+import { autoCreateRealtimeRoomsForReadyMatches } from "@/lib/tournament/realtimeRooms";
 
 export type StartTournamentSource = "manual" | "scheduled";
 
@@ -79,7 +80,7 @@ export async function startTournament({
 
   const { data: tournament, error: tournamentError } = await admin
     .from("tournaments")
-    .select("id, created_by, status, max_players")
+    .select("id, created_by, status, max_players, rounds_per_match")
     .eq("id", tournamentId)
     .maybeSingle();
 
@@ -299,6 +300,13 @@ export async function startTournament({
     matchCount: insertedRows.length,
     playerCount: activeCount,
     bracketSize,
+  });
+
+  await autoCreateRealtimeRoomsForReadyMatches({
+    admin,
+    tournamentId,
+    maxRounds: tournament.rounds_per_match ?? undefined,
+    logPrefix: `${logPrefix} rooms`,
   });
 
   return {

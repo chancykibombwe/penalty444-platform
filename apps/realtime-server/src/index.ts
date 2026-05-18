@@ -10,6 +10,8 @@ import {
   RESULT_REVEAL_PAUSE_MS,
   supabase,
 } from "./config";
+
+const TOURNAMENT_ROUND_CONTINUATION_MS = 1200;
 import {
   playerActiveRooms,
   publicOffers,
@@ -71,6 +73,14 @@ import {
   settleStakes,
   unlockStake,
 } from "./wallet/stakes";
+import {
+  emitTournamentMatchReady,
+  getRealtimeRegistryStats,
+  registerPlayerSocket,
+  subscribeSocketToTournament,
+  unsubscribeSocketFromTournament,
+  unregisterSocket,
+} from "./tournament/realtimeRegistry";
 
 export { createTournamentRoom } from "./room/lifecycle";
 import type {
@@ -122,6 +132,7 @@ app.post("/internal/tournament-rooms", (req, res) => {
       tournamentId?: string;
       tournamentMatchId?: string;
       allowedPlayerIds?: string[];
+      notifyPlayerIds?: string[];
       maxRounds?: number;
     };
 
@@ -133,6 +144,13 @@ app.post("/internal/tournament-rooms", (req, res) => {
         : "";
     const allowedPlayerIds = Array.isArray(body.allowedPlayerIds)
       ? body.allowedPlayerIds
+      : [];
+    const notifyPlayerIds = Array.isArray(body.notifyPlayerIds)
+      ? body.notifyPlayerIds
+          .filter(
+            (id): id is string => typeof id === "string" && id.trim().length > 0
+          )
+          .map((id) => id.trim())
       : [];
     const maxRounds =
       typeof body.maxRounds === "number" && body.maxRounds > 0
@@ -146,8 +164,26 @@ app.post("/internal/tournament-rooms", (req, res) => {
       return;
     }
 
+    const notifyPlayers = (roomCode: string, existing: boolean) => {
+      if (notifyPlayerIds.length === 0) {
+        return;
+      }
+
+      emitTournamentMatchReady(io, {
+        tournamentId,
+        tournamentMatchId,
+        roomCode,
+        playerIds: notifyPlayerIds,
+      });
+
+      console.log(
+        `[tournament-registry] tournament:matchReady tournamentId=${tournamentId} matchId=${tournamentMatchId} roomCode=${roomCode} existing=${existing} players=${notifyPlayerIds.length}`
+      );
+    };
+
     const existingCode = tournamentMatchRooms.get(tournamentMatchId);
     if (existingCode && rooms.has(existingCode)) {
+      notifyPlayers(existingCode, true);
       res.json({ roomCode: existingCode, existing: true });
       return;
     }
@@ -167,6 +203,7 @@ app.post("/internal/tournament-rooms", (req, res) => {
 
       tournamentMatchRooms.set(tournamentMatchId, code);
 
+      notifyPlayers(code, false);
       res.json({ roomCode: code, existing: false });
     } catch (error) {
       console.error("POST /internal/tournament-rooms failed:", error);
@@ -181,6 +218,8 @@ app.post("/internal/tournament-rooms", (req, res) => {
 );
 
 app.get("/health", (_req, res) => {
+  const realtimeRegistry = getRealtimeRegistryStats();
+
   res.json({
     ok: true,
     service: "penalty444-realtime-server",
@@ -190,6 +229,10 @@ app.get("/health", (_req, res) => {
     rankedQueue: rankedQueue.size,
     activePlayers: playerActiveRooms.size,
     connectedSockets: io.engine.clientsCount,
+    registeredPlayers: realtimeRegistry.registeredPlayers,
+    registeredPlayerSockets: realtimeRegistry.registeredPlayerSockets,
+    subscribedTournaments: realtimeRegistry.subscribedTournaments,
+    tournamentSubscriberSockets: realtimeRegistry.tournamentSubscriberSockets,
   });
 });
 
@@ -245,6 +288,7 @@ function emitMatchState(roomCode: string, room: Room) {
     earlyCancelDeadlineAt,
     matchInstance: room.matchInstance ?? 1,
     matchType: room.matchType,
+    tournamentId: isTournamentRoom(room) ? room.tournamentId : undefined,
   });
 }
 
@@ -695,6 +739,7 @@ function endMatch(roomCode: string, room: Room) {
 
   io.to(roomCode).emit("match:end", {
     scores: room.scores,
+    tournamentId: isTournamentRoom(room) ? room.tournamentId : undefined,
   });
 
   emitMatchState(roomCode, room);
@@ -748,6 +793,8 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
   if (room.matchEnded) return;
   if (room.isResolving) return;
 
+  clearRoomTimer(room);
+
   const kickerPick = room.picks.KICKER;
   const keeperPick = room.picks.KEEPER;
   const result = resolveShot(kickerPick, keeperPick);
@@ -760,8 +807,6 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
       room.scores[pointWinnerId] = (room.scores[pointWinnerId] || 0) + 1;
     }
   }
-
-  clearRoomTimer(room);
 
   let statusMessage = "";
 
@@ -788,6 +833,11 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
     clearTimeout(room.resolveContinuationTimeout);
     room.resolveContinuationTimeout = undefined;
   }
+
+  const continuationPauseMs =
+    isTournamentRoom(room) && !fromTimeout
+      ? TOURNAMENT_ROUND_CONTINUATION_MS
+      : RESULT_REVEAL_PAUSE_MS;
 
   room.resolveContinuationTimeout = setTimeout(() => {
     room.resolveContinuationTimeout = undefined;
@@ -881,7 +931,7 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
     } finally {
       r.isResolving = false;
     }
-  }, RESULT_REVEAL_PAUSE_MS);
+  }, continuationPauseMs);
 }
 
 bindRoundTimers({
@@ -964,9 +1014,56 @@ io.on("connection", (socket) => {
   registerMatchActionHandlers(socket);
   registerRematchHandlers(socket);
 
+  socket.on(
+    "player:register",
+    ({ playerId }: { playerId?: string }) => {
+      if (typeof playerId !== "string" || playerId.trim().length === 0) {
+        return;
+      }
+
+      registerPlayerSocket(playerId, socket.id);
+      console.log(
+        `[tournament-registry] player:register playerId=${playerId.trim()} socketId=${socket.id}`
+      );
+    }
+  );
+
+  socket.on(
+    "tournament:subscribe",
+    ({ tournamentId }: { tournamentId?: string }) => {
+      if (typeof tournamentId !== "string" || tournamentId.trim().length === 0) {
+        return;
+      }
+
+      subscribeSocketToTournament(tournamentId, socket.id);
+      console.log(
+        `[tournament-registry] tournament:subscribe tournamentId=${tournamentId.trim()} socketId=${socket.id}`
+      );
+    }
+  );
+
+  socket.on(
+    "tournament:unsubscribe",
+    ({ tournamentId }: { tournamentId?: string }) => {
+      if (typeof tournamentId !== "string" || tournamentId.trim().length === 0) {
+        return;
+      }
+
+      unsubscribeSocketFromTournament(tournamentId, socket.id);
+      console.log(
+        `[tournament-registry] tournament:unsubscribe tournamentId=${tournamentId.trim()} socketId=${socket.id}`
+      );
+    }
+  );
+
   socket.on("disconnect", async (reason) => {
     console.log(
       `Socket disconnected: ${socket.id}. reason=${reason}. Connected sockets: ${io.engine.clientsCount}`
+    );
+
+    unregisterSocket(socket.id);
+    console.log(
+      `[tournament-registry] disconnect cleanup socketId=${socket.id}`
     );
 
     removeRankedQueueEntryBySocketId(socket.id);

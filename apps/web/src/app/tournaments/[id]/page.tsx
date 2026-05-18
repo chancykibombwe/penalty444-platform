@@ -13,6 +13,7 @@ import {
 } from "../../../components/tournament/TournamentListPanel";
 import { resolveChampionName } from "../../../lib/tournament/champion";
 import { useTournamentDetailSync } from "../../../lib/tournament/useTournamentDetailSync";
+import { useTournamentRealtime } from "../../../lib/tournament/useTournamentRealtime";
 
 export default function TournamentDetailPage() {
   const params = useParams();
@@ -29,6 +30,12 @@ export default function TournamentDetailPage() {
     error,
     refresh,
   } = useTournamentDetailSync(tournamentId);
+
+  const { pendingMatchReady, matchReadyCountdown, enterPendingMatchNow } =
+    useTournamentRealtime({
+      tournamentId: tournament?.id ?? tournamentId,
+      playerId: currentUserId,
+    });
 
   const activeEntries = useMemo(
     () => entries.filter((entry) => entry.status !== "withdrawn"),
@@ -83,6 +90,29 @@ export default function TournamentDetailPage() {
           </div>
         ) : tournament ? (
           <>
+            {pendingMatchReady ? (
+              <div className="rounded-xl border-2 border-amber-400/60 bg-gradient-to-r from-amber-950/80 via-amber-900/40 to-zinc-950 px-4 py-4 shadow-lg shadow-amber-950/30">
+                <p className="text-lg font-bold text-amber-50">
+                  Your match is ready. Entering in{" "}
+                  {matchReadyCountdown ??
+                    Math.max(
+                      1,
+                      Math.ceil(pendingMatchReady.autoRouteInMs / 1000)
+                    )}
+                  …
+                </p>
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={enterPendingMatchNow}
+                    className="rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 px-5 py-3 font-black text-zinc-950 hover:from-amber-400 hover:to-orange-500"
+                  >
+                    Enter Now
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
             {tournament.status === "completed" && championName ? (
               <div className="rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-950/60 via-zinc-950 to-zinc-950 px-6 py-5 shadow-lg shadow-emerald-950/40 ring-1 ring-emerald-500/20">
                 <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-300/90">

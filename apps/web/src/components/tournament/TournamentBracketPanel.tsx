@@ -9,6 +9,8 @@ import {
   isByeMatch,
   isVoidMatchStatus,
 } from "../../lib/tournament/bracket";
+import { resolveChampionName } from "../../lib/tournament/champion";
+import type { TournamentDetailRow } from "../../lib/tournament/useTournamentDetailSync";
 import {
   bracketSectionClass,
   entryLabel,
@@ -153,12 +155,14 @@ export default function TournamentBracketPanel({
     if (!myEntryId || !myEntryActive || !tournamentInProgress) {
       return {
         readyMatch: null as TournamentMatchRow | null,
+        joinMatch: null as TournamentMatchRow | null,
         hasActivePlayableMatch: false,
         advancedByBye: false,
       };
     }
 
     let readyMatch: TournamentMatchRow | null = null;
+    let joinMatch: TournamentMatchRow | null = null;
     let hasActivePlayableMatch = false;
     let advancedByBye = false;
 
@@ -189,6 +193,10 @@ export default function TournamentBracketPanel({
         readyMatch = match;
       }
 
+      if (canJoin && !joinMatch) {
+        joinMatch = match;
+      }
+
       if (
         isWalkoverByeMatch(
           match.entry_one_id,
@@ -201,8 +209,73 @@ export default function TournamentBracketPanel({
       }
     }
 
-    return { readyMatch, hasActivePlayableMatch, advancedByBye };
+    return { readyMatch, joinMatch, hasActivePlayableMatch, advancedByBye };
   }, [matches, myEntryId, myEntryActive, tournamentInProgress]);
+
+  const championName = useMemo(() => {
+    if (tournamentStatus !== "completed") {
+      return null;
+    }
+
+    return resolveChampionName(
+      { status: tournamentStatus, winner_id: null } as unknown as TournamentDetailRow,
+      matches,
+      entries
+    );
+  }, [tournamentStatus, matches, entries]);
+
+  const participantResult = useMemo(() => {
+    if (tournamentStatus !== "completed" || !myEntryId || !myEntryActive) {
+      return null;
+    }
+
+    if (matches.length === 0) {
+      return null;
+    }
+
+    const maxRound = Math.max(...matches.map((match) => match.round_number));
+    const finalMatch =
+      matches
+        .filter((match) => match.round_number === maxRound)
+        .sort((a, b) => a.slot_index - b.slot_index)[0] ?? null;
+
+    if (!finalMatch?.winner_entry_id) {
+      return championName
+        ? { headline: "Tournament complete", detail: `Champion: ${championName}` }
+        : null;
+    }
+
+    if (finalMatch.winner_entry_id === myEntryId) {
+      return {
+        headline: "You are the champion",
+        detail: "Congratulations — you won the tournament.",
+      };
+    }
+
+    const playedFinal =
+      finalMatch.entry_one_id === myEntryId ||
+      finalMatch.entry_two_id === myEntryId;
+
+    if (playedFinal) {
+      return {
+        headline: "Runner-up",
+        detail: championName
+          ? `Champion: ${championName}`
+          : "Thanks for reaching the final.",
+      };
+    }
+
+    return {
+      headline: "Tournament complete",
+      detail: championName ? `Champion: ${championName}` : undefined,
+    };
+  }, [
+    tournamentStatus,
+    myEntryId,
+    myEntryActive,
+    matches,
+    championName,
+  ]);
 
   const sectionClass = bracketSectionClass(prominent, matches.length > 0);
   const titleClass = prominent
@@ -222,6 +295,8 @@ export default function TournamentBracketPanel({
   }
 
   const showReadyBanner = Boolean(playerBracketState.readyMatch);
+  const showJoinBanner =
+    !showReadyBanner && Boolean(playerBracketState.joinMatch);
   const showByeWaiting =
     myEntryActive &&
     tournamentInProgress &&
@@ -243,6 +318,19 @@ export default function TournamentBracketPanel({
         </p>
       </div>
 
+      {participantResult ? (
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/40 px-4 py-4">
+          <p className="text-lg font-bold text-emerald-100">
+            {participantResult.headline}
+          </p>
+          {participantResult.detail ? (
+            <p className="mt-1 text-sm text-emerald-100/80">
+              {participantResult.detail}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {showReadyBanner && playerBracketState.readyMatch ? (
         <div className="rounded-xl border-2 border-amber-400/60 bg-gradient-to-r from-amber-950/80 via-amber-900/30 to-zinc-950 px-4 py-4 shadow-lg shadow-amber-950/30">
           <p className="text-lg font-bold text-amber-50">Your match is ready</p>
@@ -262,6 +350,25 @@ export default function TournamentBracketPanel({
         </div>
       ) : null}
 
+      {showJoinBanner && playerBracketState.joinMatch ? (
+        <div className="rounded-xl border-2 border-sky-400/50 bg-sky-950/50 px-4 py-4">
+          <p className="text-lg font-bold text-sky-50">Rejoin your match</p>
+          <p className="mt-1 text-sm text-sky-100/90">
+            The match room is open — join before the deadline.
+          </p>
+          <div className="mt-3">
+            <TournamentMatchRoomAction
+              tournamentId={tournamentId}
+              match={playerBracketState.joinMatch}
+              isParticipant
+              canEnterMatch={false}
+              canJoinMatch
+              onUpdated={onUpdated}
+            />
+          </div>
+        </div>
+      ) : null}
+
       {showByeWaiting ? (
         <p className="rounded-lg border border-zinc-700 bg-zinc-900/60 px-3 py-2 text-sm text-zinc-300">
           You advanced automatically. Waiting for the next round.
@@ -269,7 +376,9 @@ export default function TournamentBracketPanel({
       ) : null}
 
       {showWaitingForNext ? (
-        <p className="text-sm text-zinc-400">Waiting for your next match.</p>
+        <p className="rounded-lg border border-zinc-700/80 bg-zinc-900/50 px-3 py-2 text-sm text-zinc-300">
+          Waiting for your next match.
+        </p>
       ) : null}
 
       <div className="flex flex-col gap-8 md:flex-row md:items-start md:gap-5 md:overflow-x-auto md:pb-2">

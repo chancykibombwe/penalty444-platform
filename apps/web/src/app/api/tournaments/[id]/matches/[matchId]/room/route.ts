@@ -5,6 +5,7 @@ import {
   recordTournamentMatchPresence,
   type TournamentEntryRef,
 } from "@/lib/tournament/presence";
+import { requestRealtimeTournamentRoom } from "@/lib/tournament/realtimeRooms";
 
 type RouteContext = {
   params: Promise<{ id: string; matchId: string }>;
@@ -46,49 +47,6 @@ async function authenticateUser(accessToken: string) {
   }
 
   return { user: data.user, error: null };
-}
-
-async function requestRealtimeTournamentRoom(payload: {
-  tournamentId: string;
-  tournamentMatchId: string;
-  allowedPlayerIds: string[];
-  maxRounds: number;
-}): Promise<{ roomCode: string; existing: boolean }> {
-  const baseUrl =
-    process.env.REALTIME_INTERNAL_URL ?? "http://localhost:4000";
-  const secret = process.env.REALTIME_INTERNAL_SECRET ?? "";
-
-  if (!secret) {
-    throw new Error("Realtime internal API is not configured.");
-  }
-
-  const response = await fetch(`${baseUrl}/internal/tournament-rooms`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-realtime-internal-secret": secret,
-    },
-    body: JSON.stringify(payload),
-  });
-
-  const data = (await response.json().catch(() => ({}))) as {
-    roomCode?: string;
-    existing?: boolean;
-    error?: string;
-  };
-
-  if (!response.ok) {
-    throw new Error(data.error ?? "Failed to create tournament room.");
-  }
-
-  if (!data.roomCode) {
-    throw new Error("Realtime server did not return a room code.");
-  }
-
-  return {
-    roomCode: data.roomCode,
-    existing: Boolean(data.existing),
-  };
 }
 
 async function recordPresenceForParticipant(
@@ -285,93 +243,34 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
 
-    const maxRounds = tournament.rounds_per_match ?? 3;
+    const realtimeResult = await requestRealtimeTournamentRoom({
+      tournamentId,
+      tournamentMatchId: matchId,
+      entryOne,
+      entryTwo,
+      admin,
+      maxRounds: tournament.rounds_per_match ?? 3,
+    });
 
-    let roomCode: string;
-
-    try {
-      const realtimeResult = await requestRealtimeTournamentRoom({
-        tournamentId,
-        tournamentMatchId: matchId,
-        allowedPlayerIds,
-        maxRounds,
-      });
-      roomCode = realtimeResult.roomCode;
-    } catch (error) {
+    if (!realtimeResult.ok) {
       return NextResponse.json(
-        {
-          error:
-            error instanceof Error
-              ? error.message
-              : "Failed to create tournament room.",
-        },
+        { error: realtimeResult.error },
         { status: 502 }
       );
     }
 
-    const startedAt = new Date().toISOString();
-
-    const { data: updatedMatch, error: updateError } = await admin
-      .from("tournament_matches")
-      .update({
-        room_code: roomCode,
-        started_at: startedAt,
-        status: "in_progress",
-      })
-      .eq("id", matchId)
-      .eq("tournament_id", tournamentId)
-      .is("room_code", null)
-      .select("room_code")
-      .maybeSingle();
-
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
-    }
-
-    if (updatedMatch?.room_code) {
-      await recordPresenceForParticipant(
-        admin,
-        matchId,
-        user.id,
-        entryOne,
-        entryTwo
-      );
-
-      return NextResponse.json({
-        roomCode: updatedMatch.room_code,
-        existing: false,
-      });
-    }
-
-    const { data: racedMatch, error: racedError } = await admin
-      .from("tournament_matches")
-      .select("room_code")
-      .eq("id", matchId)
-      .maybeSingle();
-
-    if (racedError) {
-      return NextResponse.json({ error: racedError.message }, { status: 500 });
-    }
-
-    if (racedMatch?.room_code) {
-      await recordPresenceForParticipant(
-        admin,
-        matchId,
-        user.id,
-        entryOne,
-        entryTwo
-      );
-
-      return NextResponse.json({
-        roomCode: racedMatch.room_code,
-        existing: true,
-      });
-    }
-
-    return NextResponse.json(
-      { error: "Failed to persist tournament room." },
-      { status: 500 }
+    await recordPresenceForParticipant(
+      admin,
+      matchId,
+      user.id,
+      entryOne,
+      entryTwo
     );
+
+    return NextResponse.json({
+      roomCode: realtimeResult.roomCode,
+      existing: realtimeResult.existing && !realtimeResult.persisted,
+    });
   } catch (error) {
     console.error(
       "POST /api/tournaments/[id]/matches/[matchId]/room failed:",

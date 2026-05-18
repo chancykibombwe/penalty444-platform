@@ -24,8 +24,20 @@ function isCronAuthorized(request: NextRequest): boolean {
   return token.length > 0 && token === secret;
 }
 
+function isDevScheduleSyncAuthorized(request: NextRequest): boolean {
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
+
+  if (process.env.NEXT_PUBLIC_ENABLE_DEV_SCHEDULE_SYNC !== "true") {
+    return false;
+  }
+
+  return request.headers.get("x-dev-schedule-sync") === "1";
+}
+
 export async function POST(request: NextRequest) {
-  if (!isCronAuthorized(request)) {
+  if (!isCronAuthorized(request) && !isDevScheduleSyncAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 

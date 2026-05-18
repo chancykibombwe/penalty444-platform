@@ -1,5 +1,6 @@
 import type { Server, Socket } from "socket.io";
 import { EARLY_CANCEL_MS } from "../config";
+import { clearRoomTimer } from "../gameplay/timers";
 import { normalizeRoomCode } from "../room/codes";
 import { rooms } from "../state/stores";
 import type { Lane, Room } from "../types/room";
@@ -82,6 +83,7 @@ export function registerMatchActionHandlers(socket: Socket) {
       });
 
       if (room.picks.KICKER && room.picks.KEEPER) {
+        clearRoomTimer(room);
         deps.resolveRound(code, room);
       }
     }

@@ -43,11 +43,17 @@ type MatchUpdatePayload = {
   earlyCancelDeadlineAt?: number;
   matchInstance?: number;
   matchType?: MatchType;
+  tournamentId?: string;
 };
 
 type MatchEndPayload = {
   scores: Record<string, number>;
+  tournamentId?: string;
 };
+
+const MATCH_RESULT_REVEAL_MS = 900;
+const TOURNAMENT_MATCH_RESULT_REVEAL_MS = 350;
+const TOURNAMENT_POST_MATCH_REDIRECT_MS = 4500;
 
 type MatchAbortedPayload = {
   roomCode?: string;
@@ -226,6 +232,15 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const [opponentStatus, setOpponentStatus] = useState("");
   const [connected, setConnected] = useState(false);
   const [matchEnded, setMatchEnded] = useState(false);
+  const [tournamentId, setTournamentId] = useState<string | null>(null);
+  const tournamentRedirectScheduledRef = useRef(false);
+  const tournamentContextRef = useRef({
+    isTournament: false,
+    tournamentId: null as string | null,
+  });
+  const [tournamentRedirectCountdown, setTournamentRedirectCountdown] = useState<
+    number | null
+  >(null);
   const [playerCount, setPlayerCount] = useState(1);
   const [timer, setTimer] = useState<number | null>(null);
   const [disconnectCountdown, setDisconnectCountdown] = useState<number | null>(
@@ -483,6 +498,19 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         setMatchType(data.matchType);
       }
 
+      if (data.tournamentId) {
+        setTournamentId(data.tournamentId);
+      }
+
+      tournamentContextRef.current = {
+        isTournament:
+          data.matchType === "tournament" ||
+          Boolean(data.tournamentId) ||
+          tournamentContextRef.current.isTournament,
+        tournamentId:
+          data.tournamentId ?? tournamentContextRef.current.tournamentId,
+      };
+
       if (pickRoundAdvanced) {
         const prev = previousRoundTracked;
         const hadPendingRevealTimer =
@@ -597,6 +625,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     }
 
     function onMatchResult(data: MatchResultPayload) {
+      const revealDelayMs = tournamentContextRef.current.isTournament
+        ? TOURNAMENT_MATCH_RESULT_REVEAL_MS
+        : MATCH_RESULT_REVEAL_MS;
+
       if (staleReorderMatchResultRef.current) {
         staleReorderMatchResultRef.current = false;
         clearMatchResultRevealTimeout();
@@ -687,7 +719,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             setScreenEffect(null);
           }, 500);
         }
-      }, 900);
+      }, revealDelayMs);
     }
 
     function onMatchEnd(payload: MatchEndPayload) {
@@ -720,6 +752,14 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setRematchDeclinedBy(null);
       setRematchRequested(false);
       setLeaveMatchBusy(false);
+
+      if (payload.tournamentId) {
+        setTournamentId(payload.tournamentId);
+        tournamentContextRef.current = {
+          isTournament: true,
+          tournamentId: payload.tournamentId,
+        };
+      }
     }
 
     function onRematchUpdate(payload: RematchUpdatePayload) {
@@ -847,6 +887,36 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       socket.off("error:message", onErrorMessage);
     };
   }, [roomCode, identity, router]);
+
+  useEffect(() => {
+    if (!matchEnded || matchType !== "tournament" || !tournamentId) {
+      return;
+    }
+
+    if (tournamentRedirectScheduledRef.current) {
+      return;
+    }
+
+    tournamentRedirectScheduledRef.current = true;
+
+    let secondsLeft = Math.ceil(TOURNAMENT_POST_MATCH_REDIRECT_MS / 1000);
+    setTournamentRedirectCountdown(secondsLeft);
+
+    const countdownInterval = window.setInterval(() => {
+      secondsLeft -= 1;
+      setTournamentRedirectCountdown(secondsLeft > 0 ? secondsLeft : 0);
+    }, 1000);
+
+    const redirectTimeout = window.setTimeout(() => {
+      window.clearInterval(countdownInterval);
+      router.push(`/tournaments/${tournamentId}`);
+    }, TOURNAMENT_POST_MATCH_REDIRECT_MS);
+
+    return () => {
+      window.clearInterval(countdownInterval);
+      window.clearTimeout(redirectTimeout);
+    };
+  }, [matchEnded, matchType, tournamentId, router]);
 
   useEffect(() => {
     if (
@@ -1698,12 +1768,29 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               </button>
             ) : null}
 
-            <a
-              href="/lobby"
-              className="rounded-2xl border border-white/30 px-5 py-4 text-center font-black text-white hover:bg-white hover:text-black"
-            >
-              Back to Lobby
-            </a>
+            {isTournamentMatch && tournamentId ? (
+              <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                <button
+                  type="button"
+                  onClick={() => router.push(`/tournaments/${tournamentId}`)}
+                  className="rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 px-5 py-4 font-black text-zinc-950 hover:from-amber-400 hover:to-orange-500"
+                >
+                  Back to Tournament
+                </button>
+                {tournamentRedirectCountdown !== null ? (
+                  <p className="text-sm text-zinc-400">
+                    Returning to bracket in {tournamentRedirectCountdown}s…
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <a
+                href="/lobby"
+                className="rounded-2xl border border-white/30 px-5 py-4 text-center font-black text-white hover:bg-white hover:text-black"
+              >
+                Back to Lobby
+              </a>
+            )}
           </div>
         </section>
       ) : null}

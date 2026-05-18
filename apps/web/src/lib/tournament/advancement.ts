@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computePlayBy } from "@/lib/tournament/deadlines";
+import { autoCreateRealtimeRoomForReadyMatch } from "@/lib/tournament/realtimeRooms";
 
 const TERMINAL_MATCH_STATUSES = new Set([
   "completed",
@@ -167,8 +168,19 @@ export async function reconcileParentMatch(
       .select("id")
       .maybeSingle();
 
+    const becameReady = Boolean(readyRow) && !readyError;
+
+    if (becameReady) {
+      await autoCreateRealtimeRoomForReadyMatch({
+        admin,
+        tournamentId: parent.tournament_id,
+        matchId: parentId,
+        logPrefix: "[tournament advancement] rooms",
+      });
+    }
+
     return {
-      changed: Boolean(readyRow) && !readyError,
+      changed: becameReady,
       walkoverCreated: false,
       voidCreated: false,
     };

@@ -139,9 +139,13 @@ export function useTournamentDetailSync(tournamentId: string) {
       if (document.visibilityState !== "visible") {
         return;
       }
+
+      void loadSilent();
+
       if (!shouldPollTournamentDetail(tournament, matches.length)) {
         return;
       }
+
       scheduleSilentReload();
     };
 
@@ -150,7 +154,7 @@ export function useTournamentDetailSync(tournamentId: string) {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [tournament, matches.length, scheduleSilentReload]);
+  }, [tournament, matches.length, loadSilent, scheduleSilentReload]);
 
   return {
     tournament,
