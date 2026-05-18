@@ -28,6 +28,36 @@ import {
   shouldEndSuddenDeath,
   shouldEnterSuddenDeath,
 } from "./gameplay/suddenDeath";
+import {
+  bindRoundTimers,
+  clearRoomTimer,
+  startRoundTimer,
+} from "./gameplay/timers";
+import {
+  cleanUsername,
+  generateOfferId,
+  normalizeRoomCode,
+} from "./room/codes";
+import {
+  bindRoomLifecycle,
+  clearPlayerActiveRoom,
+  clearPlayersActiveRoomsForRoom,
+  createRoomWithPlayers,
+  createTournamentRoom,
+  getTrackedActiveRoom,
+  playerIsBusyInDifferentRoom,
+  setPlayerActiveRoom,
+} from "./room/lifecycle";
+import {
+  bindStakesSocketServer,
+  getStakeAmount,
+  lockStake,
+  refundBothStakes,
+  settleStakes,
+  unlockStake,
+} from "./wallet/stakes";
+
+export { createTournamentRoom } from "./room/lifecycle";
 import type {
   Lane,
   MatchPhase,
@@ -54,6 +84,8 @@ const io = new Server(server, {
   pingTimeout: 20000,
   pingInterval: 25000,
 });
+
+bindStakesSocketServer(io);
 
 function removeRankedQueueEntryBySocketId(socketId: string): boolean {
   for (const [playerId, entry] of rankedQueue.entries()) {
@@ -215,98 +247,6 @@ app.get("/health", (_req, res) => {
   });
 });
 
-function cleanUsername(username?: string) {
-  return username?.trim() || "Player";
-}
-
-function normalizeRoomCode(roomCode?: string) {
-  return roomCode?.trim()?.toUpperCase() || "";
-}
-
-function generateRoomCode() {
-  return Math.random().toString(36).substring(2, 7).toUpperCase();
-}
-
-function generateOfferId() {
-  return Math.random().toString(36).substring(2, 10).toUpperCase();
-}
-
-function getStakeAmount(stakeLabel?: string) {
-  const label = stakeLabel?.trim().toUpperCase();
-
-  if (!label || label === "FREE") return 0;
-  if (label === "K10") return 10;
-  if (label === "K50") return 50;
-  if (label === "K100") return 100;
-
-  return 0;
-}
-
-function getTrackedActiveRoom(playerId?: string) {
-  if (!playerId) return null;
-
-  const trackedRoomCode = playerActiveRooms.get(playerId);
-  if (!trackedRoomCode) return null;
-
-  const room = rooms.get(trackedRoomCode);
-
-  if (!room || room.matchEnded) {
-    playerActiveRooms.delete(playerId);
-    return null;
-  }
-
-  return trackedRoomCode;
-}
-
-function setPlayerActiveRoom(playerId: string, roomCode: string) {
-  const code = normalizeRoomCode(roomCode);
-  if (!playerId || !code) return;
-
-  playerActiveRooms.set(playerId, code);
-  console.log(`[active-room:set] player=${playerId} room=${code}`);
-}
-
-function clearPlayerActiveRoom(playerId?: string) {
-  if (!playerId) return;
-
-  playerActiveRooms.delete(playerId);
-  console.log(`[active-room:clear] player=${playerId}`);
-}
-
-function clearPlayersActiveRoomsForRoom(room: Room) {
-  for (const player of room.players) {
-    clearPlayerActiveRoom(player.playerId);
-  }
-}
-
-function playerIsBusyInDifferentRoom(playerId: string, targetRoomCode?: string) {
-  const trackedRoomCode = getTrackedActiveRoom(playerId);
-  if (!trackedRoomCode) return null;
-
-  const targetCode = normalizeRoomCode(targetRoomCode);
-
-  if (targetCode && trackedRoomCode === targetCode) {
-    return null;
-  }
-
-  return trackedRoomCode;
-}
-
-function clearRoomTimer(room: Room) {
-  if (room.timeout) {
-    clearTimeout(room.timeout);
-    room.timeout = undefined;
-  }
-  if (room.resolveContinuationTimeout) {
-    clearTimeout(room.resolveContinuationTimeout);
-    room.resolveContinuationTimeout = undefined;
-  }
-  if (room.disconnectForfeitTimeout) {
-    clearTimeout(room.disconnectForfeitTimeout);
-    room.disconnectForfeitTimeout = undefined;
-  }
-}
-
 function buildPlayerNames(room: Room) {
   const playerNames: Record<string, string> = {};
 
@@ -392,280 +332,6 @@ function emitMatchState(roomCode: string, room: Room) {
     matchInstance: room.matchInstance ?? 1,
     matchType: room.matchType,
   });
-}
-
-async function lockStake(playerId: string, stakeAmount: number) {
-  if (stakeAmount <= 0) {
-    return { ok: true, message: "Free match. No stake locked." };
-  }
-
-  if (!supabase) {
-    return { ok: false, message: "Wallet system not configured." };
-  }
-
-  const { data, error } = await supabase.rpc("lock_wallet_stake", {
-    p_user_id: playerId,
-    p_amount: stakeAmount,
-  });
-
-  if (error) {
-    console.error("Lock RPC error:", error);
-    return { ok: false, message: "Failed to lock stake." };
-  }
-
-  const result = data?.[0];
-
-  return {
-    ok: result?.ok ?? false,
-    message: result?.message ?? "Unknown wallet error.",
-  };
-}
-
-async function unlockStake(playerId: string, stakeAmount: number) {
-  if (stakeAmount <= 0) return;
-  if (!supabase) return;
-
-  const { error } = await supabase.rpc("unlock_wallet_stake", {
-    p_user_id: playerId,
-    p_amount: stakeAmount,
-  });
-
-  if (error) {
-    console.error("Unlock RPC error:", error);
-  }
-}
-
-async function settleStakes(room: Room) {
-  if (!supabase) return;
-  if (room.stakeSettled) return;
-
-  if (room.stakeAmount <= 0) {
-    room.stakeSettled = true;
-    return;
-  }
-
-  if (room.players.length < 2) return;
-
-  const playerOne = room.players[0];
-  const playerTwo = room.players[1];
-
-  if (!playerOne || !playerTwo) return;
-
-  const playerOneScore = room.scores[playerOne.playerId] || 0;
-  const playerTwoScore = room.scores[playerTwo.playerId] || 0;
-
-  const isDraw = playerOneScore === playerTwoScore;
-
-  if (isDraw) {
-    await unlockStake(playerOne.playerId, room.stakeAmount);
-    await unlockStake(playerTwo.playerId, room.stakeAmount);
-
-    room.stakeSettled = true;
-    console.log(`Draw settlement complete for room ${room.code}`);
-
-    io.to(room.code).emit("wallet:update", {
-      reason: "draw_unlock",
-      roomCode: room.code,
-    });
-
-    return;
-  }
-
-  const winner = playerOneScore > playerTwoScore ? playerOne : playerTwo;
-  const loser = playerOneScore > playerTwoScore ? playerTwo : playerOne;
-
-  const { data, error } = await supabase.rpc("settle_wallet_stakes", {
-    p_winner_id: winner.playerId,
-    p_loser_id: loser.playerId,
-    p_stake_amount: room.stakeAmount,
-  });
-
-  if (error) {
-    console.error("Settle RPC error:", error);
-    return;
-  }
-
-  const result = data?.[0];
-
-  if (!result?.ok) {
-    console.error("Settlement failed:", result?.message);
-    return;
-  }
-
-  room.stakeSettled = true;
-
-  io.to(room.code).emit("wallet:update", {
-    reason: "settlement",
-    roomCode: room.code,
-    winnerId: winner.playerId,
-    loserId: loser.playerId,
-  });
-
-  console.log(
-    `Secure settlement complete: ${winner.username} won ${room.stakeAmount}`
-  );
-}
-
-function createRoomWithPlayers(
-  players: RoomPlayer[],
-  maxRounds = 3,
-  matchType: MatchType = "private",
-  stakeLabel = "Free"
-) {
-  const code = generateRoomCode();
-  const firstPlayer = players[0];
-  const secondPlayer = players[1];
-  const stakeAmount = getStakeAmount(stakeLabel);
-
-  const room: Room = {
-    code,
-    matchInstance: 1,
-    players,
-    roles: {},
-    picks: {},
-    scores: {},
-    round: 1,
-    maxRounds,
-    phase: "NORMAL",
-    suddenDeathRound: 0,
-    rematchVotes: [],
-    matchEnded: false,
-    matchType,
-    stakeLabel,
-    stakeAmount,
-    stakeSettled: false,
-    resultSaved: false,
-    isResolving: false,
-  };
-
-  if (firstPlayer) {
-    room.roles[firstPlayer.playerId] = "KICKER";
-    room.scores[firstPlayer.playerId] = 0;
-  }
-
-  if (secondPlayer) {
-    room.roles[secondPlayer.playerId] = "KEEPER";
-    room.scores[secondPlayer.playerId] = 0;
-  }
-
-  rooms.set(code, room);
-
-  for (const player of players) {
-    const playerSocket = io.sockets.sockets.get(player.socketId);
-    playerSocket?.join(code);
-    setPlayerActiveRoom(player.playerId, code);
-  }
-
-  emitRoomUpdate(code, room);
-  emitMatchState(code, room);
-
-  if (room.players.length === 2) {
-    startRoundTimer(code, room);
-  }
-
-  return { code, room };
-}
-
-type CreateTournamentRoomParams = {
-  players: RoomPlayer[];
-  maxRounds?: number;
-  tournamentMatchId: string;
-  tournamentId: string;
-  allowedPlayerIds: string[];
-};
-
-/**
- * Creates an in-memory tournament bracket room (no stakes, no rematch / early cancel).
- * Intended for Phase B API / internal bridge; not exposed to clients directly in v1.
- */
-export function createTournamentRoom({
-  players,
-  maxRounds = 3,
-  tournamentMatchId,
-  tournamentId,
-  allowedPlayerIds,
-}: CreateTournamentRoomParams) {
-  const normalizedAllowed = allowedPlayerIds
-    .map((id) => id.trim())
-    .filter((id) => id.length > 0);
-
-  if (normalizedAllowed.length !== 2) {
-    throw new Error(
-      "Tournament rooms require exactly two allowed player IDs."
-    );
-  }
-
-  const uniqueAllowed = new Set(normalizedAllowed);
-  if (uniqueAllowed.size !== 2) {
-    throw new Error("Tournament allowed player IDs must be distinct.");
-  }
-
-  for (const player of players) {
-    if (!uniqueAllowed.has(player.playerId.trim())) {
-      throw new Error(
-        "Initial tournament room players must be in allowedPlayerIds."
-      );
-    }
-  }
-
-  if (players.length > 2) {
-    throw new Error("Tournament rooms cannot start with more than two players.");
-  }
-
-  const code = generateRoomCode();
-  const firstPlayer = players[0];
-  const secondPlayer = players[1];
-
-  const room: Room = {
-    code,
-    matchInstance: 1,
-    players: [...players],
-    roles: {},
-    picks: {},
-    scores: {},
-    round: 1,
-    maxRounds,
-    phase: "NORMAL",
-    suddenDeathRound: 0,
-    rematchVotes: [],
-    matchEnded: false,
-    matchType: "tournament",
-    tournamentMatchId,
-    tournamentId,
-    allowedPlayerIds: normalizedAllowed,
-    stakeLabel: "Free",
-    stakeAmount: 0,
-    stakeSettled: false,
-    resultSaved: false,
-    isResolving: false,
-  };
-
-  if (firstPlayer) {
-    room.roles[firstPlayer.playerId] = "KICKER";
-    room.scores[firstPlayer.playerId] = 0;
-  }
-
-  if (secondPlayer) {
-    room.roles[secondPlayer.playerId] = "KEEPER";
-    room.scores[secondPlayer.playerId] = 0;
-  }
-
-  rooms.set(code, room);
-
-  for (const player of players) {
-    const playerSocket = io.sockets.sockets.get(player.socketId);
-    playerSocket?.join(code);
-    setPlayerActiveRoom(player.playerId, code);
-  }
-
-  emitRoomUpdate(code, room);
-  emitMatchState(code, room);
-
-  if (room.players.length === 2) {
-    startRoundTimer(code, room);
-  }
-
-  return { code, room };
 }
 
 async function resolveActivePenalty444SeasonId(): Promise<string | null> {
@@ -1128,32 +794,6 @@ function endMatch(roomCode: string, room: Room) {
   });
 }
 
-async function refundBothStakes(room: Room) {
-  if (room.stakeSettled) return;
-
-  if (room.stakeAmount <= 0) {
-    room.stakeSettled = true;
-    return;
-  }
-
-  if (room.players.length < 2) return;
-
-  const playerOne = room.players[0];
-  const playerTwo = room.players[1];
-
-  if (!playerOne || !playerTwo) return;
-
-  await unlockStake(playerOne.playerId, room.stakeAmount);
-  await unlockStake(playerTwo.playerId, room.stakeAmount);
-
-  room.stakeSettled = true;
-
-  io.to(room.code).emit("wallet:update", {
-    reason: "early_abort_unlock",
-    roomCode: room.code,
-  });
-}
-
 async function abortMatchEarly(
   roomCode: string,
   room: Room,
@@ -1188,31 +828,6 @@ async function abortMatchEarly(
 
   emitMatchState(roomCode, room);
   emitRoomUpdate(roomCode, room);
-}
-
-function startRoundTimer(roomCode: string, room: Room) {
-  clearRoomTimer(room);
-
-  if (room.matchEnded) return;
-  if (room.players.length < 2) return;
-
-  if (room.matchStartedAt === undefined) {
-    room.matchStartedAt = Date.now();
-  }
-
-  io.to(roomCode).emit("match:status", {
-    message:
-      room.phase === "SUDDEN_DEATH"
-        ? `Sudden Death ${room.suddenDeathRound}. You have 10 seconds to act.`
-        : "New round started. You have 10 seconds to act.",
-    timeoutSeconds: 10,
-    phase: room.phase,
-    suddenDeathRound: room.suddenDeathRound,
-  });
-
-  room.timeout = setTimeout(() => {
-    resolveRound(roomCode, room, true);
-  }, PICK_TIMEOUT_MS);
 }
 
 function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
@@ -1354,6 +969,18 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
     }
   }, RESULT_REVEAL_PAUSE_MS);
 }
+
+bindRoundTimers({
+  io,
+  resolveRound,
+});
+
+bindRoomLifecycle({
+  io,
+  emitRoomUpdate,
+  emitMatchState,
+  startRoundTimer,
+});
 
 function resetRoomForRematch(roomCode: string, room: Room) {
   if (isTournamentRoom(room)) {
