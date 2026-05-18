@@ -2415,7 +2415,10 @@ io.on("connection", (socket) => {
         return;
       }
 
-      if (Date.now() - room.matchStartedAt < EARLY_CANCEL_MS) {
+      if (
+        !isTournamentRoom(room) &&
+        Date.now() - room.matchStartedAt < EARLY_CANCEL_MS
+      ) {
         socket.emit("error:message", {
           message:
             "Use cancel match during the first 5 seconds instead of forfeit.",

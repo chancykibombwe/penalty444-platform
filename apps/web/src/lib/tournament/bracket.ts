@@ -8,7 +8,7 @@ export type BracketMatchDraft = {
   slot_index: number;
   entry_one_id: string | null;
   entry_two_id: string | null;
-  status: "pending";
+  status: "pending" | "ready";
 };
 
 export function isPowerOfTwo(value: number): boolean {
@@ -66,7 +66,7 @@ export function generateSingleEliminationBracket(
       slot_index: slotIndex,
       entry_one_id: entryIds[slotIndex * 2] ?? null,
       entry_two_id: entryIds[slotIndex * 2 + 1] ?? null,
-      status: "pending",
+      status: "ready",
     });
   }
 

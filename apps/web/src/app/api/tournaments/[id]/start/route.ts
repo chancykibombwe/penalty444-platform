@@ -47,7 +47,7 @@ async function authenticateUser(accessToken: string) {
 async function rollbackTournamentBracket(
   admin: ReturnType<typeof createAdminClient>,
   tournamentId: string
-) {
+): Promise<void> {
   const { error } = await admin
     .from("tournament_matches")
     .delete()
@@ -58,6 +58,7 @@ async function rollbackTournamentBracket(
       `[tournament start] bracket rollback failed for ${tournamentId}:`,
       error.message
     );
+    throw new Error(error.message);
   }
 }
 
@@ -153,6 +154,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const checkedInCount = checkedInRows?.length ?? 0;
 
+    if (checkedInCount < 2) {
+      return NextResponse.json(
+        {
+          error:
+            "At least 2 checked-in players are required to start the bracket.",
+        },
+        { status: 400 }
+      );
+    }
+
     if (!isPowerOfTwo(checkedInCount)) {
       return NextResponse.json(
         {
@@ -223,7 +234,22 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
 
       if (!parentId || !matchId) {
-        await rollbackTournamentBracket(admin, tournamentId);
+        try {
+          await rollbackTournamentBracket(admin, tournamentId);
+        } catch (rollbackError) {
+          return NextResponse.json(
+            {
+              error:
+                "Failed to link bracket rounds and bracket rollback also failed. The tournament may be stuck with a partial bracket.",
+              rollbackFailed: true,
+              detail:
+                rollbackError instanceof Error
+                  ? rollbackError.message
+                  : undefined,
+            },
+            { status: 500 }
+          );
+        }
         return NextResponse.json(
           {
             error: "Failed to link bracket rounds. Bracket was rolled back.",
@@ -238,7 +264,22 @@ export async function POST(request: NextRequest, context: RouteContext) {
         .eq("id", matchId);
 
       if (linkError) {
-        await rollbackTournamentBracket(admin, tournamentId);
+        try {
+          await rollbackTournamentBracket(admin, tournamentId);
+        } catch (rollbackError) {
+          return NextResponse.json(
+            {
+              error:
+                "Failed to link bracket rounds and bracket rollback also failed. The tournament may be stuck with a partial bracket.",
+              rollbackFailed: true,
+              detail:
+                rollbackError instanceof Error
+                  ? rollbackError.message
+                  : undefined,
+            },
+            { status: 500 }
+          );
+        }
         return NextResponse.json(
           {
             error: `Failed to link bracket rounds. Bracket was rolled back. ${linkError.message}`,
