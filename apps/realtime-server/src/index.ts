@@ -17,6 +17,17 @@ import {
   rooms,
   tournamentMatchRooms,
 } from "./state/stores";
+import {
+  getPlayerByRole,
+  getPointWinnerRole,
+  resolveShot,
+  swapRoles,
+} from "./gameplay/resolveShot";
+import { resolveMatchOutcome } from "./gameplay/matchOutcome";
+import {
+  shouldEndSuddenDeath,
+  shouldEnterSuddenDeath,
+} from "./gameplay/suddenDeath";
 import type {
   Lane,
   MatchPhase,
@@ -26,7 +37,6 @@ import type {
   Role,
   Room,
   RoomPlayer,
-  ShotResult,
 } from "./types/room";
 
 const app = express();
@@ -294,42 +304,6 @@ function clearRoomTimer(room: Room) {
   if (room.disconnectForfeitTimeout) {
     clearTimeout(room.disconnectForfeitTimeout);
     room.disconnectForfeitTimeout = undefined;
-  }
-}
-
-function resolveShot(kickerLane?: Lane, keeperLane?: Lane): ShotResult {
-  if (!kickerLane && !keeperLane) return "DRAW";
-  if (!kickerLane && keeperLane) return "SAVE";
-  if (kickerLane && !keeperLane) return "GOAL";
-  if (kickerLane === keeperLane) return "SAVE";
-  return "GOAL";
-}
-
-function getPointWinnerRole(
-  kickerLane?: Lane,
-  keeperLane?: Lane,
-  result?: ShotResult
-): Role | null {
-  if (!kickerLane && !keeperLane) return null;
-  if (!kickerLane && keeperLane) return null;
-  if (kickerLane && !keeperLane) return "KICKER";
-  if (result === "GOAL") return "KICKER";
-
-  return null;
-}
-
-function getPlayerByRole(room: Room, role: Role) {
-  return Object.keys(room.roles).find(
-    (playerId) => room.roles[playerId] === role
-  );
-}
-
-function swapRoles(room: Room) {
-  const currentRoles = { ...room.roles };
-
-  for (const playerId of Object.keys(currentRoles)) {
-    room.roles[playerId] =
-      currentRoles[playerId] === "KICKER" ? "KEEPER" : "KICKER";
   }
 }
 
@@ -711,52 +685,6 @@ async function resolveActivePenalty444SeasonId(): Promise<string | null> {
   }
 
   return data?.[0]?.id ?? null;
-}
-
-type ResolvedMatchOutcome = {
-  firstPlayer: RoomPlayer;
-  secondPlayer: RoomPlayer;
-  firstScore: number;
-  secondScore: number;
-  isDraw: boolean;
-  winner: RoomPlayer | null;
-  loser: RoomPlayer | null;
-};
-
-/** Same winner/score rules as saveMatchResult (gameplay, forfeit, disconnect forfeit). */
-function resolveMatchOutcome(room: Room): ResolvedMatchOutcome | null {
-  if (room.players.length < 2) return null;
-
-  const firstPlayer = room.players[0];
-  const secondPlayer = room.players[1];
-
-  if (!firstPlayer || !secondPlayer) return null;
-
-  const firstScore = room.scores[firstPlayer.playerId] || 0;
-  const secondScore = room.scores[secondPlayer.playerId] || 0;
-  const isDraw = firstScore === secondScore;
-
-  const winner = isDraw
-    ? null
-    : firstScore > secondScore
-      ? firstPlayer
-      : secondPlayer;
-
-  const loser = isDraw
-    ? null
-    : firstScore > secondScore
-      ? secondPlayer
-      : firstPlayer;
-
-  return {
-    firstPlayer,
-    secondPlayer,
-    firstScore,
-    secondScore,
-    isDraw,
-    winner,
-    loser,
-  };
 }
 
 async function advanceTournamentFromRoom(room: Room) {
@@ -1285,48 +1213,6 @@ function startRoundTimer(roomCode: string, room: Room) {
   room.timeout = setTimeout(() => {
     resolveRound(roomCode, room, true);
   }, PICK_TIMEOUT_MS);
-}
-
-function shouldEnterSuddenDeath(room: Room) {
-  if (room.phase !== "NORMAL") return false;
-
-  const totalNormalTurns = room.maxRounds * 2;
-
-  if (room.round < totalNormalTurns) return false;
-
-  const firstPlayer = room.players[0];
-  const secondPlayer = room.players[1];
-
-  if (!firstPlayer || !secondPlayer) return false;
-
-  const firstScore = room.scores[firstPlayer.playerId] || 0;
-  const secondScore = room.scores[secondPlayer.playerId] || 0;
-
-  return firstScore === secondScore;
-}
-
-function shouldEndSuddenDeath(room: Room) {
-  if (room.phase !== "SUDDEN_DEATH") return false;
-
-  const totalNormalTurns = room.maxRounds * 2;
-  const suddenTurnsPlayed = room.round - totalNormalTurns;
-
-  if (suddenTurnsPlayed <= 0) return false;
-  if (suddenTurnsPlayed % 2 !== 0) return false;
-
-  const firstPlayer = room.players[0];
-  const secondPlayer = room.players[1];
-
-  if (!firstPlayer || !secondPlayer) return false;
-
-  const firstScore = room.scores[firstPlayer.playerId] || 0;
-  const secondScore = room.scores[secondPlayer.playerId] || 0;
-
-  if (firstScore !== secondScore) return true;
-
-  if (room.suddenDeathRound >= MAX_SUDDEN_DEATH_CYCLES) return true;
-
-  return false;
 }
 
 function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
