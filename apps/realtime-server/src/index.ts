@@ -1,9 +1,33 @@
-import "dotenv/config";
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
-import { createClient } from "@supabase/supabase-js";
+import {
+  EARLY_CANCEL_MS,
+  MAX_SUDDEN_DEATH_CYCLES,
+  PICK_TIMEOUT_MS,
+  realtimeInternalSecret,
+  RESULT_REVEAL_PAUSE_MS,
+  supabase,
+} from "./config";
+import {
+  playerActiveRooms,
+  publicOffers,
+  rankedQueue,
+  rooms,
+  tournamentMatchRooms,
+} from "./state/stores";
+import type {
+  Lane,
+  MatchPhase,
+  MatchType,
+  PublicMatchOffer,
+  RankedQueueEntry,
+  Role,
+  Room,
+  RoomPlayer,
+  ShotResult,
+} from "./types/room";
 
 const app = express();
 
@@ -20,93 +44,6 @@ const io = new Server(server, {
   pingTimeout: 20000,
   pingInterval: 25000,
 });
-
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const realtimeInternalSecret = process.env.REALTIME_INTERNAL_SECRET ?? "";
-
-const supabase =
-  supabaseUrl && supabaseServiceRoleKey
-    ? createClient(supabaseUrl, supabaseServiceRoleKey)
-    : null;
-
-type Lane = "LEFT" | "CENTER" | "RIGHT";
-type Role = "KICKER" | "KEEPER";
-type ShotResult = "GOAL" | "SAVE" | "DRAW";
-type MatchType = "private" | "public" | "ranked" | "tournament" | "unknown";
-type MatchPhase = "NORMAL" | "SUDDEN_DEATH";
-
-const PICK_TIMEOUT_MS = 10000;
-const EARLY_CANCEL_MS = 5000;
-const MAX_SUDDEN_DEATH_CYCLES = 10;
-
-type RoomPlayer = {
-  playerId: string;
-  socketId: string;
-  username: string;
-};
-
-type Room = {
-  code: string;
-  /** Increments when a rematch starts in the same room; pairs with room_code for saved rows. */
-  matchInstance: number;
-  players: RoomPlayer[];
-  roles: Record<string, Role>;
-  picks: Partial<Record<Role, Lane>>;
-  scores: Record<string, number>;
-  round: number;
-  maxRounds: number;
-  phase: MatchPhase;
-  suddenDeathRound: number;
-  rematchVotes: string[];
-  matchEnded: boolean;
-  /** Set once when the first pick-round timer starts (2 players). */
-  matchStartedAt?: number;
-  matchType: MatchType;
-  tournamentMatchId?: string;
-  tournamentId?: string;
-  /** Auth user ids allowed in this bracket slot (exactly two for v1). */
-  allowedPlayerIds?: string[];
-  stakeLabel: string;
-  stakeAmount: number;
-  stakeSettled: boolean;
-  resultSaved: boolean;
-  /** Set after tournament bracket row is advanced (idempotency). */
-  bracketAdvanced?: boolean;
-  timeout?: NodeJS.Timeout;
-  isResolving: boolean;
-  resolveContinuationTimeout?: NodeJS.Timeout;
-  disconnectedPlayerId?: string;
-  disconnectedAt?: number;
-  disconnectForfeitTimeout?: NodeJS.Timeout;
-};
-
-type PublicMatchOffer = {
-  offerId: string;
-  roomCode: string;
-  hostPlayerId: string;
-  hostUsername: string;
-  stakeLabel: string;
-  stakeAmount: number;
-  rounds: number;
-  createdAt: number;
-};
-
-const rooms = new Map<string, Room>();
-/** Bracket slot id → active realtime room code (in-process idempotency). */
-const tournamentMatchRooms = new Map<string, string>();
-const publicOffers = new Map<string, PublicMatchOffer>();
-const playerActiveRooms = new Map<string, string>();
-
-type RankedQueueEntry = {
-  playerId: string;
-  username: string;
-  socketId: string;
-  enqueuedAt: number;
-};
-
-/** FIFO ranked matchmaking (v1: no MMR / stakes). Keyed by `playerId`. */
-const rankedQueue = new Map<string, RankedQueueEntry>();
 
 function removeRankedQueueEntryBySocketId(socketId: string): boolean {
   for (const [playerId, entry] of rankedQueue.entries()) {
@@ -1391,8 +1328,6 @@ function shouldEndSuddenDeath(room: Room) {
 
   return false;
 }
-
-const RESULT_REVEAL_PAUSE_MS = 3000;
 
 function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
   if (room.matchEnded) return;

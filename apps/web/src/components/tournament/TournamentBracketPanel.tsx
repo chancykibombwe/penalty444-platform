@@ -1,11 +1,16 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
-import { supabase } from "../../lib/supabase/client";
+import { useMemo } from "react";
 import { getRoundLabel, getTotalRounds } from "../../lib/tournament/bracket";
+import {
+  bracketSectionClass,
+  entryLabel,
+  formatMatchStatus,
+  getMatchCardClasses,
+  isTerminalMatchStatus,
+} from "../../lib/tournament/matchDisplay";
 import type { TournamentEntryRow } from "./TournamentListPanel";
+import TournamentMatchRoomAction from "./TournamentMatchRoomAction";
 
 export type TournamentMatchRow = {
   id: string;
@@ -29,209 +34,6 @@ type TournamentBracketPanelProps = {
   onUpdated?: () => void;
   prominent?: boolean;
 };
-
-function formatMatchStatus(status: string): string {
-  switch (status) {
-    case "ready":
-      return "Ready";
-    case "in_progress":
-      return "Live";
-    case "pending":
-      return "Pending";
-    case "completed":
-      return "Completed";
-    case "walkover":
-      return "Walkover";
-    case "cancelled":
-      return "Cancelled";
-    default:
-      return status.replace(/_/g, " ");
-  }
-}
-
-function bracketSectionClass(prominent: boolean, hasMatches: boolean) {
-  if (prominent && hasMatches) {
-    return "space-y-10 rounded-2xl border border-amber-500/25 bg-gradient-to-br from-zinc-950 via-zinc-900/90 to-black p-8 shadow-xl ring-1 ring-amber-500/15";
-  }
-  if (prominent) {
-    return "rounded-2xl border border-zinc-800 bg-zinc-950/60 p-6";
-  }
-  return "space-y-8 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-6";
-}
-
-function entryLabel(
-  entryId: string | null,
-  entryById: Map<string, TournamentEntryRow>
-): string {
-  if (!entryId) return "TBD";
-  const entry = entryById.get(entryId);
-  return entry?.username ?? "Unknown";
-}
-
-function getMatchCardClasses(
-  status: string,
-  options: { isParticipant: boolean; isFinal: boolean }
-): string {
-  const classes = [
-    "rounded-xl border px-4 py-3 transition-shadow",
-  ];
-
-  if (options.isFinal) {
-    classes.push(
-      "bg-gradient-to-br from-amber-950/35 via-zinc-950/90 to-zinc-950 md:min-w-[300px]"
-    );
-  }
-
-  switch (status) {
-    case "ready":
-      classes.push(
-        "border-amber-500/55 bg-amber-950/25 shadow-[0_0_20px_rgba(245,158,11,0.22)] ring-1 ring-amber-500/35"
-      );
-      break;
-    case "in_progress":
-      classes.push(
-        "border-cyan-500/55 bg-cyan-950/25 shadow-[0_0_20px_rgba(34,211,238,0.22)] ring-1 ring-cyan-500/35"
-      );
-      break;
-    case "completed":
-    case "walkover":
-      classes.push("border-emerald-500/20 bg-emerald-950/10");
-      break;
-    case "cancelled":
-      classes.push("border-red-500/35 bg-red-950/20");
-      break;
-    default:
-      classes.push("border-zinc-700/80 bg-zinc-950/50");
-      break;
-  }
-
-  if (options.isFinal && (status === "completed" || status === "walkover")) {
-    classes.push("border-emerald-500/35 shadow-[0_0_24px_rgba(16,185,129,0.12)]");
-  } else if (options.isFinal) {
-    classes.push("border-amber-400/40 shadow-md");
-  }
-
-  if (options.isParticipant) {
-    classes.push(
-      "ring-2 ring-amber-400/75 shadow-lg shadow-amber-500/20"
-    );
-  }
-
-  return classes.join(" ");
-}
-
-function isTerminalMatchStatus(status: string) {
-  return (
-    status === "completed" ||
-    status === "walkover" ||
-    status === "cancelled"
-  );
-}
-
-type MatchRoomActionProps = {
-  tournamentId: string;
-  match: TournamentMatchRow;
-  isParticipant: boolean;
-  canEnterMatch: boolean;
-  canJoinMatch: boolean;
-  onUpdated?: () => void;
-};
-
-function MatchRoomAction({
-  tournamentId,
-  match,
-  isParticipant,
-  canEnterMatch,
-  canJoinMatch,
-  onUpdated,
-}: MatchRoomActionProps) {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  if (!isParticipant) {
-    return null;
-  }
-
-  if (match.room_code && canJoinMatch) {
-    return (
-      <Link
-        href={`/match/${match.room_code}`}
-        className="mt-3 inline-flex rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2 text-sm font-bold text-zinc-950 hover:from-amber-400 hover:to-orange-500"
-      >
-        Join Match
-      </Link>
-    );
-  }
-
-  if (!canEnterMatch) {
-    return null;
-  }
-
-  async function handleEnterMatch() {
-    if (busy) return;
-
-    setBusy(true);
-    setError("");
-
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session?.access_token) {
-        setError("Session expired. Please log in again.");
-        return;
-      }
-
-      const response = await fetch(
-        `/api/tournaments/${tournamentId}/matches/${match.id}/room`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
-        }
-      );
-
-      const payload = (await response.json().catch(() => ({}))) as {
-        roomCode?: string;
-        error?: string;
-      };
-
-      if (!response.ok) {
-        setError(payload.error ?? "Failed to open match room.");
-        return;
-      }
-
-      if (!payload.roomCode) {
-        setError("No room code returned.");
-        return;
-      }
-
-      onUpdated?.();
-      router.push(`/match/${payload.roomCode}`);
-    } catch {
-      setError("Failed to open match room.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="mt-3 space-y-1">
-      <button
-        type="button"
-        onClick={handleEnterMatch}
-        disabled={busy}
-        className="rounded-xl border border-amber-500/50 bg-amber-950/30 px-4 py-2 text-sm font-bold text-amber-100 hover:border-amber-400/70 disabled:opacity-50"
-      >
-        {busy ? "Opening…" : "Enter Match"}
-      </button>
-      {error ? <p className="text-xs text-red-300">{error}</p> : null}
-    </div>
-  );
-}
 
 export default function TournamentBracketPanel({
   tournamentId,
@@ -426,7 +228,7 @@ export default function TournamentBracketPanel({
                         </p>
                       ) : null}
 
-                      <MatchRoomAction
+                      <TournamentMatchRoomAction
                         tournamentId={tournamentId}
                         match={match}
                         isParticipant={isParticipant}
