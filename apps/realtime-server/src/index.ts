@@ -33,11 +33,7 @@ import {
   clearRoomTimer,
   startRoundTimer,
 } from "./gameplay/timers";
-import {
-  cleanUsername,
-  generateOfferId,
-  normalizeRoomCode,
-} from "./room/codes";
+import { cleanUsername, normalizeRoomCode } from "./room/codes";
 import {
   bindRoomLifecycle,
   clearPlayerActiveRoom,
@@ -48,6 +44,17 @@ import {
   playerIsBusyInDifferentRoom,
   setPlayerActiveRoom,
 } from "./room/lifecycle";
+import {
+  bindPublicOfferHandlers,
+  emitPublicOffers,
+  emitPublicOffersToSocket,
+  registerPublicOfferHandlers,
+} from "./socket/publicOffers";
+import {
+  bindRankedHandlers,
+  registerRankedHandlers,
+  removeRankedQueueEntryBySocketId,
+} from "./socket/ranked";
 import {
   bindStakesSocketServer,
   getStakeAmount,
@@ -62,8 +69,6 @@ import type {
   Lane,
   MatchPhase,
   MatchType,
-  PublicMatchOffer,
-  RankedQueueEntry,
   Role,
   Room,
   RoomPlayer,
@@ -86,72 +91,6 @@ const io = new Server(server, {
 });
 
 bindStakesSocketServer(io);
-
-function removeRankedQueueEntryBySocketId(socketId: string): boolean {
-  for (const [playerId, entry] of rankedQueue.entries()) {
-    if (entry.socketId === socketId) {
-      rankedQueue.delete(playerId);
-      return true;
-    }
-  }
-  return false;
-}
-
-function tryFlushRankedQueue() {
-  while (rankedQueue.size >= 2) {
-    const ids = Array.from(rankedQueue.keys());
-    const idA = ids[0];
-    const idB = ids[1];
-    if (!idA || !idB) return;
-
-    const a = rankedQueue.get(idA);
-    const b = rankedQueue.get(idB);
-    if (!a || !b) return;
-
-    rankedQueue.delete(idA);
-    rankedQueue.delete(idB);
-
-    const socketA = io.sockets.sockets.get(a.socketId);
-    const socketB = io.sockets.sockets.get(b.socketId);
-    const okA = Boolean(socketA?.connected);
-    const okB = Boolean(socketB?.connected);
-
-    if (!okA && !okB) {
-      continue;
-    }
-
-    if (okA && !okB) {
-      rankedQueue.set(a.playerId, a);
-      continue;
-    }
-
-    if (!okA && okB) {
-      rankedQueue.set(b.playerId, b);
-      continue;
-    }
-
-    const p1: RoomPlayer = {
-      playerId: a.playerId,
-      socketId: a.socketId,
-      username: a.username,
-    };
-    const p2: RoomPlayer = {
-      playerId: b.playerId,
-      socketId: b.socketId,
-      username: b.username,
-    };
-
-    try {
-      const { code } = createRoomWithPlayers([p1, p2], 3, "ranked", "Free");
-      io.to(code).emit("ranked:matched", { roomCode: code });
-    } catch (error) {
-      console.error("tryFlushRankedQueue: failed to create ranked room", error);
-      rankedQueue.set(a.playerId, a);
-      rankedQueue.set(b.playerId, b);
-      break;
-    }
-  }
-}
 
 function isAuthorizedInternalRequest(req: express.Request): boolean {
   if (!realtimeInternalSecret) {
@@ -255,38 +194,6 @@ function buildPlayerNames(room: Room) {
   }
 
   return playerNames;
-}
-
-function getPublicOffersPayload() {
-  return {
-    offers: Array.from(publicOffers.values()).sort(
-      (a, b) => b.createdAt - a.createdAt
-    ),
-  };
-}
-
-function emitPublicOffers(reason = "manual") {
-  const payload = getPublicOffersPayload();
-
-  console.log(
-    `[publicOffers:update] reason=${reason} offers=${payload.offers.length} connectedSockets=${io.engine.clientsCount}`
-  );
-
-  io.emit("publicOffers:update", payload);
-}
-
-function emitPublicOffersToSocket(socketId: string, reason = "socket snapshot") {
-  const socket = io.sockets.sockets.get(socketId);
-
-  if (!socket) return;
-
-  const payload = getPublicOffersPayload();
-
-  console.log(
-    `[publicOffers:update -> socket] reason=${reason} socket=${socketId} offers=${payload.offers.length}`
-  );
-
-  socket.emit("publicOffers:update", payload);
 }
 
 function emitRoomUpdate(roomCode: string, room: Room) {
@@ -982,6 +889,27 @@ bindRoomLifecycle({
   startRoundTimer,
 });
 
+bindPublicOfferHandlers({
+  io,
+  createRoomWithPlayers,
+  getTrackedActiveRoom,
+  playerIsBusyInDifferentRoom,
+  getStakeAmount,
+  lockStake,
+  unlockStake,
+  setPlayerActiveRoom,
+  clearPlayerActiveRoom,
+  emitRoomUpdate,
+  emitMatchState,
+  startRoundTimer,
+});
+
+bindRankedHandlers({
+  io,
+  createRoomWithPlayers,
+  getTrackedActiveRoom,
+});
+
 function resetRoomForRematch(roomCode: string, room: Room) {
   if (isTournamentRoom(room)) {
     return;
@@ -1038,9 +966,8 @@ io.on("connection", (socket) => {
 
   emitPublicOffersToSocket(socket.id, "connection snapshot");
 
-  socket.on("publicOffers:request", () => {
-    emitPublicOffersToSocket(socket.id, "client requested snapshot");
-  });
+  registerPublicOfferHandlers(socket);
+  registerRankedHandlers(socket);
 
   socket.on(
     "activeRoom:clear",
@@ -1231,384 +1158,6 @@ io.on("connection", (socket) => {
       if (room.players.length === 2) {
         startRoundTimer(code, room);
       }
-    }
-  );
-
-  socket.on(
-    "publicOffer:create",
-    async ({
-      playerId,
-      username,
-      stakeLabel,
-      rounds,
-    }: {
-      playerId: string;
-      username?: string;
-      stakeLabel: string;
-      rounds: number;
-    }) => {
-      try {
-        console.log("publicOffer:create received", {
-          playerId,
-          username,
-          stakeLabel,
-          rounds,
-          socketId: socket.id,
-        });
-
-        if (!playerId) {
-          socket.emit("publicOffers:error", {
-            message: "Missing player ID.",
-          });
-          return;
-        }
-
-        for (const offer of publicOffers.values()) {
-          if (offer.hostPlayerId === playerId) {
-            socket.emit("publicOffers:error", {
-              message: "You already have an open public match offer.",
-            });
-            return;
-          }
-        }
-
-        const busyRoomCode = getTrackedActiveRoom(playerId);
-
-        if (busyRoomCode) {
-          socket.emit("publicOffers:error", {
-            message: `You are already in an active room (${busyRoomCode}). Finish or leave that match first.`,
-          });
-          return;
-        }
-
-        const playerName = cleanUsername(username);
-        const safeRounds = Number.isFinite(rounds) && rounds > 0 ? rounds : 3;
-        const safeStakeLabel = stakeLabel?.trim() || "Free";
-        const stakeAmount = getStakeAmount(safeStakeLabel);
-
-        const lockResult = await lockStake(playerId, stakeAmount);
-
-        if (!lockResult.ok) {
-          socket.emit("publicOffers:error", {
-            message: lockResult.message,
-          });
-          return;
-        }
-
-        if (stakeAmount > 0) {
-          socket.emit("wallet:update", {
-            reason: "stake_locked",
-            playerId,
-          });
-        }
-
-        const { code } = createRoomWithPlayers(
-          [
-            {
-              playerId,
-              socketId: socket.id,
-              username: playerName,
-            },
-          ],
-          safeRounds,
-          "public",
-          safeStakeLabel
-        );
-
-        const offer: PublicMatchOffer = {
-          offerId: generateOfferId(),
-          roomCode: code,
-          hostPlayerId: playerId,
-          hostUsername: playerName,
-          stakeLabel: safeStakeLabel,
-          stakeAmount,
-          rounds: safeRounds,
-          createdAt: Date.now(),
-        };
-
-        publicOffers.set(offer.offerId, offer);
-        setPlayerActiveRoom(playerId, code);
-
-        socket.emit("publicOffer:created", {
-          offer,
-        });
-
-        emitPublicOffers("publicOffer:create");
-
-        console.log("publicOffer:created sent", offer);
-      } catch (error) {
-        console.error("publicOffer:create crashed:", error);
-
-        socket.emit("publicOffers:error", {
-          message: "Failed to create public offer.",
-        });
-      }
-    }
-  );
-
-  socket.on(
-    "publicOffer:join",
-    async ({
-      offerId,
-      playerId,
-      username,
-    }: {
-      offerId: string;
-      playerId: string;
-      username?: string;
-    }) => {
-      try {
-        console.log("publicOffer:join received", {
-          offerId,
-          playerId,
-          username,
-          socketId: socket.id,
-        });
-
-        const offer = publicOffers.get(offerId);
-
-        if (!offer) {
-          socket.emit("publicOffers:error", {
-            message: "Offer no longer available.",
-          });
-          emitPublicOffersToSocket(socket.id, "join failed snapshot");
-          return;
-        }
-
-        if (offer.hostPlayerId === playerId) {
-          socket.emit("publicOffers:error", {
-            message: "You cannot join your own offer.",
-          });
-          return;
-        }
-
-        const busyDifferentRoomCode = playerIsBusyInDifferentRoom(
-          playerId,
-          offer.roomCode
-        );
-
-        if (busyDifferentRoomCode) {
-          socket.emit("publicOffers:error", {
-            message: `You are already in another active room (${busyDifferentRoomCode}). Finish or leave that match first.`,
-          });
-          return;
-        }
-
-        const room = rooms.get(offer.roomCode);
-
-        if (!room) {
-          await unlockStake(offer.hostPlayerId, offer.stakeAmount);
-          clearPlayerActiveRoom(offer.hostPlayerId);
-          publicOffers.delete(offerId);
-          emitPublicOffers("publicOffer:join room missing");
-
-          socket.emit("publicOffers:error", {
-            message: "Room no longer exists.",
-          });
-          return;
-        }
-
-        if (room.matchEnded) {
-          publicOffers.delete(offerId);
-          clearPlayerActiveRoom(offer.hostPlayerId);
-          emitPublicOffers("publicOffer:join ended room");
-
-          socket.emit("publicOffers:error", {
-            message: "This match has already ended.",
-          });
-          return;
-        }
-
-        if (room.players.length >= 2) {
-          publicOffers.delete(offerId);
-          emitPublicOffers("publicOffer:join room filled");
-
-          socket.emit("publicOffers:error", {
-            message: "Room already filled.",
-          });
-          return;
-        }
-
-        const lockResult = await lockStake(playerId, offer.stakeAmount);
-
-        if (!lockResult.ok) {
-          socket.emit("publicOffers:error", {
-            message: lockResult.message,
-          });
-          return;
-        }
-
-        if (offer.stakeAmount > 0) {
-          socket.emit("wallet:update", {
-            reason: "stake_locked",
-            playerId,
-          });
-        }
-
-        const playerName = cleanUsername(username);
-
-        room.players.push({
-          playerId,
-          socketId: socket.id,
-          username: playerName,
-        });
-
-        room.roles[playerId] = "KEEPER";
-        room.scores[playerId] = 0;
-
-        socket.join(offer.roomCode);
-
-        setPlayerActiveRoom(playerId, offer.roomCode);
-        setPlayerActiveRoom(offer.hostPlayerId, offer.roomCode);
-
-        publicOffers.delete(offerId);
-        emitPublicOffers("publicOffer:join matched");
-
-        emitRoomUpdate(offer.roomCode, room);
-        emitMatchState(offer.roomCode, room);
-
-        io.to(offer.roomCode).emit("publicOffer:matched", {
-          roomCode: offer.roomCode,
-        });
-
-        startRoundTimer(offer.roomCode, room);
-
-        console.log("publicOffer:matched sent", offer.roomCode);
-      } catch (error) {
-        console.error("publicOffer:join crashed:", error);
-
-        socket.emit("publicOffers:error", {
-          message: "Failed to join public offer.",
-        });
-      }
-    }
-  );
-
-  socket.on(
-    "publicOffer:cancel",
-    async ({
-      offerId,
-      playerId,
-    }: {
-      offerId: string;
-      playerId: string;
-    }) => {
-      const offer = publicOffers.get(offerId);
-
-      if (!offer) return;
-
-      if (offer.hostPlayerId !== playerId) {
-        socket.emit("publicOffers:error", {
-          message: "Only the host can cancel this offer.",
-        });
-        return;
-      }
-
-      const waitingRoom = rooms.get(offer.roomCode);
-      if (
-        waitingRoom &&
-        waitingRoom.players.length === 1 &&
-        !waitingRoom.matchEnded
-      ) {
-        clearRoomTimer(waitingRoom);
-        rooms.delete(offer.roomCode);
-      }
-
-      publicOffers.delete(offerId);
-
-      await unlockStake(playerId, offer.stakeAmount);
-
-      if (offer.stakeAmount > 0) {
-        socket.emit("wallet:update", {
-          reason: "stake_unlocked",
-          playerId,
-        });
-      }
-
-      clearPlayerActiveRoom(playerId);
-      emitPublicOffers("publicOffer:cancel");
-
-      socket.emit("publicOffer:cancelled", {
-        offerId,
-      });
-    }
-  );
-
-  socket.on(
-    "ranked:enqueue",
-    ({
-      playerId,
-      username,
-    }: {
-      playerId?: string;
-      username?: string;
-    }) => {
-      const normalizedId =
-        typeof playerId === "string" ? playerId.trim() : "";
-      if (!normalizedId) {
-        socket.emit("ranked:error", { message: "Missing player ID." });
-        return;
-      }
-
-      if (typeof username !== "string") {
-        socket.emit("ranked:error", { message: "Missing username." });
-        return;
-      }
-
-      const playerName = cleanUsername(username);
-
-      if (rankedQueue.has(normalizedId)) {
-        socket.emit("ranked:error", {
-          message: "You are already in the ranked queue.",
-        });
-        return;
-      }
-
-      const busyRoomCode = getTrackedActiveRoom(normalizedId);
-      if (busyRoomCode) {
-        socket.emit("ranked:error", {
-          message: `You are already in an active match (${busyRoomCode}). Finish or leave before queuing ranked.`,
-        });
-        return;
-      }
-
-      rankedQueue.set(normalizedId, {
-        playerId: normalizedId,
-        username: playerName,
-        socketId: socket.id,
-        enqueuedAt: Date.now(),
-      });
-
-      socket.emit("ranked:queued", {});
-      tryFlushRankedQueue();
-    }
-  );
-
-  socket.on(
-    "ranked:cancel",
-    ({ playerId }: { playerId?: string }) => {
-      const normalizedId =
-        typeof playerId === "string" ? playerId.trim() : "";
-      if (!normalizedId) {
-        socket.emit("ranked:error", { message: "Missing player ID." });
-        return;
-      }
-
-      if (!rankedQueue.has(normalizedId)) {
-        socket.emit("ranked:error", { message: "Not in ranked queue." });
-        return;
-      }
-
-      const entry = rankedQueue.get(normalizedId);
-      if (entry && entry.socketId !== socket.id) {
-        socket.emit("ranked:error", {
-          message: "Cannot cancel another player's queue entry.",
-        });
-        return;
-      }
-
-      rankedQueue.delete(normalizedId);
-      socket.emit("ranked:cancelled", {});
     }
   );
 
