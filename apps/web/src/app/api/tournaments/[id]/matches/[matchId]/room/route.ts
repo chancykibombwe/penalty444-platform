@@ -1,12 +1,21 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  recordTournamentMatchPresence,
+  type TournamentEntryRef,
+} from "@/lib/tournament/presence";
 
 type RouteContext = {
   params: Promise<{ id: string; matchId: string }>;
 };
 
-const TERMINAL_MATCH_STATUSES = new Set(["completed", "walkover", "cancelled"]);
+const TERMINAL_MATCH_STATUSES = new Set([
+  "completed",
+  "walkover",
+  "void",
+  "cancelled",
+]);
 
 function getBearerToken(request: NextRequest): string | null {
   const header = request.headers.get("authorization");
@@ -80,6 +89,46 @@ async function requestRealtimeTournamentRoom(payload: {
     roomCode: data.roomCode,
     existing: Boolean(data.existing),
   };
+}
+
+async function recordPresenceForParticipant(
+  admin: ReturnType<typeof createAdminClient>,
+  matchId: string,
+  userId: string,
+  entryOne: TournamentEntryRef,
+  entryTwo: TournamentEntryRef
+): Promise<void> {
+  const { data: freshMatch, error } = await admin
+    .from("tournament_matches")
+    .select(
+      "id, entry_one_id, entry_two_id, entry_one_present_at, entry_two_present_at, opponent_join_by"
+    )
+    .eq("id", matchId)
+    .maybeSingle();
+
+  if (error || !freshMatch) {
+    console.warn(
+      `[tournament room] presence skipped for match ${matchId}:`,
+      error?.message ?? "match not found"
+    );
+    return;
+  }
+
+  const result = await recordTournamentMatchPresence({
+    admin,
+    matchId,
+    userId,
+    match: freshMatch,
+    entryOne,
+    entryTwo,
+  });
+
+  if (!result.ok && result.reason === "db_error") {
+    console.warn(
+      `[tournament room] presence failed for match ${matchId}:`,
+      result.error
+    );
+  }
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -222,6 +271,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     if (match.room_code) {
+      await recordPresenceForParticipant(
+        admin,
+        matchId,
+        user.id,
+        entryOne,
+        entryTwo
+      );
+
       return NextResponse.json({
         roomCode: match.room_code,
         existing: true,
@@ -272,6 +329,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     if (updatedMatch?.room_code) {
+      await recordPresenceForParticipant(
+        admin,
+        matchId,
+        user.id,
+        entryOne,
+        entryTwo
+      );
+
       return NextResponse.json({
         roomCode: updatedMatch.room_code,
         existing: false,
@@ -289,6 +354,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     if (racedMatch?.room_code) {
+      await recordPresenceForParticipant(
+        admin,
+        matchId,
+        user.id,
+        entryOne,
+        entryTwo
+      );
+
       return NextResponse.json({
         roomCode: racedMatch.room_code,
         existing: true,

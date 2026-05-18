@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { supabase } from "../../lib/supabase/client";
@@ -31,19 +30,49 @@ export default function TournamentMatchRoomAction({
     return null;
   }
 
-  if (match.room_code && canJoinMatch) {
-    return (
-      <Link
-        href={`/match/${match.room_code}`}
-        className="mt-3 inline-flex rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2 text-sm font-bold text-zinc-950 hover:from-amber-400 hover:to-orange-500"
-      >
-        Join Match
-      </Link>
-    );
-  }
+  async function handleJoinMatch() {
+    if (busy || !match.room_code) return;
 
-  if (!canEnterMatch) {
-    return null;
+    setBusy(true);
+    setError("");
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        setError("Session expired. Please log in again.");
+        return;
+      }
+
+      const response = await fetch(
+        `/api/tournaments/${tournamentId}/matches/${match.id}/presence`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.ok) {
+        setError(payload.error ?? "Failed to record presence.");
+        return;
+      }
+
+      onUpdated?.();
+      router.push(`/match/${match.room_code}`);
+    } catch {
+      setError("Failed to record presence.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleEnterMatch() {
@@ -94,6 +123,26 @@ export default function TournamentMatchRoomAction({
     } finally {
       setBusy(false);
     }
+  }
+
+  if (match.room_code && canJoinMatch) {
+    return (
+      <div className="mt-3 space-y-1">
+        <button
+          type="button"
+          onClick={handleJoinMatch}
+          disabled={busy}
+          className="inline-flex rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2 text-sm font-bold text-zinc-950 hover:from-amber-400 hover:to-orange-500 disabled:opacity-50"
+        >
+          {busy ? "Joining…" : "Join Match"}
+        </button>
+        {error ? <p className="text-xs text-red-300">{error}</p> : null}
+      </div>
+    );
+  }
+
+  if (!canEnterMatch) {
+    return null;
   }
 
   return (
