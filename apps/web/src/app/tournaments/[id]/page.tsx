@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import RequireAuth from "../../../components/auth/RequireAuth";
 import TournamentAdminActions from "../../../components/tournament/TournamentAdminActions";
 import TournamentBracketPanel from "../../../components/tournament/TournamentBracketPanel";
@@ -36,6 +36,20 @@ export default function TournamentDetailPage() {
       tournamentId: tournament?.id ?? tournamentId,
       playerId: currentUserId,
     });
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refresh();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [refresh]);
 
   const activeEntries = useMemo(
     () => entries.filter((entry) => entry.status !== "withdrawn"),

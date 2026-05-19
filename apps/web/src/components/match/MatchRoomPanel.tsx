@@ -2,8 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSocket } from "../../lib/socket/client";
-import { clearActiveMatch } from "../../lib/match/activeMatch";
+import { getSocket, isSocketEventForRoom } from "../../lib/socket/client";
+import {
+  clearActiveMatch,
+  clearActiveMatchIfPlayerMismatch,
+  saveActiveMatch,
+} from "../../lib/match/activeMatch";
 import {
   getCurrentPlayerIdentity,
   type PlayerIdentity,
@@ -16,6 +20,11 @@ type MatchPhase = "NORMAL" | "SUDDEN_DEATH";
 type RevealStage = "IDLE" | "LOCKED" | "REVEALING" | "REVEALED";
 
 type MatchResultPayload = {
+  roomCode?: string;
+  code?: string;
+  round?: number;
+  kickerPlayerId?: string | null;
+  keeperPlayerId?: string | null;
   kickerPick: Lane | null;
   keeperPick: Lane | null;
   result: ShotResult;
@@ -30,7 +39,11 @@ type MatchType =
   | "unknown";
 
 type MatchUpdatePayload = {
+  roomCode?: string;
+  code?: string;
   roles: Record<string, Role>;
+  kickerPlayerId?: string | null;
+  keeperPlayerId?: string | null;
   playerNames?: Record<string, string>;
   scores: Record<string, number>;
   round: number;
@@ -73,6 +86,8 @@ type RematchDeclinedPayload = {
 };
 
 type MatchStatusPayload = {
+  roomCode?: string;
+  code?: string;
   message: string;
   timeoutSeconds?: number;
   phase?: MatchPhase;
@@ -197,6 +212,92 @@ function resultLabel(result?: ShotResult) {
   return "Waiting for result";
 }
 
+function normalizeAuthoritativeResult(
+  data: MatchResultPayload
+): MatchResultPayload | null {
+  if (data.result !== "GOAL" && data.result !== "SAVE" && data.result !== "DRAW") {
+    return null;
+  }
+
+  return {
+    round: data.round,
+    kickerPlayerId: data.kickerPlayerId ?? null,
+    keeperPlayerId: data.keeperPlayerId ?? null,
+    kickerPick: data.kickerPick ?? null,
+    keeperPick: data.keeperPick ?? null,
+    result: data.result,
+    statusMessage: data.statusMessage,
+  };
+}
+
+function assertAuthoritativeResultIntegrity(payload: MatchResultPayload): void {
+  if (process.env.NODE_ENV !== "development") return;
+  if (!payload.kickerPick || !payload.keeperPick) return;
+
+  const inferred: ShotResult =
+    payload.kickerPick === payload.keeperPick ? "SAVE" : "GOAL";
+
+  if (inferred !== payload.result && payload.result !== "DRAW") {
+    console.warn("[match:result] payload integrity mismatch", payload);
+  }
+}
+
+function isResultRoundAcceptable(
+  resultRound: number | undefined,
+  expectedRound: number | null,
+  lateRound: number | null
+): boolean {
+  if (resultRound === undefined) {
+    return true;
+  }
+
+  if (expectedRound === null) {
+    return true;
+  }
+
+  if (resultRound === expectedRound) {
+    return true;
+  }
+
+  return lateRound !== null && resultRound === lateRound;
+}
+
+function applyAuthoritativeRoles(
+  payload: {
+    roles: Record<string, Role>;
+    kickerPlayerId?: string | null;
+    keeperPlayerId?: string | null;
+  },
+  myPlayerId: string
+): Record<string, Role> {
+  const nextRoles = { ...payload.roles };
+
+  if (payload.kickerPlayerId) {
+    nextRoles[payload.kickerPlayerId] = "KICKER";
+  }
+
+  if (payload.keeperPlayerId) {
+    nextRoles[payload.keeperPlayerId] = "KEEPER";
+  }
+
+  const roleValues = Object.values(nextRoles);
+  const kickerCount = roleValues.filter((role) => role === "KICKER").length;
+  const keeperCount = roleValues.filter((role) => role === "KEEPER").length;
+
+  if (kickerCount !== 1 || keeperCount !== 1) {
+    console.warn("[match:roles] invalid role map from server", {
+      roles: payload.roles,
+      kickerPlayerId: payload.kickerPlayerId,
+      keeperPlayerId: payload.keeperPlayerId,
+      myPlayerId,
+      kickerCount,
+      keeperCount,
+    });
+  }
+
+  return nextRoles;
+}
+
 function isReconnectForfeitCountdownStatusMessage(message: string) {
   const lower = message.toLowerCase();
   return (
@@ -249,19 +350,25 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const disconnectCountdownRef = useRef<number | null>(null);
   const disconnectCountdownTickIntervalRef = useRef<number | null>(null);
 
+  const normalizedRoomCode = roomCode.trim().toUpperCase();
   const lastPickRoundRef = useRef<number | null>(null);
+  /** Pick round when the local player locked a lane (authoritative result guard). */
+  const resolvingPickRoundRef = useRef<number | null>(null);
+  /** Round that advanced before match:result arrived (accept late packet for this round). */
+  const lateResultRoundRef = useRef<number | null>(null);
   const matchResultRevealTimeoutRef = useRef<number | null>(null);
-  /** True after match:pick window advanced without a reveal timer armed (duplicate reorder). */
-  const staleReorderMatchResultRef = useRef(false);
-  /** True while the 900ms match:result reveal timer is armed (canonical result-before-update ordering). */
+  /** True while the match:result reveal timer is armed. */
   const matchResultRevealArmedRef = useRef(false);
-  /** Highest pick round we've finished resolving (timer reveal or reorder discard). */
+  /** Highest pick round we've finished resolving. */
   const lastFullyRevealedPickRoundRef = useRef(0);
-  /** Closing pick round captured when arming reveal (canonical ordering). */
+  /** Closing pick round captured when arming reveal. */
   const closingRevealRoundSnapshotRef = useRef<number | null>(null);
-  /** Closing pick round stored when reorder advance runs before trailing match:result. */
-  const staleReorderClosingRoundRef = useRef<number | null>(null);
+  const revealStageRef = useRef<RevealStage>("IDLE");
   const previousScoresForPulseRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    revealStageRef.current = revealStage;
+  }, [revealStage]);
 
   function clearMatchResultRevealTimeout() {
     if (matchResultRevealTimeoutRef.current !== null) {
@@ -369,6 +476,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         return;
       }
 
+      clearActiveMatchIfPlayerMismatch(currentIdentity.playerId);
       setIdentity(currentIdentity);
     }
 
@@ -385,8 +493,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     const socket = getSocket();
 
     function joinRoom(currentIdentity: PlayerIdentity) {
+      saveActiveMatch(normalizedRoomCode, currentIdentity.playerId);
       socket.emit("room:join", {
-        roomCode,
+        roomCode: normalizedRoomCode,
         playerId: currentIdentity.playerId,
         username: currentIdentity.username || "",
       });
@@ -411,12 +520,27 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       playerCount: number;
       isReady: boolean;
       roles?: Record<string, Role>;
+      kickerPlayerId?: string | null;
+      keeperPlayerId?: string | null;
     }) {
+      if (!isSocketEventForRoom(payload, normalizedRoomCode)) {
+        return;
+      }
+
       setPlayerCount(payload.playerCount);
       setPlayerOrder(payload.players);
 
-      if (payload.roles) {
-        setRoles(payload.roles);
+      if (payload.roles && identity?.playerId) {
+        setRoles(
+          applyAuthoritativeRoles(
+            {
+              roles: payload.roles,
+              kickerPlayerId: payload.kickerPlayerId,
+              keeperPlayerId: payload.keeperPlayerId,
+            },
+            identity.playerId
+          )
+        );
       }
 
       if (payload.playerNames) {
@@ -430,6 +554,14 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     }
 
     function onMatchUpdate(data: MatchUpdatePayload) {
+      if (!isSocketEventForRoom(data, normalizedRoomCode)) {
+        console.warn(
+          "[match:update] ignored foreign room",
+          data.roomCode ?? data.code
+        );
+        return;
+      }
+
       const incomingRound = data.round;
 
       const previousRoundTracked = lastPickRoundRef.current;
@@ -474,7 +606,20 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         previousScoresForPulseRef.current = { ...data.scores };
       }
 
-      setRoles(data.roles);
+      if (identity?.playerId) {
+        setRoles(applyAuthoritativeRoles(data, identity.playerId));
+      } else {
+        setRoles(data.roles);
+      }
+
+      if (data.matchType === "tournament" || data.tournamentId) {
+        tournamentContextRef.current = {
+          isTournament: true,
+          tournamentId:
+            data.tournamentId ?? tournamentContextRef.current.tournamentId,
+        };
+      }
+
       setScores(data.scores);
       setDisplayScores(data.scores);
       setRound(incomingRound);
@@ -531,16 +676,15 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             !matchResultRevealArmedRef.current &&
             !resolutionComplete
           ) {
-            staleReorderMatchResultRef.current = true;
-            staleReorderClosingRoundRef.current = prev;
+            lateResultRoundRef.current = prev;
           } else {
-            staleReorderMatchResultRef.current = false;
-            staleReorderClosingRoundRef.current = null;
+            lateResultRoundRef.current = null;
           }
 
           matchResultRevealArmedRef.current = false;
         }
 
+        resolvingPickRoundRef.current = null;
         setHasSubmittedPick(false);
         setMyPick(null);
         setResult(null);
@@ -564,10 +708,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           clearDisconnectCountdownVisual();
         }
         clearMatchResultRevealTimeout();
-        staleReorderMatchResultRef.current = false;
-        staleReorderClosingRoundRef.current = null;
+        lateResultRoundRef.current = null;
         closingRevealRoundSnapshotRef.current = null;
         matchResultRevealArmedRef.current = false;
+        resolvingPickRoundRef.current = null;
         setMatchEnded(true);
         setStatus("Match finished");
         setTimer(null);
@@ -584,6 +728,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     }
 
     function onMatchStatus(data: MatchStatusPayload) {
+      if (!isSocketEventForRoom(data, normalizedRoomCode)) {
+        return;
+      }
+
       setStatus(data.message);
 
       const messageLower = data.message.toLowerCase();
@@ -613,112 +761,163 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         if (disconnectCountdownRef.current !== null) {
           clearDisconnectCountdownVisual();
         }
-        // New pick window countdown from server — cancel stray reveal timeout so
-        // a prior round match:result timer cannot force REVEALED during this countdown.
-        clearMatchResultRevealTimeout();
-        matchResultRevealArmedRef.current = false;
-        setRevealStage("IDLE");
-        setHasSubmittedPick(false);
-        setOpponentStatus("");
+
+        const revealLocked =
+          revealStageRef.current === "REVEALING" ||
+          revealStageRef.current === "REVEALED";
+
+        if (!revealLocked) {
+          clearMatchResultRevealTimeout();
+          matchResultRevealArmedRef.current = false;
+          setRevealStage("IDLE");
+          setHasSubmittedPick(false);
+          setOpponentStatus("");
+        }
+
         setTimer(data.timeoutSeconds);
       }
     }
 
+    function applyRevealedResult(authoritative: MatchResultPayload) {
+      const snap = closingRevealRoundSnapshotRef.current;
+      closingRevealRoundSnapshotRef.current = null;
+
+      if (snap !== null) {
+        lastFullyRevealedPickRoundRef.current = Math.max(
+          lastFullyRevealedPickRoundRef.current,
+          snap
+        );
+      }
+
+      if (typeof authoritative.round === "number") {
+        lastFullyRevealedPickRoundRef.current = Math.max(
+          lastFullyRevealedPickRoundRef.current,
+          authoritative.round
+        );
+        lateResultRoundRef.current = null;
+      }
+
+      setResult(authoritative);
+      setPendingResult(authoritative);
+      setRevealStage("REVEALED");
+      setStatus(
+        authoritative.statusMessage || `Result: ${authoritative.result}`
+      );
+      setResultFlavorMessage(pickResultFlavorMessage(authoritative.result));
+      setOpponentStatus("");
+
+      if (authoritative.result === "GOAL") {
+        goalSound.currentTime = 0;
+        void goalSound.play().catch(() => {});
+      } else if (authoritative.result === "SAVE") {
+        saveSound.currentTime = 0;
+        void saveSound.play().catch(() => {});
+      }
+
+      if (authoritative.result === "GOAL") {
+        setImpactResult("GOAL");
+        window.setTimeout(() => {
+          setImpactResult(null);
+        }, 600);
+      } else if (authoritative.result === "SAVE") {
+        setImpactResult("SAVE");
+        window.setTimeout(() => {
+          setImpactResult(null);
+        }, 600);
+      } else if (authoritative.result === "DRAW") {
+        setImpactResult("DRAW");
+        window.setTimeout(() => {
+          setImpactResult(null);
+        }, 500);
+      }
+
+      if (authoritative.result === "GOAL") {
+        setScreenEffect("GOAL");
+        window.setTimeout(() => {
+          setScreenEffect(null);
+        }, 600);
+      } else if (authoritative.result === "SAVE") {
+        setScreenEffect("SAVE");
+        window.setTimeout(() => {
+          setScreenEffect(null);
+        }, 600);
+      } else if (authoritative.result === "DRAW") {
+        setScreenEffect("DRAW");
+        window.setTimeout(() => {
+          setScreenEffect(null);
+        }, 500);
+      }
+    }
+
     function onMatchResult(data: MatchResultPayload) {
-      const revealDelayMs = tournamentContextRef.current.isTournament
-        ? TOURNAMENT_MATCH_RESULT_REVEAL_MS
-        : MATCH_RESULT_REVEAL_MS;
+      if (!isSocketEventForRoom(data, normalizedRoomCode)) {
+        console.warn(
+          "[match:result] ignored foreign room",
+          data.roomCode ?? data.code
+        );
+        return;
+      }
 
-      if (staleReorderMatchResultRef.current) {
-        staleReorderMatchResultRef.current = false;
-        clearMatchResultRevealTimeout();
+      const authoritative = normalizeAuthoritativeResult(data);
+      if (!authoritative) {
+        console.warn("[match:result] ignored invalid payload", data);
+        return;
+      }
 
-        const closedAt = staleReorderClosingRoundRef.current;
-        staleReorderClosingRoundRef.current = null;
+      assertAuthoritativeResultIntegrity(authoritative);
 
-        if (closedAt !== null) {
-          lastFullyRevealedPickRoundRef.current = Math.max(
-            lastFullyRevealedPickRoundRef.current,
-            closedAt
-          );
-        }
+      const expectedRound =
+        resolvingPickRoundRef.current ?? lastPickRoundRef.current;
 
+      if (
+        !isResultRoundAcceptable(
+          authoritative.round,
+          expectedRound,
+          lateResultRoundRef.current
+        )
+      ) {
+        console.warn(
+          "[match:result] ignored stale round",
+          authoritative.round,
+          "expected",
+          expectedRound,
+          "late",
+          lateResultRoundRef.current
+        );
         return;
       }
 
       clearMatchResultRevealTimeout();
-
-      closingRevealRoundSnapshotRef.current = lastPickRoundRef.current;
+      closingRevealRoundSnapshotRef.current =
+        authoritative.round ?? expectedRound ?? lastPickRoundRef.current;
 
       setOpponentStatus("Opponent locked their choice");
-      setPendingResult(data);
-      setRevealStage("REVEALING");
-      setStatus("Both players locked. Revealing result...");
       setTimer(null);
 
+      const bothLocked = Boolean(
+        authoritative.kickerPick && authoritative.keeperPick
+      );
+      const revealDelayMs = bothLocked
+        ? 0
+        : tournamentContextRef.current.isTournament
+          ? TOURNAMENT_MATCH_RESULT_REVEAL_MS
+          : MATCH_RESULT_REVEAL_MS;
+
+      if (revealDelayMs <= 0) {
+        matchResultRevealArmedRef.current = false;
+        applyRevealedResult(authoritative);
+        return;
+      }
+
+      setPendingResult(authoritative);
+      setRevealStage("REVEALING");
+      setStatus("Both players locked. Revealing result...");
       matchResultRevealArmedRef.current = true;
 
       matchResultRevealTimeoutRef.current = window.setTimeout(() => {
         matchResultRevealTimeoutRef.current = null;
         matchResultRevealArmedRef.current = false;
-
-        const snap = closingRevealRoundSnapshotRef.current;
-        closingRevealRoundSnapshotRef.current = null;
-
-        if (snap !== null) {
-          lastFullyRevealedPickRoundRef.current = Math.max(
-            lastFullyRevealedPickRoundRef.current,
-            snap
-          );
-        }
-
-        setResult(data);
-        setRevealStage("REVEALED");
-        setStatus(data.statusMessage || `Result: ${data.result}`);
-        setResultFlavorMessage(pickResultFlavorMessage(data.result));
-        setOpponentStatus("");
-
-        if (data.result === "GOAL") {
-          goalSound.currentTime = 0;
-          void goalSound.play().catch(() => {});
-        } else if (data.result === "SAVE") {
-          saveSound.currentTime = 0;
-          void saveSound.play().catch(() => {});
-        }
-
-        if (data.result === "GOAL") {
-          setImpactResult("GOAL");
-          window.setTimeout(() => {
-            setImpactResult(null);
-          }, 600);
-        } else if (data.result === "SAVE") {
-          setImpactResult("SAVE");
-          window.setTimeout(() => {
-            setImpactResult(null);
-          }, 600);
-        } else if (data.result === "DRAW") {
-          setImpactResult("DRAW");
-          window.setTimeout(() => {
-            setImpactResult(null);
-          }, 500);
-        }
-
-        if (data.result === "GOAL") {
-          setScreenEffect("GOAL");
-          window.setTimeout(() => {
-            setScreenEffect(null);
-          }, 600);
-        } else if (data.result === "SAVE") {
-          setScreenEffect("SAVE");
-          window.setTimeout(() => {
-            setScreenEffect(null);
-          }, 600);
-        } else if (data.result === "DRAW") {
-          setScreenEffect("DRAW");
-          window.setTimeout(() => {
-            setScreenEffect(null);
-          }, 500);
-        }
+        applyRevealedResult(authoritative);
       }, revealDelayMs);
     }
 
@@ -727,10 +926,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         clearDisconnectCountdownVisual();
       }
       clearMatchResultRevealTimeout();
-      staleReorderMatchResultRef.current = false;
-      staleReorderClosingRoundRef.current = null;
+      lateResultRoundRef.current = null;
       closingRevealRoundSnapshotRef.current = null;
       matchResultRevealArmedRef.current = false;
+      resolvingPickRoundRef.current = null;
       lastFullyRevealedPickRoundRef.current = 0;
       lastPickRoundRef.current = null;
       previousScoresForPulseRef.current = {};
@@ -787,10 +986,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         clearDisconnectCountdownVisual();
       }
       clearMatchResultRevealTimeout();
-      staleReorderMatchResultRef.current = false;
-      staleReorderClosingRoundRef.current = null;
+      lateResultRoundRef.current = null;
       closingRevealRoundSnapshotRef.current = null;
       matchResultRevealArmedRef.current = false;
+      resolvingPickRoundRef.current = null;
       lastFullyRevealedPickRoundRef.current = 0;
       lastPickRoundRef.current = null;
       previousScoresForPulseRef.current = {};
@@ -870,6 +1069,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     }
 
     return () => {
+      socket.emit("room:leave", { roomCode: normalizedRoomCode });
       clearAbortRedirectTimeout();
       clearDisconnectCountdownVisual();
       clearMatchResultRevealTimeout();
@@ -886,7 +1086,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       socket.off("match:aborted", onMatchAborted);
       socket.off("error:message", onErrorMessage);
     };
-  }, [roomCode, identity, router]);
+  }, [normalizedRoomCode, identity, router]);
 
   useEffect(() => {
     if (!matchEnded || matchType !== "tournament" || !tournamentId) {
@@ -909,6 +1109,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
     const redirectTimeout = window.setTimeout(() => {
       window.clearInterval(countdownInterval);
+      clearActiveMatch();
       router.push(`/tournaments/${tournamentId}`);
     }, TOURNAMENT_POST_MATCH_REDIRECT_MS);
 
@@ -961,6 +1162,32 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
   const myPlayerId = identity?.playerId || "";
   const myRole = myPlayerId ? roles[myPlayerId] : undefined;
+
+  useEffect(() => {
+    if (!myPlayerId || playerCount < 2) return;
+
+    const roleValues = Object.values(roles);
+    const myRoleValue = roles[myPlayerId];
+    const kickerIds = Object.keys(roles).filter(
+      (id) => roles[id] === "KICKER"
+    );
+    const keeperIds = Object.keys(roles).filter(
+      (id) => roles[id] === "KEEPER"
+    );
+
+    if (kickerIds.length !== 1 || keeperIds.length !== 1) {
+      console.warn("[match:roles] client sees invalid role map", {
+        roomCode: normalizedRoomCode,
+        myPlayerId,
+        myRole: myRoleValue,
+        roles,
+        kickerIds,
+        keeperIds,
+      });
+    } else if (myRoleValue && kickerIds[0] === keeperIds[0]) {
+      console.warn("[match:roles] both players mapped to same role", roles);
+    }
+  }, [roles, myPlayerId, playerCount, normalizedRoomCode]);
 
   const opponentId = useMemo(() => {
     return playerOrder.find((id) => id !== myPlayerId);
@@ -1015,6 +1242,24 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const phaseLabel = isSuddenDeath ? "SUDDEN DEATH" : "NORMAL MATCH";
 
   const shownResult = result || pendingResult;
+
+  const kickerResultLabel = useMemo(() => {
+    if (!shownResult) return "Kicker";
+    const playerId = shownResult.kickerPlayerId;
+    if (playerId && playerNames[playerId]) {
+      return playerNames[playerId];
+    }
+    return "Kicker";
+  }, [shownResult, playerNames]);
+
+  const keeperResultLabel = useMemo(() => {
+    if (!shownResult) return "Keeper";
+    const playerId = shownResult.keeperPlayerId;
+    if (playerId && playerNames[playerId]) {
+      return playerNames[playerId];
+    }
+    return "Keeper";
+  }, [shownResult, playerNames]);
   const isTimerUrgent = timer !== null && timer > 0 && timer <= 3;
   const isRevealLocked =
     revealStage === "REVEALING" || revealStage === "REVEALED";
@@ -1078,11 +1323,12 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     void clickSound.play().catch(() => {});
 
     socket.emit("match:pick", {
-      roomCode,
+      roomCode: normalizedRoomCode,
       lane,
       playerId: identity.playerId,
     });
 
+    resolvingPickRoundRef.current = lastPickRoundRef.current ?? round;
     setHasSubmittedPick(true);
     setMyPick(lane);
     setRevealStage("LOCKED");
@@ -1582,7 +1828,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               } ${revealStage === "REVEALED" ? "scale-[1.04]" : ""}`}
             >
               <p className="text-xs uppercase tracking-[0.18em] text-white/55">
-                Kicker
+                {kickerResultLabel}
+                <span className="ml-1 text-white/40">· Kicker</span>
               </p>
               <p className="mt-2 text-3xl font-black">
                 {shownResult?.kickerPick
@@ -1605,7 +1852,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               } ${revealStage === "REVEALED" ? "scale-[1.04]" : ""}`}
             >
               <p className="text-xs uppercase tracking-[0.18em] text-white/55">
-                Keeper
+                {keeperResultLabel}
+                <span className="ml-1 text-white/40">· Keeper</span>
               </p>
               <p className="mt-2 text-3xl font-black">
                 {shownResult?.keeperPick

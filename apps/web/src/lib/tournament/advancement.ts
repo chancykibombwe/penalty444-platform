@@ -186,6 +186,8 @@ export async function reconcileParentMatch(
     };
   }
 
+  const isFinal = parent.next_match_id === null;
+
   if (hasOne && !hasTwo) {
     const { data: walkoverRow, error: walkoverError } = await admin
       .from("tournament_matches")
@@ -200,9 +202,15 @@ export async function reconcileParentMatch(
       .select("id")
       .maybeSingle();
 
+    const walkoverCreated = Boolean(walkoverRow) && !walkoverError;
+
+    if (isFinal && walkoverCreated) {
+      await maybeCompleteTournament(admin, parent.tournament_id);
+    }
+
     return {
-      changed: Boolean(walkoverRow) && !walkoverError,
-      walkoverCreated: Boolean(walkoverRow),
+      changed: walkoverCreated,
+      walkoverCreated,
       voidCreated: false,
     };
   }
@@ -221,9 +229,15 @@ export async function reconcileParentMatch(
       .select("id")
       .maybeSingle();
 
+    const walkoverCreated = Boolean(walkoverRow) && !walkoverError;
+
+    if (isFinal && walkoverCreated) {
+      await maybeCompleteTournament(admin, parent.tournament_id);
+    }
+
     return {
-      changed: Boolean(walkoverRow) && !walkoverError,
-      walkoverCreated: Boolean(walkoverRow),
+      changed: walkoverCreated,
+      walkoverCreated,
       voidCreated: false,
     };
   }
@@ -241,15 +255,21 @@ export async function reconcileParentMatch(
     .select("id")
     .maybeSingle();
 
+  const voidCreated = Boolean(voidRow) && !voidError;
+
+  if (isFinal && voidCreated) {
+    await maybeCompleteTournament(admin, parent.tournament_id);
+  }
+
   return {
-    changed: Boolean(voidRow) && !voidError,
+    changed: voidCreated,
     walkoverCreated: false,
-    voidCreated: Boolean(voidRow),
+    voidCreated,
   };
 }
 
 /**
- * Completes the tournament when the final slot is terminal.
+ * Completes the tournament when a final slot (next_match_id IS NULL) is terminal.
  */
 export async function maybeCompleteTournament(
   admin: SupabaseClient,
@@ -267,7 +287,7 @@ export async function maybeCompleteTournament(
 
   const { data: finals, error: finalError } = await admin
     .from("tournament_matches")
-    .select("id, status, winner_entry_id")
+    .select("id, status, winner_entry_id, round_number")
     .eq("tournament_id", tournamentId)
     .is("next_match_id", null);
 
@@ -275,10 +295,15 @@ export async function maybeCompleteTournament(
     return false;
   }
 
-  const finalMatch = finals[0];
-  if (!isTerminalStatus(finalMatch.status)) {
+  const terminalFinals = finals.filter((row) => isTerminalStatus(row.status));
+
+  if (terminalFinals.length === 0) {
     return false;
   }
+
+  const finalMatch = [...terminalFinals].sort(
+    (a, b) => b.round_number - a.round_number
+  )[0];
 
   const completedAt = nowIso();
 
@@ -328,6 +353,74 @@ export async function maybeCompleteTournament(
   }
 
   return false;
+}
+
+async function sweepBracketTowardCompletion(
+  admin: SupabaseClient,
+  tournamentId: string
+): Promise<void> {
+  const { data: matches, error } = await admin
+    .from("tournament_matches")
+    .select("id, status, winner_entry_id, next_match_id, round_number")
+    .eq("tournament_id", tournamentId);
+
+  if (error || !matches?.length) {
+    return;
+  }
+
+  for (const match of matches) {
+    if (
+      match.next_match_id &&
+      WINNER_FEEDER_STATUSES.has(match.status) &&
+      match.winner_entry_id
+    ) {
+      await applyWinnerToParent(admin, match.id);
+    }
+  }
+
+  for (const match of matches) {
+    if (match.status === "void" || match.status === "walkover") {
+      await propagateVoidOrWalkoverFromMatch(admin, match.id);
+    }
+  }
+
+  const parentIds = new Set(
+    matches
+      .map((match) => match.next_match_id)
+      .filter((id): id is string => Boolean(id))
+  );
+
+  for (const parentId of parentIds) {
+    await reconcileParentMatch(admin, parentId);
+  }
+
+  for (const match of matches) {
+    if (match.status === "walkover" || match.status === "void") {
+      await propagateVoidOrWalkoverFromMatch(admin, match.id);
+    }
+  }
+}
+
+/**
+ * Idempotent repair: propagate bracket effects, then complete if final is terminal.
+ */
+export async function reconcileTournamentCompletion(
+  admin: SupabaseClient,
+  tournamentId: string
+): Promise<boolean> {
+  const { data: tournament, error: tournamentError } = await admin
+    .from("tournaments")
+    .select("id, status")
+    .eq("id", tournamentId)
+    .maybeSingle();
+
+  if (tournamentError || !tournament || tournament.status !== "in_progress") {
+    return false;
+  }
+
+  await sweepBracketTowardCompletion(admin, tournamentId);
+
+  return maybeCompleteTournament(admin, tournamentId);
 }
 
 export type PropagationStats = {

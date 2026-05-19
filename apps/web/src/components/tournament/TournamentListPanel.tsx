@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase/client";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
 import TournamentEntryActions from "./TournamentEntryActions";
@@ -41,9 +41,58 @@ const FILTER_OPTIONS: { id: TournamentListFilter; label: string }[] = [
 
 const ACTIVE_STATUSES = new Set(["registration", "check_in", "in_progress"]);
 const REGISTRATION_STATUSES = new Set(["registration", "check_in"]);
+const LIVE_LIST_POLL_INTERVAL_MS = 12_000;
+const VISIBILITY_REFRESH_DEBOUNCE_MS = 2_000;
+
+/** Normalize Supabase `status` for exact comparisons (never use display labels). */
+export function normalizeTournamentStatus(
+  status: string | null | undefined
+): string {
+  const normalized = (status ?? "").trim().toLowerCase().replace(/\s+/g, "_");
+
+  if (normalized === "complete") {
+    return "completed";
+  }
+
+  if (normalized === "check-in" || normalized === "checkin") {
+    return "check_in";
+  }
+
+  if (normalized === "in-progress") {
+    return "in_progress";
+  }
+
+  return normalized;
+}
+
+export function isCancelledTournament(status: string | null | undefined): boolean {
+  return normalizeTournamentStatus(status) === "cancelled";
+}
+
+export function isCompletedTournament(status: string | null | undefined): boolean {
+  return normalizeTournamentStatus(status) === "completed";
+}
+
+export function isActiveTournament(status: string | null | undefined): boolean {
+  return ACTIVE_STATUSES.has(normalizeTournamentStatus(status));
+}
+
+function isRegistrationTabStatus(status: string | null | undefined): boolean {
+  return REGISTRATION_STATUSES.has(normalizeTournamentStatus(status));
+}
+
+function logTournamentStatusTable(rows: TournamentRow[]) {
+  console.table(
+    rows.map((tournament) => ({
+      name: tournament.name,
+      status: tournament.status,
+      normalized: normalizeTournamentStatus(tournament.status),
+    }))
+  );
+}
 
 export function formatTournamentStatus(status: string): string {
-  switch (status) {
+  switch (normalizeTournamentStatus(status)) {
     case "registration":
       return "Registration";
     case "check_in":
@@ -75,7 +124,7 @@ export function formatEntryStatus(status: string): string {
 }
 
 export function statusBadgeClass(status: string) {
-  switch (status) {
+  switch (normalizeTournamentStatus(status)) {
     case "registration":
       return "border-emerald-500/40 bg-emerald-950/30 text-emerald-200";
     case "check_in":
@@ -142,30 +191,54 @@ function formatCompletedAt(value: string | null) {
   });
 }
 
-function passesStatusFilter(
-  tournament: TournamentRow,
-  filter: TournamentListFilter
-): boolean {
-  if (tournament.status === "cancelled") {
-    return false;
-  }
-
-  if (tournament.status === "draft" && filter !== "mine") {
-    return false;
-  }
-
-  switch (filter) {
-    case "active":
-      return ACTIVE_STATUSES.has(tournament.status);
-    case "registration":
-      return REGISTRATION_STATUSES.has(tournament.status);
-    case "completed":
-      return tournament.status === "completed";
-    case "mine":
-      return true;
-    default:
+/**
+ * Final client-side tab filter (exact DB status values, normalized).
+ * Applied immediately before render so stale rows never leak across tabs.
+ */
+function filterTournamentsForTab(
+  rows: TournamentRow[],
+  filter: TournamentListFilter,
+  currentUserId: string | null,
+  myEntriesByTournament: Map<string, TournamentEntryRow>
+): TournamentRow[] {
+  return rows.filter((tournament) => {
+    if (isCancelledTournament(tournament.status)) {
       return false;
-  }
+    }
+
+    if (
+      normalizeTournamentStatus(tournament.status) === "draft" &&
+      filter !== "mine"
+    ) {
+      return false;
+    }
+
+    switch (filter) {
+      case "active":
+        return (
+          isActiveTournament(tournament.status) &&
+          !isCompletedTournament(tournament.status)
+        );
+      case "registration":
+        return isRegistrationTabStatus(tournament.status);
+      case "completed":
+        return isCompletedTournament(tournament.status);
+      case "mine":
+        if (
+          isCancelledTournament(tournament.status) ||
+          isCompletedTournament(tournament.status)
+        ) {
+          return false;
+        }
+        return isMineTournament(
+          tournament,
+          currentUserId,
+          myEntriesByTournament
+        );
+      default:
+        return false;
+    }
+  });
 }
 
 function isMineTournament(
@@ -246,28 +319,66 @@ export default function TournamentListPanel({
     Map<string, TournamentEntryRow>
   >(new Map());
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [refreshKey, setRefreshKey] = useState(0);
   const [filter, setFilter] = useState<TournamentListFilter>("active");
 
-  const refresh = useCallback(() => {
-    setRefreshKey((value) => value + 1);
+  const mountedRef = useRef(true);
+  const fetchInFlightRef = useRef(false);
+  const pendingSilentRefreshRef = useRef(false);
+  const lastVisibilityRefreshAtRef = useRef(0);
+  const hasDisplayedListRef = useRef(false);
+  const tournamentsRef = useRef<TournamentRow[]>([]);
+
+  tournamentsRef.current = tournaments;
+
+  type TournamentListSnapshot = {
+    tournaments: TournamentRow[];
+    entriesByTournament: Map<string, TournamentEntryRow[]>;
+    myEntriesByTournament: Map<string, TournamentEntryRow>;
+    userId: string | null;
+  };
+
+  const applySnapshot = useCallback((snapshot: TournamentListSnapshot) => {
+    setTournaments(snapshot.tournaments);
+    setEntriesByTournament(snapshot.entriesByTournament);
+    setMyEntriesByTournament(snapshot.myEntriesByTournament);
+    setCurrentUserId(snapshot.userId);
+    if (snapshot.tournaments.length > 0) {
+      hasDisplayedListRef.current = true;
+    }
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadTournaments = useCallback(async (options?: { silent?: boolean }) => {
+    if (fetchInFlightRef.current) {
+      if (options?.silent) {
+        pendingSilentRefreshRef.current = true;
+      }
+      return;
+    }
 
-    async function loadTournaments() {
-      setLoading(true);
+    fetchInFlightRef.current = true;
+    pendingSilentRefreshRef.current = false;
+    const silent = options?.silent === true;
+    const hasExistingData =
+      hasDisplayedListRef.current || tournamentsRef.current.length > 0;
+
+    if (silent) {
+      // Keep current list visible; no loading flags.
+    } else if (!hasExistingData) {
+      setIsInitialLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
+
+    if (!silent) {
       setError("");
+    }
 
+    try {
       const identity = await getCurrentPlayerIdentity();
       const userId = identity?.playerId ?? null;
-
-      if (!cancelled) {
-        setCurrentUserId(userId);
-      }
 
       const { data: tournamentRows, error: tournamentError } = await supabase
         .from("tournaments")
@@ -278,102 +389,195 @@ export default function TournamentListPanel({
         .neq("status", "cancelled")
         .order("created_at", { ascending: false });
 
-      if (cancelled) return;
+      if (!mountedRef.current) {
+        return;
+      }
 
       if (tournamentError) {
-        setError(tournamentError.message);
-        setTournaments([]);
-        setEntriesByTournament(new Map());
-        setMyEntriesByTournament(new Map());
-        setLoading(false);
+        if (!silent) {
+          setError(tournamentError.message);
+          applySnapshot({
+            tournaments: [],
+            entriesByTournament: new Map(),
+            myEntriesByTournament: new Map(),
+            userId,
+          });
+        }
         return;
       }
 
-      const list = ((tournamentRows ?? []) as TournamentRow[]).filter(
-        (row) => row.status !== "cancelled"
+      const nextTournaments = ((tournamentRows ?? []) as TournamentRow[]).filter(
+        (row) => !isCancelledTournament(row.status)
       );
-      setTournaments(list);
 
-      if (list.length === 0) {
-        setEntriesByTournament(new Map());
-        setMyEntriesByTournament(new Map());
-        setLoading(false);
+      logTournamentStatusTable(nextTournaments);
+
+      if (nextTournaments.length === 0) {
+        applySnapshot({
+          tournaments: [],
+          entriesByTournament: new Map(),
+          myEntriesByTournament: new Map(),
+          userId,
+        });
         return;
       }
 
-      const tournamentIds = list.map((row) => row.id);
+      const tournamentIds = nextTournaments.map((row) => row.id);
 
       const { data: entryRows, error: entriesError } = await supabase
         .from("tournament_entries")
         .select("id, tournament_id, user_id, username, status, checked_in_at")
         .in("tournament_id", tournamentIds);
 
-      if (cancelled) return;
-
-      if (entriesError) {
-        setError(entriesError.message);
-        setEntriesByTournament(new Map());
-        setMyEntriesByTournament(new Map());
-        setLoading(false);
+      if (!mountedRef.current) {
         return;
       }
 
-      const grouped = new Map<string, TournamentEntryRow[]>();
-      const mine = new Map<string, TournamentEntryRow>();
+      if (entriesError) {
+        if (!silent) {
+          setError(entriesError.message);
+          applySnapshot({
+            tournaments: [],
+            entriesByTournament: new Map(),
+            myEntriesByTournament: new Map(),
+            userId,
+          });
+        }
+        return;
+      }
+
+      const nextEntriesByTournament = new Map<string, TournamentEntryRow[]>();
+      const nextMyEntriesByTournament = new Map<string, TournamentEntryRow>();
 
       for (const row of (entryRows ?? []) as TournamentEntryRow[]) {
-        const bucket = grouped.get(row.tournament_id) ?? [];
+        const bucket = nextEntriesByTournament.get(row.tournament_id) ?? [];
         bucket.push(row);
-        grouped.set(row.tournament_id, bucket);
+        nextEntriesByTournament.set(row.tournament_id, bucket);
 
         if (userId && row.user_id === userId) {
-          mine.set(row.tournament_id, row);
+          nextMyEntriesByTournament.set(row.tournament_id, row);
         }
       }
 
-      setEntriesByTournament(grouped);
-      setMyEntriesByTournament(mine);
-      setLoading(false);
-    }
+      applySnapshot({
+        tournaments: nextTournaments,
+        entriesByTournament: nextEntriesByTournament,
+        myEntriesByTournament: nextMyEntriesByTournament,
+        userId,
+      });
+    } finally {
+      fetchInFlightRef.current = false;
+      if (mountedRef.current) {
+        setIsInitialLoading(false);
+        setIsRefreshing(false);
+      }
 
-    loadTournaments();
+      if (pendingSilentRefreshRef.current && mountedRef.current) {
+        pendingSilentRefreshRef.current = false;
+        void loadTournaments({ silent: true });
+      }
+    }
+  }, [applySnapshot]);
+
+  const refresh = useCallback(() => {
+    void loadTournaments();
+  }, [loadTournaments]);
+
+  const refreshSilent = useCallback(() => {
+    void loadTournaments({ silent: true });
+  }, [loadTournaments]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    void loadTournaments({ silent: hasDisplayedListRef.current });
 
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
     };
-  }, [refreshKey, listVersion]);
+  }, [loadTournaments, listVersion]);
 
-  const filteredTournaments = useMemo(() => {
-    const matched = tournaments.filter((tournament) => {
-      if (!passesStatusFilter(tournament, filter)) {
-        return false;
-      }
+  const shouldPollLiveList = useMemo(
+    () => tournaments.some((row) => isActiveTournament(row.status)),
+    [tournaments]
+  );
 
-      if (filter === "mine") {
-        return isMineTournament(
-          tournament,
-          currentUserId,
-          myEntriesByTournament
-        );
-      }
-
-      return true;
-    });
-
-    if (filter === "completed") {
-      return [...matched].sort(
-        (a, b) =>
-          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-      );
+  useEffect(() => {
+    if (filter !== "active") {
+      return;
     }
 
-    return [...matched].sort(
-      (a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    const completedOnActiveTab = tournaments.filter((row) =>
+      isCompletedTournament(row.status)
     );
-  }, [tournaments, filter, currentUserId, myEntriesByTournament]);
+
+    if (completedOnActiveTab.length > 0) {
+      console.warn(
+        "[TournamentList] completed tournaments in source state while Active tab selected",
+        completedOnActiveTab.map((row) => ({
+          name: row.name,
+          status: row.status,
+          normalized: normalizeTournamentStatus(row.status),
+        }))
+      );
+    }
+  }, [filter, tournaments]);
+
+  useEffect(() => {
+    if (!shouldPollLiveList) {
+      return;
+    }
+
+    const tick = () => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      refreshSilent();
+    };
+
+    const intervalId = window.setInterval(tick, LIVE_LIST_POLL_INTERVAL_MS);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+
+      const now = Date.now();
+      if (now - lastVisibilityRefreshAtRef.current < VISIBILITY_REFRESH_DEBOUNCE_MS) {
+        return;
+      }
+
+      lastVisibilityRefreshAtRef.current = now;
+      refreshSilent();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [shouldPollLiveList, refreshSilent]);
+
+  const matchedForTab = filterTournamentsForTab(
+    tournaments,
+    filter,
+    currentUserId,
+    myEntriesByTournament
+  );
+
+  const filteredTournaments =
+    filter === "completed"
+      ? [...matchedForTab].sort(
+          (a, b) =>
+            new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        )
+      : [...matchedForTab].sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
 
   const sectionCopy = getSectionCopy(filter);
+  const showInitialLoading = isInitialLoading && tournaments.length === 0;
 
   return (
     <section className="space-y-6 rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 shadow-2xl">
@@ -391,10 +595,10 @@ export default function TournamentListPanel({
         <button
           type="button"
           onClick={refresh}
-          disabled={loading}
+          disabled={isInitialLoading || isRefreshing}
           className="rounded-xl border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-200 hover:border-zinc-400 disabled:opacity-50"
         >
-          {loading ? "Refreshing…" : "Refresh"}
+          {isRefreshing ? "Refreshing…" : "Refresh"}
         </button>
       </div>
 
@@ -424,7 +628,7 @@ export default function TournamentListPanel({
         </div>
       ) : null}
 
-      {loading ? (
+      {showInitialLoading ? (
         <p className="text-sm text-zinc-400">Loading tournaments...</p>
       ) : filteredTournaments.length === 0 ? (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/80 px-4 py-8 text-center text-sm text-zinc-400">
@@ -441,13 +645,14 @@ export default function TournamentListPanel({
             const isHost =
               Boolean(currentUserId) &&
               currentUserId === tournament.created_by;
-            const isLive = tournament.status === "in_progress";
+            const isLive =
+              normalizeTournamentStatus(tournament.status) === "in_progress";
             const isActiveParticipant =
               myEntry != null &&
               (myEntry.status === "registered" ||
                 myEntry.status === "checked_in");
             const showLiveAccess = isLive && (isHost || isActiveParticipant);
-            const isCompleted = tournament.status === "completed";
+            const isCompleted = isCompletedTournament(tournament.status);
             const championUsername = resolveChampionUsername(
               tournament,
               entries
@@ -614,4 +819,3 @@ export default function TournamentListPanel({
     </section>
   );
 }
-

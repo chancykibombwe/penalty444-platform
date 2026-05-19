@@ -20,6 +20,7 @@ import {
   tournamentMatchRooms,
 } from "./state/stores";
 import {
+  ensureAuthoritativeRoomRoles,
   getPlayerByRole,
   getPointWinnerRole,
   resolveShot,
@@ -27,11 +28,16 @@ import {
 } from "./gameplay/resolveShot";
 import { resolveMatchOutcome } from "./gameplay/matchOutcome";
 import {
+  maybeCompleteTournament,
+  reconcileTournamentCompletion,
+} from "./tournament/completion";
+import {
   shouldEndSuddenDeath,
   shouldEnterSuddenDeath,
 } from "./gameplay/suddenDeath";
 import {
   bindRoundTimers,
+  clearPickTimer,
   clearRoomTimer,
   startRoundTimer,
 } from "./gameplay/timers";
@@ -65,6 +71,7 @@ import {
   bindRoomSocketHandlers,
   registerRoomSocketHandlers,
 } from "./socket/rooms";
+import { normalizeRoomCode } from "./room/codes";
 import {
   bindStakesSocketServer,
   getStakeAmount,
@@ -247,6 +254,8 @@ function buildPlayerNames(room: Room) {
 }
 
 function emitRoomUpdate(roomCode: string, room: Room) {
+  ensureAuthoritativeRoomRoles(room);
+
   io.to(roomCode).emit("room:update", {
     roomCode,
     players: room.players.map((player) => player.playerId),
@@ -254,6 +263,8 @@ function emitRoomUpdate(roomCode: string, room: Room) {
     playerCount: room.players.length,
     isReady: room.players.length === 2,
     roles: room.roles,
+    kickerPlayerId: getPlayerByRole(room, "KICKER") ?? null,
+    keeperPlayerId: getPlayerByRole(room, "KEEPER") ?? null,
   });
 }
 
@@ -269,14 +280,22 @@ function isPlayerAllowedInTournamentRoom(room: Room, playerId: string): boolean 
 }
 
 function emitMatchState(roomCode: string, room: Room) {
+  ensureAuthoritativeRoomRoles(room);
+
   const matchStartedAt = room.matchStartedAt;
   const earlyCancelDeadlineAt =
     isTournamentRoom(room) || matchStartedAt === undefined
       ? undefined
       : matchStartedAt + EARLY_CANCEL_MS;
 
+  const kickerPlayerId = getPlayerByRole(room, "KICKER") ?? null;
+  const keeperPlayerId = getPlayerByRole(room, "KEEPER") ?? null;
+
   io.to(roomCode).emit("match:update", {
+    roomCode,
     roles: room.roles,
+    kickerPlayerId,
+    keeperPlayerId,
     playerNames: buildPlayerNames(room),
     scores: room.scores,
     round: room.round,
@@ -503,20 +522,19 @@ async function advanceTournamentFromRoom(room: Room) {
   }
 
   if (!nextMatchId) {
-    const { error: tournamentError } = await supabase
-      .from("tournaments")
-      .update({
-        status: "completed",
-        winner_id: winnerUserId,
-        updated_at: completedAt,
-      })
-      .eq("id", room.tournamentId)
-      .eq("status", "in_progress");
+    const completed = await maybeCompleteTournament(
+      supabase,
+      room.tournamentId
+    );
 
-    if (tournamentError) {
+    if (!completed) {
       console.error(
-        "[tournament advance] failed to complete tournament:",
-        tournamentError.message
+        "[tournament advance] final slot finished but tournament not completed",
+        {
+          tournamentId: room.tournamentId,
+          tournamentMatchId: slot.id,
+          winnerEntryId,
+        }
       );
       return;
     }
@@ -638,6 +656,7 @@ async function advanceTournamentFromRoom(room: Room) {
     }
   }
 
+  await reconcileTournamentCompletion(supabase, room.tournamentId);
   room.bracketAdvanced = true;
 }
 
@@ -789,16 +808,36 @@ async function abortMatchEarly(
   emitRoomUpdate(roomCode, room);
 }
 
+const resolveRoundSeqByRoom = new Map<string, number>();
+
 function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
   if (room.matchEnded) return;
-  if (room.isResolving) return;
+  if (room.isResolving) {
+    console.log(
+      `[resolveRound] skip duplicate room=${roomCode} round=${room.round} fromTimeout=${fromTimeout}`
+    );
+    return;
+  }
 
-  clearRoomTimer(room);
+  room.isResolving = true;
+  clearPickTimer(room);
+
+  const resolveSeq = (resolveRoundSeqByRoom.get(roomCode) ?? 0) + 1;
+  resolveRoundSeqByRoom.set(roomCode, resolveSeq);
+  const resolvingRound = room.round;
+
+  ensureAuthoritativeRoomRoles(room);
 
   const kickerPick = room.picks.KICKER;
   const keeperPick = room.picks.KEEPER;
+  const kickerPlayerId = getPlayerByRole(room, "KICKER") ?? null;
+  const keeperPlayerId = getPlayerByRole(room, "KEEPER") ?? null;
   const result = resolveShot(kickerPick, keeperPick);
   const pointWinnerRole = getPointWinnerRole(kickerPick, keeperPick, result);
+
+  console.log(
+    `[resolveRound] room=${roomCode} matchType=${room.matchType ?? "unknown"} round=${resolvingRound} seq=${resolveSeq} fromTimeout=${fromTimeout} kickerPlayerId=${kickerPlayerId ?? "—"} keeperPlayerId=${keeperPlayerId ?? "—"} kickerPick=${kickerPick ?? "—"} keeperPick=${keeperPick ?? "—"} result=${result} rule=${kickerPick && keeperPick ? (kickerPick === keeperPick ? "same_lane_SAVE" : "different_lane_GOAL") : "partial"}`
+  );
 
   if (pointWinnerRole) {
     const pointWinnerId = getPlayerByRole(room, pointWinnerRole);
@@ -821,13 +860,15 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
   }
 
   io.to(roomCode).emit("match:result", {
+    roomCode,
+    round: resolvingRound,
+    kickerPlayerId,
+    keeperPlayerId,
     kickerPick: kickerPick || null,
     keeperPick: keeperPick || null,
     result,
     statusMessage,
   });
-
-  room.isResolving = true;
 
   if (room.resolveContinuationTimeout) {
     clearTimeout(room.resolveContinuationTimeout);
@@ -845,6 +886,14 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
     const r = rooms.get(roomCode);
     if (!r) {
       room.isResolving = false;
+      return;
+    }
+
+    if (resolveRoundSeqByRoom.get(roomCode) !== resolveSeq) {
+      console.log(
+        `[resolveRound] skip stale continuation room=${roomCode} round=${r.round} seq=${resolveSeq}`
+      );
+      r.isResolving = false;
       return;
     }
 
@@ -891,6 +940,7 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
           swapRoles(r);
 
           io.to(roomCode).emit("match:status", {
+            roomCode,
             message: "Match tied. Sudden Death begins.",
             timeoutSeconds: 10,
             phase: r.phase,
@@ -1014,6 +1064,30 @@ io.on("connection", (socket) => {
   registerMatchActionHandlers(socket);
   registerRematchHandlers(socket);
 
+  socket.on("room:leave", ({ roomCode }: { roomCode?: string }) => {
+    const code = normalizeRoomCode(roomCode ?? "");
+    if (!code) return;
+    socket.leave(code);
+  });
+
+  socket.on(
+    "room:join",
+    ({ roomCode }: { roomCode?: string; playerId?: string }) => {
+      const code = normalizeRoomCode(roomCode ?? "");
+      if (!code) return;
+
+      setImmediate(() => {
+        const room = rooms.get(code);
+        if (!room || room.players.length !== 2) return;
+
+        if (ensureAuthoritativeRoomRoles(room)) {
+          emitRoomUpdate(code, room);
+          emitMatchState(code, room);
+        }
+      });
+    }
+  );
+
   socket.on(
     "player:register",
     ({ playerId }: { playerId?: string }) => {
@@ -1098,6 +1172,7 @@ io.on("connection", (socket) => {
       // Only apply reconnect-forfeit to active 2-player matches that are not ended.
       if (room.players.length !== 2 || room.matchEnded) {
         io.to(room.code).emit("match:status", {
+          roomCode: room.code,
           message: "Opponent disconnected. Waiting for reconnect...",
           phase: room.phase,
           suddenDeathRound: room.suddenDeathRound,
@@ -1115,6 +1190,7 @@ io.on("connection", (socket) => {
       room.disconnectedAt = Date.now();
 
       io.to(room.code).emit("match:status", {
+        roomCode: room.code,
         message: "Opponent disconnected. Waiting 39 seconds for reconnect...",
         phase: room.phase,
         suddenDeathRound: room.suddenDeathRound,

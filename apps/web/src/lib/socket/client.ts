@@ -20,3 +20,30 @@ export function disconnectSocket() {
     socket.disconnect();
   }
 }
+
+export type RoomScopedSocketPayload = {
+  roomCode?: string;
+  code?: string;
+};
+
+/**
+ * Returns true when the event targets the given room.
+ * Legacy payloads without roomCode are accepted (single-room sessions).
+ */
+export function isSocketEventForRoom(
+  payload: RoomScopedSocketPayload | undefined,
+  roomCode: string
+): boolean {
+  if (!payload) {
+    return false;
+  }
+
+  const packetRoom = (payload.roomCode ?? payload.code)?.trim().toUpperCase();
+  const expected = roomCode.trim().toUpperCase();
+
+  if (!packetRoom) {
+    return true;
+  }
+
+  return packetRoom === expected;
+}

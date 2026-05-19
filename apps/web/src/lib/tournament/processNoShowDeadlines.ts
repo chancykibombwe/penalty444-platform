@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { propagateVoidOrWalkoverFromMatch } from "@/lib/tournament/advancement";
+import {
+  propagateVoidOrWalkoverFromMatch,
+  reconcileTournamentCompletion,
+} from "@/lib/tournament/advancement";
 
 const MAX_NO_SHOWS_PER_TICK = 50;
 
@@ -44,7 +47,8 @@ function presentWinnerEntryId(row: SingleNoShowCandidate): string | null {
 
 async function processDoubleNoShowVoids(
   admin: SupabaseClient,
-  summary: NoShowProcessingSummary
+  summary: NoShowProcessingSummary,
+  touchedTournamentIds: Set<string>
 ): Promise<void> {
   const now = nowIso();
 
@@ -98,6 +102,7 @@ async function processDoubleNoShowVoids(
 
       summary.voided += 1;
       summary.processed += 1;
+      touchedTournamentIds.add(row.tournament_id);
 
       const propagation = await propagateVoidOrWalkoverFromMatch(admin, row.id);
       summary.walkoversCreated += propagation.walkoversCreated;
@@ -114,7 +119,8 @@ async function processDoubleNoShowVoids(
 async function processSingleNoShowWalkovers(
   admin: SupabaseClient,
   summary: NoShowProcessingSummary,
-  now: string
+  now: string,
+  touchedTournamentIds: Set<string>
 ): Promise<void> {
   const { data: candidates, error: queryError } = await admin
     .from("tournament_matches")
@@ -175,6 +181,7 @@ async function processSingleNoShowWalkovers(
 
       summary.singleWalkovers += 1;
       summary.processed += 1;
+      touchedTournamentIds.add(row.tournament_id);
 
       const propagation = await propagateVoidOrWalkoverFromMatch(admin, row.id);
       summary.walkoversCreated += propagation.walkoversCreated;
@@ -205,9 +212,16 @@ export async function processNoShowDeadlines(
   };
 
   const now = nowIso();
+  const touchedTournamentIds = new Set<string>();
 
-  await processDoubleNoShowVoids(admin, summary);
-  await processSingleNoShowWalkovers(admin, summary, now);
+  await processDoubleNoShowVoids(admin, summary, touchedTournamentIds);
+  await processSingleNoShowWalkovers(admin, summary, now, touchedTournamentIds);
+
+  for (const tournamentId of touchedTournamentIds) {
+    if (await reconcileTournamentCompletion(admin, tournamentId)) {
+      summary.tournamentsCompleted += 1;
+    }
+  }
 
   return summary;
 }

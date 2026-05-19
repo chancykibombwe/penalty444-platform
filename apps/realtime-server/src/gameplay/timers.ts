@@ -1,11 +1,21 @@
 import type { Server } from "socket.io";
 import { PICK_TIMEOUT_MS } from "../config";
+import { rooms } from "../state/stores";
 import type { Room } from "../types/room";
 
 type RoundTimerDeps = {
   io: Server;
   resolveRound: (roomCode: string, room: Room, fromTimeout?: boolean) => void;
 };
+
+/** Invalidates in-flight pick timeouts when a round is cleared early. */
+const pickTimerEpochByRoomCode = new Map<string, number>();
+
+function bumpPickTimerEpoch(roomCode: string): number {
+  const next = (pickTimerEpochByRoomCode.get(roomCode) ?? 0) + 1;
+  pickTimerEpochByRoomCode.set(roomCode, next);
+  return next;
+}
 
 let timerDeps: RoundTimerDeps | null = null;
 
@@ -20,11 +30,20 @@ function getTimerDeps(): RoundTimerDeps {
   return timerDeps;
 }
 
-export function clearRoomTimer(room: Room) {
+export function clearPickTimer(room: Room) {
+  if (room.code) {
+    bumpPickTimerEpoch(room.code);
+  }
+
   if (room.timeout) {
     clearTimeout(room.timeout);
     room.timeout = undefined;
   }
+}
+
+export function clearRoomTimer(room: Room) {
+  clearPickTimer(room);
+
   if (room.resolveContinuationTimeout) {
     clearTimeout(room.resolveContinuationTimeout);
     room.resolveContinuationTimeout = undefined;
@@ -36,7 +55,7 @@ export function clearRoomTimer(room: Room) {
 }
 
 export function startRoundTimer(roomCode: string, room: Room) {
-  clearRoomTimer(room);
+  clearPickTimer(room);
 
   if (room.matchEnded) return;
   if (room.players.length < 2) return;
@@ -57,7 +76,18 @@ export function startRoundTimer(roomCode: string, room: Room) {
     suddenDeathRound: room.suddenDeathRound,
   });
 
+  const pickEpoch = bumpPickTimerEpoch(roomCode);
+
   room.timeout = setTimeout(() => {
-    resolveRound(roomCode, room, true);
+    const liveRoom = rooms.get(roomCode);
+    if (!liveRoom) {
+      return;
+    }
+
+    if (pickTimerEpochByRoomCode.get(roomCode) !== pickEpoch) {
+      return;
+    }
+
+    resolveRound(roomCode, liveRoom, true);
   }, PICK_TIMEOUT_MS);
 }

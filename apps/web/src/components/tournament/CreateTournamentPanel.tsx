@@ -10,6 +10,53 @@ type CreateTournamentPanelProps = {
   onCreated?: () => void;
 };
 
+/** Parses `<input type="datetime-local">` as local wall time (no UTC shift). */
+function parseDatetimeLocal(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value.trim());
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day) ||
+    !Number.isFinite(hour) ||
+    !Number.isFinite(minute)
+  ) {
+    return null;
+  }
+
+  const parsed = new Date(year, month - 1, day, hour, minute, 0, 0);
+
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day ||
+    parsed.getHours() !== hour ||
+    parsed.getMinutes() !== minute
+  ) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function formatDatetimeLocalInput(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hour}:${minute}`;
+}
+
 export default function CreateTournamentPanel({
   onCreated,
 }: CreateTournamentPanelProps) {
@@ -40,14 +87,38 @@ export default function CreateTournamentPanel({
         return;
       }
 
-      const startsAtIso = startsAt
-        ? new Date(startsAt).toISOString()
-        : null;
+      let startsAtIso: string | null = null;
 
-      if (startsAt && Number.isNaN(new Date(startsAt).getTime())) {
-        setStatus("Invalid start time.");
-        setCreating(false);
-        return;
+      if (startsAt.trim()) {
+        const localStart = parseDatetimeLocal(startsAt);
+
+        if (!localStart) {
+          setStatus(
+            "Invalid start time. Use the date picker (YYYY-MM-DD HH:MM local)."
+          );
+          setCreating(false);
+          return;
+        }
+
+        const now = new Date();
+        if (localStart.getTime() < now.getTime() - 60_000) {
+          setStatus("Start time must be in the future.");
+          setCreating(false);
+          return;
+        }
+
+        startsAtIso = localStart.toISOString();
+
+        console.log("[tournament create] starts_at", {
+          input: startsAt,
+          localDisplay: localStart.toString(),
+          iso: startsAtIso,
+          year: localStart.getFullYear(),
+          month: localStart.getMonth() + 1,
+          day: localStart.getDate(),
+          hour: localStart.getHours(),
+          minute: localStart.getMinutes(),
+        });
       }
 
       const { error } = await supabase.from("tournaments").insert({
@@ -146,8 +217,18 @@ export default function CreateTournamentPanel({
             className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-amber-500/60"
             disabled={creating}
           />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={creating}
+              onClick={() => setStartsAt(formatDatetimeLocalInput(new Date()))}
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:border-amber-500/50 disabled:opacity-50"
+            >
+              Now (local)
+            </button>
+          </div>
           <span className="mt-1 block text-xs text-zinc-500">
-            Optional. Local time.
+            Optional. Stored as UTC ISO; picker uses your local timezone.
           </span>
         </label>
 

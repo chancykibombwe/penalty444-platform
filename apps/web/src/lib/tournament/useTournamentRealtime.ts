@@ -143,7 +143,10 @@ export function useTournamentRealtime({
     };
 
     const onMatchReady = (payload: TournamentMatchReadyPayload) => {
-      if (!trimmedTournamentId || payload.tournamentId !== trimmedTournamentId) {
+      if (
+        trimmedTournamentId &&
+        payload.tournamentId !== trimmedTournamentId
+      ) {
         return;
       }
 

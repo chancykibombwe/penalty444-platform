@@ -1,6 +1,7 @@
 import type { Server, Socket } from "socket.io";
 import { EARLY_CANCEL_MS } from "../config";
-import { clearRoomTimer } from "../gameplay/timers";
+import { ensureAuthoritativeRoomRoles } from "../gameplay/resolveShot";
+import { clearPickTimer } from "../gameplay/timers";
 import { normalizeRoomCode } from "../room/codes";
 import { rooms } from "../state/stores";
 import type { Lane, Room } from "../types/room";
@@ -66,6 +67,8 @@ export function registerMatchActionHandlers(socket: Socket) {
       if (room.isResolving) return;
       if (room.disconnectedPlayerId === playerId) return;
 
+      ensureAuthoritativeRoomRoles(room);
+
       const role = room.roles[playerId];
 
       if (!role) return;
@@ -74,6 +77,7 @@ export function registerMatchActionHandlers(socket: Socket) {
       room.picks[role] = lane;
 
       deps.io.to(code).emit("match:status", {
+        roomCode: code,
         message: `${
           room.players.find((player) => player.playerId === playerId)
             ?.username || "Player"
@@ -83,8 +87,17 @@ export function registerMatchActionHandlers(socket: Socket) {
       });
 
       if (room.picks.KICKER && room.picks.KEEPER) {
-        clearRoomTimer(room);
-        deps.resolveRound(code, room);
+        console.log(
+          `[both-picks] clearing timer and resolving round room=${code} round=${room.round} kickerPick=${room.picks.KICKER} keeperPick=${room.picks.KEEPER}`
+        );
+        clearPickTimer(room);
+
+        const liveRoom = rooms.get(code);
+        if (!liveRoom || liveRoom.isResolving) {
+          return;
+        }
+
+        deps.resolveRound(code, liveRoom);
       }
     }
   );
