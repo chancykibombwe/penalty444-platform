@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import RequireAuth from "../../components/auth/RequireAuth";
 import CreateTournamentPanel from "../../components/tournament/CreateTournamentPanel";
+import TournamentHubHero, {
+  type TournamentHubStats,
+} from "../../components/tournament/TournamentHubHero";
 import TournamentListPanel from "../../components/tournament/TournamentListPanel";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
 import {
@@ -106,20 +109,62 @@ export default function TournamentsPage() {
     };
   }, []);
 
+  // Even outside dev-schedule-sync, bump the list version on focus + every
+  // few seconds while the user has a persistent active tournament. The list
+  // panel reads `listVersion` to re-fetch, so this keeps the page sync'd.
+  useEffect(() => {
+    const handleFocus = () => {
+      console.info("[TournamentSync] window focus → bump listVersion");
+      setListVersion((version) => version + 1);
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeTournament) return;
+    if (activeTournament.lastKnownState !== "in_progress") return;
+
+    // The user is mid-tournament — bump the list periodically so the Active
+    // For You pin & Resume CTA always reflect fresh server state.
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      console.info(
+        "[TournamentSync] active in_progress → silent listVersion bump"
+      );
+      setListVersion((version) => version + 1);
+    }, 8_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [activeTournament]);
+
   const activeStateCopy = activeTournament
     ? activeStateLine(activeTournament.lastKnownState)
     : null;
 
+  const [stats, setStats] = useState<TournamentHubStats>({
+    live: 0,
+    upcoming: 0,
+    mine: 0,
+    completed: 0,
+  });
+  const [listLoading, setListLoading] = useState(true);
+
+  const handleStatsChanged = useCallback((next: TournamentHubStats) => {
+    setStats(next);
+  }, []);
+  const handleLoadingChanged = useCallback((loading: boolean) => {
+    setListLoading(loading);
+  }, []);
+
   return (
     <RequireAuth>
-      <section className="space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Tournaments</h1>
-          <p className="mt-2 text-zinc-400">
-            Create or join single-elimination events. Browse active tournaments
-            or review completed brackets.
-          </p>
-        </div>
+      <section className="space-y-7 sm:space-y-8">
+        <TournamentHubHero stats={stats} isLoading={listLoading} />
 
         {activeTournament ? (
           <section
@@ -175,13 +220,16 @@ export default function TournamentsPage() {
           </section>
         ) : null}
 
-        <CreateTournamentPanel
-          onCreated={() => setListVersion((version) => version + 1)}
-        />
-
         <TournamentListPanel
           listVersion={listVersion}
           activeTournamentId={activeTournament?.tournamentId ?? null}
+          defaultFilter="live"
+          onStatsChanged={handleStatsChanged}
+          onLoadingChanged={handleLoadingChanged}
+        />
+
+        <CreateTournamentPanel
+          onCreated={() => setListVersion((version) => version + 1)}
         />
       </section>
     </RequireAuth>

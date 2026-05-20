@@ -41,6 +41,16 @@ function isParticipantMatch(
 /**
  * Returns the current player's presence state in this tournament.
  * Pure function — no side effects, safe to call on every render.
+ *
+ * Priority order (top wins):
+ *   1. CHAMPION   — tournament completed AND user is the champion
+ *   2. ELIMINATED — tournament completed AND user is a non-champion participant
+ *   3. VIEWING    — tournament completed/cancelled AND user is a spectator
+ *   4. RECONNECTING — in_progress AND socket disconnected (participant only)
+ *   5. IN_MATCH   — in_progress AND user has a non-terminal participant match
+ *   6. ELIMINATED — in_progress AND user lost a participant match
+ *   7. WAITING    — registration/check_in/in_progress, no other state applies
+ *   8. VIEWING    — fallback (spectator, unknown state, …)
  */
 export function derivePlayerPresence(
   options: DerivePresenceOptions
@@ -54,17 +64,33 @@ export function derivePlayerPresence(
     socketDisconnected = false,
   } = options;
 
-  if (socketDisconnected && tournamentStatus === "in_progress") {
-    return "RECONNECTING";
-  }
+  const isTerminalTournament =
+    tournamentStatus === "completed" || tournamentStatus === "cancelled";
 
-  if (
-    tournamentStatus === "completed" &&
-    championUserId &&
-    currentUserId &&
-    championUserId === currentUserId
-  ) {
-    return "CHAMPION";
+  // Terminal tournament states MUST resolve first so we never show
+  // "IN_MATCH" on a finished/cancelled tournament.
+  if (isTerminalTournament) {
+    if (
+      tournamentStatus === "completed" &&
+      championUserId &&
+      currentUserId &&
+      championUserId === currentUserId
+    ) {
+      return "CHAMPION";
+    }
+
+    if (!myEntry || myEntry.status === "withdrawn") {
+      return "VIEWING";
+    }
+
+    if (tournamentStatus === "completed") {
+      // Tournament finished and the user wasn't the champion → eliminated.
+      return "ELIMINATED";
+    }
+
+    // Cancelled tournament for a participant — fall back to viewing; the
+    // tournament header will show the cancelled banner separately.
+    return "VIEWING";
   }
 
   if (!myEntry || myEntry.status === "withdrawn") {
@@ -73,6 +99,10 @@ export function derivePlayerPresence(
 
   if (tournamentStatus !== "in_progress") {
     return "WAITING";
+  }
+
+  if (socketDisconnected) {
+    return "RECONNECTING";
   }
 
   const myEntryId = myEntry.id;
@@ -175,6 +205,9 @@ export function getPresenceExplanation(
       }
       return "You are waiting for your next match.";
     case "ELIMINATED":
+      if (tournamentStatus === "completed") {
+        return "Tournament finished — you didn't take it this time.";
+      }
       if (championshipLive) {
         return "You are out — the championship match is live.";
       }
@@ -187,6 +220,9 @@ export function getPresenceExplanation(
     default:
       if (tournamentStatus === "completed") {
         return "Spectating — tournament finished.";
+      }
+      if (tournamentStatus === "cancelled") {
+        return "This tournament was cancelled.";
       }
       if (championshipLive) {
         return "Spectating — the championship match is live.";

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase/client";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
+import { getSocket } from "../../lib/socket/client";
 import {
   clearActiveTournament,
   clearActiveTournamentIfMatches,
@@ -13,6 +14,7 @@ import {
   getTournamentStateBadge,
   getTournamentTier,
 } from "../../lib/tournament/tournamentBranding";
+import TournamentEmptyState from "./TournamentEmptyState";
 import TournamentEntryActions from "./TournamentEntryActions";
 
 export type TournamentRow = {
@@ -39,19 +41,33 @@ export type TournamentEntryRow = {
   checked_in_at: string | null;
 };
 
-export type TournamentListFilter = "active" | "registration" | "completed" | "mine";
+/**
+ * Public-facing tab ids (Phase 3 hub taxonomy).
+ *
+ * Mapping vs. older terminology:
+ *   - `live`      → tournament status === in_progress (subset of legacy "active")
+ *   - `upcoming`  → registration + check_in (legacy "registration" tab)
+ *   - `my`        → user is a participant or host (legacy "mine")
+ *   - `completed` → tournament status === completed
+ */
+export type TournamentListFilter = "live" | "upcoming" | "my" | "completed";
 
 const FILTER_OPTIONS: { id: TournamentListFilter; label: string }[] = [
-  { id: "active", label: "Active" },
-  { id: "registration", label: "Registration" },
+  { id: "live", label: "Live" },
+  { id: "upcoming", label: "Upcoming" },
+  { id: "my", label: "My Tournaments" },
   { id: "completed", label: "Completed" },
-  { id: "mine", label: "Mine" },
 ];
 
 const ACTIVE_STATUSES = new Set(["registration", "check_in", "in_progress"]);
 const REGISTRATION_STATUSES = new Set(["registration", "check_in"]);
+const LIVE_STATUSES = new Set(["in_progress"]);
 const LIVE_LIST_POLL_INTERVAL_MS = 12_000;
+/** Faster polling when this user has a persistent active tournament. */
+const ACTIVE_TOURNAMENT_POLL_INTERVAL_MS = 6_000;
 const VISIBILITY_REFRESH_DEBOUNCE_MS = 2_000;
+/** Debounce window for socket reconnect / focus refreshes. */
+const RECONNECT_REFRESH_DEBOUNCE_MS = 1_500;
 
 /** Normalize Supabase `status` for exact comparisons (never use display labels). */
 export function normalizeTournamentStatus(
@@ -88,6 +104,10 @@ export function isActiveTournament(status: string | null | undefined): boolean {
 
 function isRegistrationTabStatus(status: string | null | undefined): boolean {
   return REGISTRATION_STATUSES.has(normalizeTournamentStatus(status));
+}
+
+function isLiveTabStatus(status: string | null | undefined): boolean {
+  return LIVE_STATUSES.has(normalizeTournamentStatus(status));
 }
 
 function logTournamentStatusTable(rows: TournamentRow[]) {
@@ -217,22 +237,19 @@ function filterTournamentsForTab(
 
     if (
       normalizeTournamentStatus(tournament.status) === "draft" &&
-      filter !== "mine"
+      filter !== "my"
     ) {
       return false;
     }
 
     switch (filter) {
-      case "active":
-        return (
-          isActiveTournament(tournament.status) &&
-          !isCompletedTournament(tournament.status)
-        );
-      case "registration":
+      case "live":
+        return isLiveTabStatus(tournament.status);
+      case "upcoming":
         return isRegistrationTabStatus(tournament.status);
       case "completed":
         return isCompletedTournament(tournament.status);
-      case "mine":
+      case "my":
         if (
           isCancelledTournament(tournament.status) ||
           isCompletedTournament(tournament.status)
@@ -267,51 +284,87 @@ function isMineTournament(
 
 function getSectionCopy(filter: TournamentListFilter) {
   switch (filter) {
-    case "active":
+    case "live":
       return {
-        title: "Active Tournaments",
-        description:
-          "Join, mark Ready, or follow brackets for events in progress.",
+        eyebrow: "Events",
+        title: "Live Now",
+        description: "Brackets in progress. Jump in or follow the action.",
       };
-    case "registration":
+    case "upcoming":
       return {
-        title: "Registration Open",
-        description:
-          "Sign up or get Ready before the host starts the bracket.",
+        eyebrow: "Events",
+        title: "Upcoming",
+        description: "Registration open or ready phase opening soon.",
       };
     case "completed":
       return {
-        title: "Tournament History",
-        description: "Finished events and champions from past brackets.",
+        eyebrow: "History",
+        title: "Completed",
+        description: "Past champions and finished brackets.",
       };
-    case "mine":
+    case "my":
       return {
+        eyebrow: "Your roster",
         title: "My Tournaments",
-        description:
-          "Events you host or joined, including drafts and history.",
+        description: "Events you host or joined — still in play.",
       };
     default:
       return {
+        eyebrow: "Events",
         title: "Tournaments",
         description: "Browse penalty444 tournaments.",
       };
   }
 }
 
-function getEmptyMessage(filter: TournamentListFilter) {
+type EmptyCopy = {
+  tone: "live" | "upcoming" | "mine" | "completed" | "neutral";
+  eyebrow: string;
+  headline: string;
+  subtext: string;
+};
+
+function getEmptyCopy(filter: TournamentListFilter): EmptyCopy {
   switch (filter) {
-    case "active":
-      return "No active tournaments right now. Try Registration or create one above.";
-    case "registration":
-      return "No tournaments are open for registration.";
+    case "live":
+      return {
+        tone: "live",
+        eyebrow: "Live arena",
+        headline: "No live events right now — upcoming battles are loading.",
+        subtext: "Check Upcoming or host one — the arena never sleeps for long.",
+      };
+    case "upcoming":
+      return {
+        tone: "upcoming",
+        eyebrow: "Lobby",
+        headline: "Preparing the next arena…",
+        subtext: "Waiting for challengers — be the first to host or join.",
+      };
     case "completed":
-      return "No completed tournaments yet.";
-    case "mine":
-      return "You have not joined or hosted any tournaments yet.";
+      return {
+        tone: "completed",
+        eyebrow: "Hall of champions",
+        headline: "First champion incoming.",
+        subtext: "Finish a bracket and the trophy lands here.",
+      };
+    case "my":
+      return {
+        tone: "mine",
+        eyebrow: "Your roster",
+        headline: "Join your first tournament.",
+        subtext: "Pick one from Upcoming or Live — your roster fills as you compete.",
+      };
     default:
-      return "No tournaments found.";
+      return {
+        tone: "neutral",
+        eyebrow: "Events",
+        headline: "Preparing the next arena…",
+        subtext: "",
+      };
   }
 }
+
+import type { TournamentHubStats } from "./TournamentHubHero";
 
 type TournamentListPanelProps = {
   listVersion?: number;
@@ -321,11 +374,20 @@ type TournamentListPanelProps = {
    * elevated. The panel also runs stale-cleanup against fetched rows.
    */
   activeTournamentId?: string | null;
+  /** Default selected tab (defaults to `live`). */
+  defaultFilter?: TournamentListFilter;
+  /** Emits aggregated counts whenever the fetched data changes. */
+  onStatsChanged?: (stats: TournamentHubStats) => void;
+  /** Emits the loading state so external hero stats can mirror it. */
+  onLoadingChanged?: (loading: boolean) => void;
 };
 
 export default function TournamentListPanel({
   listVersion = 0,
   activeTournamentId = null,
+  defaultFilter = "live",
+  onStatsChanged,
+  onLoadingChanged,
 }: TournamentListPanelProps) {
   const [tournaments, setTournaments] = useState<TournamentRow[]>([]);
   const [entriesByTournament, setEntriesByTournament] = useState<
@@ -338,7 +400,7 @@ export default function TournamentListPanel({
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [filter, setFilter] = useState<TournamentListFilter>("active");
+  const [filter, setFilter] = useState<TournamentListFilter>(defaultFilter);
 
   const mountedRef = useRef(true);
   const fetchInFlightRef = useRef(false);
@@ -518,18 +580,18 @@ export default function TournamentListPanel({
   );
 
   useEffect(() => {
-    if (filter !== "active") {
+    if (filter !== "live") {
       return;
     }
 
-    const completedOnActiveTab = tournaments.filter((row) =>
+    const completedOnLiveTab = tournaments.filter((row) =>
       isCompletedTournament(row.status)
     );
 
-    if (completedOnActiveTab.length > 0) {
+    if (completedOnLiveTab.length > 0) {
       console.warn(
-        "[TournamentList] completed tournaments in source state while Active tab selected",
-        completedOnActiveTab.map((row) => ({
+        "[TournamentList] completed tournaments in source state while Live tab selected",
+        completedOnLiveTab.map((row) => ({
           name: row.name,
           status: row.status,
           normalized: normalizeTournamentStatus(row.status),
@@ -538,9 +600,67 @@ export default function TournamentListPanel({
     }
   }, [filter, tournaments]);
 
+  // Emit aggregated tab counts upstream so the hero stats can mirror them.
+  useEffect(() => {
+    if (!onStatsChanged) return;
+
+    let live = 0;
+    let upcoming = 0;
+    let completed = 0;
+    let mine = 0;
+
+    for (const row of tournaments) {
+      if (isCancelledTournament(row.status)) continue;
+      const normalized = normalizeTournamentStatus(row.status);
+      if (normalized === "in_progress") live += 1;
+      else if (normalized === "registration" || normalized === "check_in")
+        upcoming += 1;
+      else if (normalized === "completed") completed += 1;
+
+      if (
+        currentUserId &&
+        normalized !== "cancelled" &&
+        normalized !== "completed" &&
+        (row.created_by === currentUserId ||
+          myEntriesByTournament.has(row.id))
+      ) {
+        mine += 1;
+      }
+    }
+
+    onStatsChanged({ live, upcoming, mine, completed });
+  }, [tournaments, currentUserId, myEntriesByTournament, onStatsChanged]);
+
+  useEffect(() => {
+    onLoadingChanged?.(isInitialLoading && tournaments.length === 0);
+  }, [isInitialLoading, tournaments.length, onLoadingChanged]);
+
+  // Faster polling cadence when the user has a persistent active tournament
+  // in the list — that's the row they care about most after refresh/reopen.
+  const hasActiveTournamentInList = useMemo(() => {
+    if (!activeTournamentId) return false;
+    return tournaments.some(
+      (row) => row.id === activeTournamentId && isActiveTournament(row.status)
+    );
+  }, [tournaments, activeTournamentId]);
+
   useEffect(() => {
     if (!shouldPollLiveList) {
       return;
+    }
+
+    const intervalMs = hasActiveTournamentInList
+      ? ACTIVE_TOURNAMENT_POLL_INTERVAL_MS
+      : LIVE_LIST_POLL_INTERVAL_MS;
+
+    if (process.env.NODE_ENV !== "production") {
+      console.info(
+        "[TournamentListRefresh] poll interval",
+        intervalMs,
+        "ms (activeInList:",
+        hasActiveTournamentInList,
+        ")"
+      );
     }
 
     const tick = () => {
@@ -550,7 +670,7 @@ export default function TournamentListPanel({
       refreshSilent();
     };
 
-    const intervalId = window.setInterval(tick, LIVE_LIST_POLL_INTERVAL_MS);
+    const intervalId = window.setInterval(tick, intervalMs);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState !== "visible") {
@@ -563,16 +683,51 @@ export default function TournamentListPanel({
       }
 
       lastVisibilityRefreshAtRef.current = now;
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[TournamentListRefresh] visibility → refresh");
+      }
+      refreshSilent();
+    };
+
+    const handleFocus = () => {
+      const now = Date.now();
+      if (now - lastVisibilityRefreshAtRef.current < VISIBILITY_REFRESH_DEBOUNCE_MS) {
+        return;
+      }
+      lastVisibilityRefreshAtRef.current = now;
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[TournamentListRefresh] window focus → refresh");
+      }
+      refreshSilent();
+    };
+
+    // Socket reconnect should also refresh the list — same logic the dev
+    // schedule sync uses, but without depending on the dev flag.
+    const socket = getSocket();
+    let lastSocketRefreshAt = 0;
+    const handleSocketConnect = () => {
+      const now = Date.now();
+      if (now - lastSocketRefreshAt < RECONNECT_REFRESH_DEBOUNCE_MS) {
+        return;
+      }
+      lastSocketRefreshAt = now;
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[TournamentListRefresh] socket reconnect → refresh");
+      }
       refreshSilent();
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+    socket.on("connect", handleSocketConnect);
 
     return () => {
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+      socket.off("connect", handleSocketConnect);
     };
-  }, [shouldPollLiveList, refreshSilent]);
+  }, [shouldPollLiveList, refreshSilent, hasActiveTournamentInList]);
 
   const matchedForTab = filterTournamentsForTab(
     tournaments,
@@ -647,16 +802,17 @@ export default function TournamentListPanel({
   ]);
 
   const sectionCopy = getSectionCopy(filter);
+  const emptyCopy = getEmptyCopy(filter);
   const showInitialLoading = isInitialLoading && tournaments.length === 0;
 
   return (
     <section className="space-y-5 rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-4 shadow-2xl sm:space-y-6 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3 sm:items-end sm:gap-4">
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 sm:text-sm">
-            Events
+          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-zinc-500 sm:text-xs">
+            {sectionCopy.eyebrow}
           </p>
-          <h2 className="mt-1 text-xl font-bold text-white sm:mt-2 sm:text-2xl">
+          <h2 className="mt-1 text-xl font-black tracking-tight text-white sm:mt-2 sm:text-2xl">
             {sectionCopy.title}
           </h2>
           <p className="mt-1 text-sm text-zinc-400 sm:mt-2 sm:text-base">
@@ -674,17 +830,26 @@ export default function TournamentListPanel({
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div
+        role="tablist"
+        aria-label="Tournament filter"
+        className="flex flex-wrap gap-2"
+      >
         {FILTER_OPTIONS.map((option) => {
           const isSelected = filter === option.id;
+          const isCompetitive = option.id === "live";
           return (
             <button
               key={option.id}
               type="button"
+              role="tab"
+              aria-selected={isSelected}
               onClick={() => setFilter(option.id)}
-              className={`rounded-full border px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+              className={`rounded-full border px-3.5 py-1.5 text-sm font-bold transition-colors ${
                 isSelected
-                  ? "border-amber-500/60 bg-amber-950/40 text-amber-100"
+                  ? isCompetitive
+                    ? "border-cyan-400/60 bg-cyan-500/15 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.25)]"
+                    : "border-amber-400/60 bg-amber-500/15 text-amber-100 shadow-[0_0_16px_rgba(251,191,36,0.22)]"
                   : "border-zinc-700 bg-zinc-950/60 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
               }`}
             >
@@ -701,11 +866,19 @@ export default function TournamentListPanel({
       ) : null}
 
       {showInitialLoading ? (
-        <p className="text-sm text-zinc-400">Loading tournaments...</p>
+        <TournamentEmptyState
+          tone="neutral"
+          eyebrow="Loading"
+          headline="Preparing the next arena…"
+          subtext="Fetching live events."
+        />
       ) : filteredTournaments.length === 0 ? (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950/80 px-4 py-8 text-center text-sm text-zinc-400">
-          {getEmptyMessage(filter)}
-        </div>
+        <TournamentEmptyState
+          tone={emptyCopy.tone}
+          eyebrow={emptyCopy.eyebrow}
+          headline={emptyCopy.headline}
+          subtext={emptyCopy.subtext}
+        />
       ) : (
         <ul className="space-y-4">
           {filteredTournaments.map((tournament) => {

@@ -71,6 +71,13 @@ type MatchEndPayload = {
 
 const MATCH_RESULT_REVEAL_MS = 900;
 const TOURNAMENT_MATCH_RESULT_REVEAL_MS = 350;
+/**
+ * Minimum time the tournament result stays visible on screen before the
+ * client allows the next round's `match:update` to clear it. The server still
+ * resolves immediately; this is purely client-side dramatic hold so players
+ * don't get yanked into the next round in <500ms.
+ */
+const TOURNAMENT_REVEAL_HOLD_MS = 4_000;
 const TOURNAMENT_POST_MATCH_REDIRECT_MS = 4500;
 
 type MatchAbortedPayload = {
@@ -407,6 +414,16 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const closingRevealRoundSnapshotRef = useRef<number | null>(null);
   const revealStageRef = useRef<RevealStage>("IDLE");
   const previousScoresForPulseRef = useRef<Record<string, number>>({});
+  /**
+   * Tournament-only "dramatic hold" timestamp. After `applyRevealedResult`
+   * runs in tournament mode, this is set to now + TOURNAMENT_REVEAL_HOLD_MS.
+   * While this is in the future, the next `match:update` for a different
+   * round is deferred so the result stays visible on screen.
+   */
+  const tournamentRevealHoldUntilRef = useRef<number>(0);
+  /** Pending deferred onMatchUpdate payload + timer (tournament hold). */
+  const deferredMatchUpdatePayloadRef = useRef<MatchUpdatePayload | null>(null);
+  const deferredMatchUpdateTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     revealStageRef.current = revealStage;
@@ -417,6 +434,14 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       window.clearTimeout(matchResultRevealTimeoutRef.current);
       matchResultRevealTimeoutRef.current = null;
     }
+  }
+
+  function clearDeferredMatchUpdate() {
+    if (deferredMatchUpdateTimerRef.current !== null) {
+      window.clearTimeout(deferredMatchUpdateTimerRef.current);
+      deferredMatchUpdateTimerRef.current = null;
+    }
+    deferredMatchUpdatePayloadRef.current = null;
   }
 
   function clearDisconnectCountdownVisual() {
@@ -612,6 +637,49 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           ? true
           : previousRoundTracked !== incomingRound;
 
+      // Tournament-only dramatic hold: if we just revealed a result and the
+      // server is already pushing the next round, defer the entire update by
+      // the remaining hold time so the verdict stays on screen long enough.
+      // We DO NOT touch any state here so the re-fire path is clean.
+      if (
+        pickRoundAdvanced &&
+        !data.matchEnded &&
+        tournamentContextRef.current.isTournament &&
+        tournamentRevealHoldUntilRef.current > Date.now()
+      ) {
+        const holdRemaining = Math.max(
+          0,
+          tournamentRevealHoldUntilRef.current - Date.now()
+        );
+        console.info(
+          "[RevealTiming] deferring next-round match:update by",
+          holdRemaining,
+          "ms (round →",
+          incomingRound,
+          ")"
+        );
+
+        // Cancel an existing deferred update; we always want the latest data.
+        if (deferredMatchUpdateTimerRef.current !== null) {
+          window.clearTimeout(deferredMatchUpdateTimerRef.current);
+          deferredMatchUpdateTimerRef.current = null;
+        }
+        deferredMatchUpdatePayloadRef.current = data;
+
+        deferredMatchUpdateTimerRef.current = window.setTimeout(() => {
+          deferredMatchUpdateTimerRef.current = null;
+          const payload = deferredMatchUpdatePayloadRef.current;
+          deferredMatchUpdatePayloadRef.current = null;
+          // Force the hold to expire so the re-fire isn't deferred again.
+          tournamentRevealHoldUntilRef.current = 0;
+          if (payload) {
+            onMatchUpdate(payload);
+          }
+        }, holdRemaining);
+
+        return;
+      }
+
       lastPickRoundRef.current = incomingRound;
 
       const inferredPhase: MatchPhase = data.phase || "NORMAL";
@@ -750,6 +818,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           clearDisconnectCountdownVisual();
         }
         clearMatchResultRevealTimeout();
+        clearDeferredMatchUpdate();
+        tournamentRevealHoldUntilRef.current = 0;
         lateResultRoundRef.current = null;
         closingRevealRoundSnapshotRef.current = null;
         matchResultRevealArmedRef.current = false;
@@ -847,6 +917,22 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       );
       setResultFlavorMessage(pickResultFlavorMessage(authoritative.result));
       setOpponentStatus("");
+
+      // Tournament-only "dramatic hold": keep the result on screen for at
+      // least TOURNAMENT_REVEAL_HOLD_MS before allowing the next round's
+      // match:update to clear it.
+      if (tournamentContextRef.current.isTournament) {
+        tournamentRevealHoldUntilRef.current =
+          Date.now() + TOURNAMENT_REVEAL_HOLD_MS;
+        console.info(
+          "[RevealTiming] tournament reveal hold armed for",
+          TOURNAMENT_REVEAL_HOLD_MS,
+          "ms — round=",
+          authoritative.round
+        );
+      } else {
+        tournamentRevealHoldUntilRef.current = 0;
+      }
 
       if (authoritative.result === "GOAL") {
         goalSound.currentTime = 0;
@@ -968,6 +1054,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         clearDisconnectCountdownVisual();
       }
       clearMatchResultRevealTimeout();
+      clearDeferredMatchUpdate();
+      tournamentRevealHoldUntilRef.current = 0;
       lateResultRoundRef.current = null;
       closingRevealRoundSnapshotRef.current = null;
       matchResultRevealArmedRef.current = false;
@@ -1028,6 +1116,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         clearDisconnectCountdownVisual();
       }
       clearMatchResultRevealTimeout();
+      clearDeferredMatchUpdate();
+      tournamentRevealHoldUntilRef.current = 0;
       lateResultRoundRef.current = null;
       closingRevealRoundSnapshotRef.current = null;
       matchResultRevealArmedRef.current = false;
@@ -1082,6 +1172,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       }
 
       clearMatchResultRevealTimeout();
+      clearDeferredMatchUpdate();
+      tournamentRevealHoldUntilRef.current = 0;
       clearActiveMatch();
       setStatus("Match cancelled. No penalty applied.");
 
@@ -1115,6 +1207,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       clearAbortRedirectTimeout();
       clearDisconnectCountdownVisual();
       clearMatchResultRevealTimeout();
+      clearDeferredMatchUpdate();
+      tournamentRevealHoldUntilRef.current = 0;
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
       socket.off("room:update", onRoomUpdate);

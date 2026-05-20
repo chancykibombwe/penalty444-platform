@@ -12,7 +12,7 @@ export default function RootLayout({
       <body className="bg-zinc-950 text-white" suppressHydrationWarning>
         <ActiveMatchRecovery />
         <Navbar />
-        <main className="p-6">{children}</main>
+        <main className="p-6 pb-28 md:pb-6">{children}</main>
       </body>
     </html>
   );

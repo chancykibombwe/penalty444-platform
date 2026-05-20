@@ -40,6 +40,10 @@ import {
   saveActiveTournament,
   type ActiveTournamentState,
 } from "../../../lib/tournament/activeTournament";
+import {
+  clearActiveMatch,
+  getActiveMatch,
+} from "../../../lib/match/activeMatch";
 
 function formatCountdown(targetIso: string | null, nowMs: number): string | null {
   if (!targetIso) return null;
@@ -74,10 +78,20 @@ export default function TournamentDetailPage() {
     refresh,
   } = useTournamentDetailSync(tournamentId);
 
+  // Computed below from bracket state; passed back into the realtime hook so
+  // missed `tournament:matchReady` socket events still trigger the auto-enter
+  // banner & countdown. See effect comments further down.
+  const [autoRouteFallback, setAutoRouteFallback] = useState<{
+    tournamentId: string;
+    tournamentMatchId: string;
+    roomCode: string;
+  } | null>(null);
+
   const { pendingMatchReady, matchReadyCountdown, enterPendingMatchNow } =
     useTournamentRealtime({
       tournamentId: tournament?.id ?? tournamentId,
       playerId: currentUserId,
+      fallbackReady: autoRouteFallback,
     });
 
   useEffect(() => {
@@ -292,6 +306,78 @@ export default function TournamentDetailPage() {
         : null,
     [tournament, matches, myEntryId, myEntryActive, championName]
   );
+
+  // Derived auto-route fallback: a non-terminal participant match with a
+  // server-assigned room_code that we should be routed into. The realtime
+  // hook activates this after a short delay if no live event arrived.
+  const derivedFallbackReady = useMemo(() => {
+    if (!tournament || tournament.status !== "in_progress") return null;
+    if (!myEntryActive || !myEntryId) return null;
+
+    const target =
+      playerBracketState.joinMatch ?? playerBracketState.readyMatch ?? null;
+    if (!target) return null;
+    if (!target.room_code) return null;
+
+    return {
+      tournamentId: tournament.id,
+      tournamentMatchId: target.id,
+      roomCode: target.room_code,
+    };
+  }, [
+    tournament,
+    myEntryActive,
+    myEntryId,
+    playerBracketState.joinMatch,
+    playerBracketState.readyMatch,
+  ]);
+
+  useEffect(() => {
+    setAutoRouteFallback((previous) => {
+      if (!derivedFallbackReady) {
+        return previous === null ? previous : null;
+      }
+      if (
+        previous &&
+        previous.tournamentMatchId === derivedFallbackReady.tournamentMatchId &&
+        previous.roomCode === derivedFallbackReady.roomCode &&
+        previous.tournamentId === derivedFallbackReady.tournamentId
+      ) {
+        return previous;
+      }
+      return derivedFallbackReady;
+    });
+  }, [derivedFallbackReady]);
+
+  // Completion-state cleanup: when the tournament is done, drop any
+  // activeMatch snapshot still pointing at one of this tournament's rooms.
+  // (Cross-tournament activeMatch entries are left alone.)
+  useEffect(() => {
+    if (!tournament) return;
+    if (tournament.status !== "completed" && tournament.status !== "cancelled") {
+      return;
+    }
+    if (typeof window === "undefined") return;
+
+    const active = getActiveMatch();
+    if (!active?.roomCode) return;
+
+    const matchesThisTournament = matches.some(
+      (match) =>
+        match.room_code &&
+        match.room_code.trim().toUpperCase() === active.roomCode
+    );
+
+    if (matchesThisTournament) {
+      console.info(
+        "[CompletionState] clearing activeMatch for finished tournament",
+        tournament.id,
+        "room=",
+        active.roomCode
+      );
+      clearActiveMatch();
+    }
+  }, [tournament, matches]);
 
   const showWaitingRoom = useMemo(() => {
     if (!tournament || !myEntryActive) {

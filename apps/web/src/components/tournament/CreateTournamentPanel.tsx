@@ -152,12 +152,15 @@ export default function CreateTournamentPanel({
   return (
     <section className="space-y-6 rounded-3xl border border-amber-500/25 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 shadow-[0_0_40px_rgba(245,158,11,0.08)]">
       <div>
-        <p className="text-sm font-medium uppercase tracking-wide text-amber-300/80">
+        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-amber-300/85 sm:text-xs">
           Host
         </p>
-        <h2 className="mt-2 text-2xl font-bold text-white">Create Tournament</h2>
+        <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
+          Host a Tournament
+        </h2>
         <p className="mt-2 text-zinc-400">
-          Opens registration immediately. Single elimination, free entry.
+          Create a scheduled knockout event. Free entry, single elimination —
+          your bracket goes live the moment you start it.
         </p>
       </div>
 

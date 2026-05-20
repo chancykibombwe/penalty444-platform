@@ -1,24 +1,124 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useState, type ReactElement, type SVGProps } from "react";
 import { getActiveMatch } from "../../lib/match/activeMatch";
 import { supabase } from "../../lib/supabase/client";
 
+type NavIconProps = SVGProps<SVGSVGElement>;
+
 type NavItem = {
-  href: string;
+  /** Stable id for active matching. */
+  id: string;
+  /** Visible label (kept short for mobile). */
   label: string;
+  /** Auth-aware href is resolved at render. */
+  buildHref: (loggedIn: boolean) => string;
+  /** Pathname prefixes that count as active. */
+  matchPrefixes: string[];
+  /** Inline icon for mobile bottom nav + optional desktop pre-label. */
+  Icon: (props: NavIconProps) => ReactElement;
+  /**
+   * Treat this tab as the gold "competitive" accent (Tournaments).
+   * Active styling pulses gold; idle styling keeps a subtle amber tint.
+   */
+  competitive?: boolean;
 };
 
-const baseNavItems: NavItem[] = [
-  { href: "/", label: "Home" },
-  { href: "/lobby", label: "Lobby" },
-  { href: "/tournaments", label: "Tournaments" },
-  { href: "/leaderboard", label: "Leaderboard" },
-  { href: "/wallet", label: "Wallet" },
+function HomeIcon(props: NavIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M3 11.5 12 4l9 7.5" />
+      <path d="M5 10v10h14V10" />
+    </svg>
+  );
+}
+
+function LobbyIcon(props: NavIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 3v9l5 3" />
+    </svg>
+  );
+}
+
+function TrophyIcon(props: NavIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M7 4h10v3a5 5 0 0 1-10 0V4Z" />
+      <path d="M7 5H4v2a3 3 0 0 0 3 3" />
+      <path d="M17 5h3v2a3 3 0 0 1-3 3" />
+      <path d="M9 14h6l-1 5h-4l-1-5Z" />
+      <path d="M8 21h8" />
+    </svg>
+  );
+}
+
+function LeaderboardIcon(props: NavIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="4" y="11" width="4" height="9" rx="1" />
+      <rect x="10" y="6" width="4" height="14" rx="1" />
+      <rect x="16" y="14" width="4" height="6" rx="1" />
+    </svg>
+  );
+}
+
+function WalletIcon(props: NavIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="3" y="6" width="18" height="13" rx="2" />
+      <path d="M3 10h18" />
+      <circle cx="16" cy="14.5" r="1" />
+    </svg>
+  );
+}
+
+function AccountIcon(props: NavIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
+    </svg>
+  );
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { id: "home", label: "Home", buildHref: () => "/", matchPrefixes: ["/"], Icon: HomeIcon },
+  { id: "lobby", label: "Lobby", buildHref: () => "/lobby", matchPrefixes: ["/lobby", "/play", "/games"], Icon: LobbyIcon },
+  {
+    id: "tournaments",
+    label: "Tournaments",
+    buildHref: () => "/tournaments",
+    matchPrefixes: ["/tournaments"],
+    Icon: TrophyIcon,
+    competitive: true,
+  },
+  { id: "leaderboard", label: "Leaderboard", buildHref: () => "/leaderboard", matchPrefixes: ["/leaderboard"], Icon: LeaderboardIcon },
+  { id: "wallet", label: "Wallet", buildHref: () => "/wallet", matchPrefixes: ["/wallet"], Icon: WalletIcon },
+  {
+    id: "account",
+    label: "Account",
+    buildHref: (loggedIn) => (loggedIn ? "/account" : "/auth/login"),
+    matchPrefixes: ["/account", "/auth"],
+    Icon: AccountIcon,
+  },
 ];
 
+function isItemActive(pathname: string | null, item: NavItem): boolean {
+  if (!pathname) return false;
+  if (item.id === "home") {
+    return pathname === "/" || pathname === "";
+  }
+  return item.matchPrefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+}
+
 export default function Navbar() {
+  const pathname = usePathname();
   const [activeRoomCode, setActiveRoomCode] = useState<string | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
   const [accountLabel, setAccountLabel] = useState("Account");
@@ -77,7 +177,10 @@ export default function Navbar() {
     }
 
     window.addEventListener("storage", onStorage);
-    window.addEventListener("penalty444:active-match-changed", onActiveMatchChanged);
+    window.addEventListener(
+      "penalty444:active-match-changed",
+      onActiveMatchChanged
+    );
 
     const {
       data: { subscription },
@@ -96,36 +199,146 @@ export default function Navbar() {
   }, []);
 
   return (
-    <header className="border-b border-zinc-800 bg-zinc-950">
-      <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 md:flex-row md:items-center md:justify-between">
-        <Link href="/" className="text-xl font-bold text-white">
-          444 ARENA
-        </Link>
-
-        <nav className="flex flex-wrap items-center gap-4 text-sm text-zinc-300">
-          {baseNavItems.map((item) => (
-            <Link key={item.href} href={item.href} className="hover:text-white">
-              {item.label}
-            </Link>
-          ))}
-
-          {activeRoomCode ? (
-            <Link
-              href={`/match/${activeRoomCode}`}
-              className="rounded-xl bg-emerald-400 px-3 py-2 font-semibold text-zinc-950 hover:bg-emerald-300"
-            >
-              Resume Match
-            </Link>
-          ) : null}
-
+    <>
+      {/* Desktop / tablet top bar (md+) */}
+      <header className="border-b border-zinc-800 bg-gradient-to-b from-zinc-950 to-black">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 md:py-4">
           <Link
-            href={loggedIn ? "/account" : "/auth/login"}
-            className="rounded-xl border border-zinc-700 px-3 py-2 text-white hover:border-zinc-500"
+            href="/"
+            className="flex items-center gap-2 text-base font-black tracking-tight text-white sm:text-lg md:text-xl"
+            aria-label="444 ARENA home"
           >
-            {accountLabel}
+            <span
+              className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-400 to-amber-500 text-[11px] font-black text-zinc-950 shadow-[0_0_20px_rgba(34,211,238,0.35)]"
+              aria-hidden
+            >
+              444
+            </span>
+            <span className="hidden sm:inline">444 ARENA</span>
           </Link>
-        </nav>
-      </div>
-    </header>
+
+          <nav
+            className="hidden items-center gap-1 md:flex"
+            aria-label="Primary"
+          >
+            {NAV_ITEMS.map((item) => {
+              const href = item.buildHref(loggedIn);
+              const active = isItemActive(pathname, item);
+              return (
+                <Link
+                  key={item.id}
+                  href={href}
+                  aria-current={active ? "page" : undefined}
+                  className={`relative inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold tracking-wide transition-colors ${
+                    active
+                      ? item.competitive
+                        ? "bg-amber-500/15 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.25)] ring-1 ring-amber-400/40"
+                        : "bg-cyan-500/15 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.22)] ring-1 ring-cyan-400/40"
+                      : item.competitive
+                        ? "text-amber-200/80 hover:bg-amber-500/10 hover:text-amber-100"
+                        : "text-zinc-300 hover:bg-zinc-800/70 hover:text-white"
+                  }`}
+                >
+                  <item.Icon className="h-4 w-4" aria-hidden />
+                  <span>
+                    {item.id === "account" ? accountLabel : item.label}
+                  </span>
+                </Link>
+              );
+            })}
+          </nav>
+
+          {/* Right-side actions on desktop. Always shows Resume Match if active. */}
+          <div className="hidden items-center gap-2 md:flex">
+            {activeRoomCode ? (
+              <Link
+                href={`/match/${activeRoomCode}`}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-3 py-2 text-sm font-black text-zinc-950 shadow-lg hover:from-emerald-300 hover:to-cyan-300"
+              >
+                <span
+                  className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-950/70"
+                  aria-hidden
+                />
+                Resume Match
+              </Link>
+            ) : null}
+          </div>
+
+          {/* Mobile-only compact controls: Resume Match (if any) on the right of the logo */}
+          <div className="flex items-center gap-2 md:hidden">
+            {activeRoomCode ? (
+              <Link
+                href={`/match/${activeRoomCode}`}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-400 to-cyan-400 px-2.5 py-1.5 text-[11px] font-black text-zinc-950 shadow-md"
+                aria-label="Resume match in progress"
+              >
+                <span
+                  className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-950/70"
+                  aria-hidden
+                />
+                Resume
+              </Link>
+            ) : null}
+          </div>
+        </div>
+      </header>
+
+      {/* Mobile bottom nav (visible <md) */}
+      <nav
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-800/90 bg-zinc-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-zinc-950/85 md:hidden"
+        aria-label="Primary mobile"
+      >
+        <ul className="mx-auto grid max-w-md grid-cols-6 px-1">
+          {NAV_ITEMS.map((item) => {
+            const href = item.buildHref(loggedIn);
+            const active = isItemActive(pathname, item);
+            return (
+              <li key={item.id}>
+                <Link
+                  href={href}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-bold transition-colors ${
+                    active
+                      ? item.competitive
+                        ? "text-amber-200"
+                        : "text-cyan-200"
+                      : item.competitive
+                        ? "text-amber-300/70 hover:text-amber-100"
+                        : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  <span
+                    className={`relative inline-flex h-7 w-7 items-center justify-center rounded-lg transition-all ${
+                      active
+                        ? item.competitive
+                          ? "bg-amber-500/20 shadow-[0_0_12px_rgba(251,191,36,0.45)] ring-1 ring-amber-400/50"
+                          : "bg-cyan-500/20 shadow-[0_0_12px_rgba(34,211,238,0.45)] ring-1 ring-cyan-400/50"
+                        : ""
+                    }`}
+                  >
+                    <item.Icon className="h-4 w-4" aria-hidden />
+                    {active ? (
+                      <span
+                        className={`absolute -bottom-0.5 left-1/2 h-0.5 w-4 -translate-x-1/2 rounded-full ${
+                          item.competitive ? "bg-amber-300" : "bg-cyan-300"
+                        }`}
+                        aria-hidden
+                      />
+                    ) : null}
+                  </span>
+                  <span className="leading-none">
+                    {item.id === "account"
+                      ? loggedIn
+                        ? "Account"
+                        : "Sign in"
+                      : item.label}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+    </>
   );
 }
