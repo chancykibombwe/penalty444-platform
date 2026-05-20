@@ -5,8 +5,13 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
 import RequireAuth from "../../../components/auth/RequireAuth";
 import TournamentAdminActions from "../../../components/tournament/TournamentAdminActions";
-import TournamentBracketPanel from "../../../components/tournament/TournamentBracketPanel";
+import TournamentBracketPanel, {
+  computeParticipantTournamentResult,
+  computePlayerBracketState,
+} from "../../../components/tournament/TournamentBracketPanel";
 import TournamentEntryActions from "../../../components/tournament/TournamentEntryActions";
+import TournamentWaitingRoom from "../../../components/tournament/TournamentWaitingRoom";
+import { deriveTournamentWaitingRoomState } from "../../../lib/tournament/playerWaitingRoom";
 import {
   formatTournamentStatus,
   statusBadgeClass,
@@ -84,6 +89,66 @@ export default function TournamentDetailPage() {
     return resolveChampionName(tournament, matches, entries);
   }, [tournament, matches, entries]);
 
+  const myEntryId = myEntry?.id ?? null;
+  const myEntryActive = myEntry != null && myEntry.status !== "withdrawn";
+  const tournamentInProgress = tournament?.status === "in_progress";
+
+  const playerBracketState = useMemo(
+    () =>
+      computePlayerBracketState(
+        matches,
+        myEntryId,
+        myEntryActive,
+        Boolean(tournamentInProgress)
+      ),
+    [matches, myEntryId, myEntryActive, tournamentInProgress]
+  );
+
+  const participantResult = useMemo(
+    () =>
+      tournament
+        ? computeParticipantTournamentResult(
+            tournament.status,
+            matches,
+            myEntryId,
+            myEntryActive,
+            championName
+          )
+        : null,
+    [tournament, matches, myEntryId, myEntryActive, championName]
+  );
+
+  const showWaitingRoom = useMemo(() => {
+    if (!tournament || !myEntryActive) {
+      return false;
+    }
+
+    return (
+      deriveTournamentWaitingRoomState({
+        tournamentStatus: tournament.status,
+        matches,
+        myEntry,
+        championName,
+        participantHeadline: participantResult?.headline ?? null,
+        participantDetail: participantResult?.detail,
+        hasReadyMatch: Boolean(playerBracketState.readyMatch),
+        hasJoinMatch: Boolean(playerBracketState.joinMatch),
+        hasActivePlayableMatch: playerBracketState.hasActivePlayableMatch,
+        advancedByBye: playerBracketState.advancedByBye,
+        pendingRealtimeReady: Boolean(pendingMatchReady),
+      }).kind !== "hidden"
+    );
+  }, [
+    tournament,
+    matches,
+    myEntry,
+    myEntryActive,
+    championName,
+    participantResult,
+    playerBracketState,
+    pendingMatchReady,
+  ]);
+
   return (
     <RequireAuth>
       <section className="space-y-8">
@@ -104,39 +169,25 @@ export default function TournamentDetailPage() {
           </div>
         ) : tournament ? (
           <>
-            {pendingMatchReady ? (
-              <div className="rounded-xl border-2 border-amber-400/60 bg-gradient-to-r from-amber-950/80 via-amber-900/40 to-zinc-950 px-4 py-4 shadow-lg shadow-amber-950/30">
-                <p className="text-lg font-bold text-amber-50">
-                  Your match is ready. Entering in{" "}
-                  {matchReadyCountdown ??
-                    Math.max(
-                      1,
-                      Math.ceil(pendingMatchReady.autoRouteInMs / 1000)
-                    )}
-                  …
-                </p>
-                <div className="mt-3">
-                  <button
-                    type="button"
-                    onClick={enterPendingMatchNow}
-                    className="rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 px-5 py-3 font-black text-zinc-950 hover:from-amber-400 hover:to-orange-500"
-                  >
-                    Enter Now
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {tournament.status === "completed" && championName ? (
-              <div className="rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-950/60 via-zinc-950 to-zinc-950 px-6 py-5 shadow-lg shadow-emerald-950/40 ring-1 ring-emerald-500/20">
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-300/90">
-                  Champion
-                </p>
-                <p className="mt-1 text-2xl font-bold text-white">
-                  {championName}
-                </p>
-              </div>
-            ) : null}
+            <TournamentWaitingRoom
+              tournamentId={tournament.id}
+              tournamentStatus={tournament.status}
+              matches={matches}
+              myEntry={myEntry}
+              championName={championName}
+              participantHeadline={participantResult?.headline ?? null}
+              participantDetail={participantResult?.detail}
+              readyMatch={playerBracketState.readyMatch}
+              joinMatch={playerBracketState.joinMatch}
+              hasActivePlayableMatch={
+                playerBracketState.hasActivePlayableMatch
+              }
+              advancedByBye={playerBracketState.advancedByBye}
+              pendingMatchReady={pendingMatchReady}
+              matchReadyCountdown={matchReadyCountdown}
+              onEnterPendingMatch={enterPendingMatchNow}
+              onUpdated={refresh}
+            />
 
             <header
               className={`rounded-2xl border bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 ${
@@ -257,6 +308,7 @@ export default function TournamentDetailPage() {
                   currentUserId={currentUserId}
                   onUpdated={refresh}
                   prominent
+                  suppressWaitingBanners={showWaitingRoom}
                 />
                 {tournament.status !== "cancelled" ? (
                   <section className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
@@ -314,6 +366,7 @@ export default function TournamentDetailPage() {
                   entries={entries}
                   currentUserId={currentUserId}
                   onUpdated={refresh}
+                  suppressWaitingBanners={showWaitingRoom}
                 />
               </>
             )}

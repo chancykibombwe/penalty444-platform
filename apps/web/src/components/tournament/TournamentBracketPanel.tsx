@@ -36,6 +36,133 @@ export type TournamentMatchRow = {
   next_match_id: string | null;
 };
 
+export type PlayerBracketState = {
+  readyMatch: TournamentMatchRow | null;
+  joinMatch: TournamentMatchRow | null;
+  hasActivePlayableMatch: boolean;
+  advancedByBye: boolean;
+};
+
+export function computePlayerBracketState(
+  matches: TournamentMatchRow[],
+  myEntryId: string | null,
+  myEntryActive: boolean,
+  tournamentInProgress: boolean
+): PlayerBracketState {
+  if (!myEntryId || !myEntryActive || !tournamentInProgress) {
+    return {
+      readyMatch: null,
+      joinMatch: null,
+      hasActivePlayableMatch: false,
+      advancedByBye: false,
+    };
+  }
+
+  let readyMatch: TournamentMatchRow | null = null;
+  let joinMatch: TournamentMatchRow | null = null;
+  let hasActivePlayableMatch = false;
+  let advancedByBye = false;
+
+  for (const match of matches) {
+    const isParticipant =
+      match.entry_one_id === myEntryId || match.entry_two_id === myEntryId;
+
+    if (!isParticipant) continue;
+
+    const playable = canMatchBePlayed(match);
+    const canEnter =
+      playable &&
+      !match.winner_entry_id &&
+      !match.room_code &&
+      match.status === "ready";
+    const canJoin =
+      playable &&
+      !match.winner_entry_id &&
+      Boolean(match.room_code) &&
+      match.status === "in_progress" &&
+      !isTerminalMatchStatus(match.status);
+
+    if (canEnter || canJoin) {
+      hasActivePlayableMatch = true;
+    }
+
+    if (canEnter && !readyMatch) {
+      readyMatch = match;
+    }
+
+    if (canJoin && !joinMatch) {
+      joinMatch = match;
+    }
+
+    if (
+      isWalkoverByeMatch(match.entry_one_id, match.entry_two_id, match.status) &&
+      match.winner_entry_id === myEntryId
+    ) {
+      advancedByBye = true;
+    }
+  }
+
+  return { readyMatch, joinMatch, hasActivePlayableMatch, advancedByBye };
+}
+
+export type ParticipantTournamentResult = {
+  headline: string;
+  detail?: string;
+};
+
+export function computeParticipantTournamentResult(
+  tournamentStatus: string,
+  matches: TournamentMatchRow[],
+  myEntryId: string | null,
+  myEntryActive: boolean,
+  championName: string | null
+): ParticipantTournamentResult | null {
+  if (tournamentStatus !== "completed" || !myEntryId || !myEntryActive) {
+    return null;
+  }
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  const maxRound = Math.max(...matches.map((match) => match.round_number));
+  const finalMatch =
+    matches
+      .filter((match) => match.round_number === maxRound)
+      .sort((a, b) => a.slot_index - b.slot_index)[0] ?? null;
+
+  if (!finalMatch?.winner_entry_id) {
+    return championName
+      ? { headline: "Tournament complete", detail: `Champion: ${championName}` }
+      : null;
+  }
+
+  if (finalMatch.winner_entry_id === myEntryId) {
+    return {
+      headline: "You are the champion",
+      detail: "Congratulations — you won the tournament.",
+    };
+  }
+
+  const playedFinal =
+    finalMatch.entry_one_id === myEntryId ||
+    finalMatch.entry_two_id === myEntryId;
+
+  if (playedFinal) {
+    return {
+      headline: "Runner-up",
+      detail: championName
+        ? `Champion: ${championName}`
+        : "Thanks for reaching the final.",
+    };
+  }
+
+  return {
+    headline: "Tournament complete",
+    detail: championName ? `Champion: ${championName}` : undefined,
+  };
+}
+
 type TournamentBracketPanelProps = {
   tournamentId: string;
   tournamentStatus: string;
@@ -44,6 +171,7 @@ type TournamentBracketPanelProps = {
   currentUserId: string | null;
   onUpdated?: () => void;
   prominent?: boolean;
+  suppressWaitingBanners?: boolean;
 };
 
 function getParticipantActionReason(options: {
@@ -109,6 +237,7 @@ export default function TournamentBracketPanel({
   currentUserId,
   onUpdated,
   prominent = false,
+  suppressWaitingBanners = false,
 }: TournamentBracketPanelProps) {
   const entryById = useMemo(() => {
     const map = new Map<string, TournamentEntryRow>();
@@ -151,66 +280,16 @@ export default function TournamentBracketPanel({
       ? getTotalRounds(getBracketSizeFromRoundOneMatchCount(roundOneMatchCount))
       : 0;
 
-  const playerBracketState = useMemo(() => {
-    if (!myEntryId || !myEntryActive || !tournamentInProgress) {
-      return {
-        readyMatch: null as TournamentMatchRow | null,
-        joinMatch: null as TournamentMatchRow | null,
-        hasActivePlayableMatch: false,
-        advancedByBye: false,
-      };
-    }
-
-    let readyMatch: TournamentMatchRow | null = null;
-    let joinMatch: TournamentMatchRow | null = null;
-    let hasActivePlayableMatch = false;
-    let advancedByBye = false;
-
-    for (const match of matches) {
-      const isParticipant =
-        match.entry_one_id === myEntryId || match.entry_two_id === myEntryId;
-
-      if (!isParticipant) continue;
-
-      const playable = canMatchBePlayed(match);
-      const canEnter =
-        playable &&
-        !match.winner_entry_id &&
-        !match.room_code &&
-        match.status === "ready";
-      const canJoin =
-        playable &&
-        !match.winner_entry_id &&
-        Boolean(match.room_code) &&
-        match.status === "in_progress" &&
-        !isTerminalMatchStatus(match.status);
-
-      if (canEnter || canJoin) {
-        hasActivePlayableMatch = true;
-      }
-
-      if (canEnter && !readyMatch) {
-        readyMatch = match;
-      }
-
-      if (canJoin && !joinMatch) {
-        joinMatch = match;
-      }
-
-      if (
-        isWalkoverByeMatch(
-          match.entry_one_id,
-          match.entry_two_id,
-          match.status
-        ) &&
-        match.winner_entry_id === myEntryId
-      ) {
-        advancedByBye = true;
-      }
-    }
-
-    return { readyMatch, joinMatch, hasActivePlayableMatch, advancedByBye };
-  }, [matches, myEntryId, myEntryActive, tournamentInProgress]);
+  const playerBracketState = useMemo(
+    () =>
+      computePlayerBracketState(
+        matches,
+        myEntryId,
+        myEntryActive,
+        tournamentInProgress
+      ),
+    [matches, myEntryId, myEntryActive, tournamentInProgress]
+  );
 
   const championName = useMemo(() => {
     if (tournamentStatus !== "completed") {
@@ -224,58 +303,17 @@ export default function TournamentBracketPanel({
     );
   }, [tournamentStatus, matches, entries]);
 
-  const participantResult = useMemo(() => {
-    if (tournamentStatus !== "completed" || !myEntryId || !myEntryActive) {
-      return null;
-    }
-
-    if (matches.length === 0) {
-      return null;
-    }
-
-    const maxRound = Math.max(...matches.map((match) => match.round_number));
-    const finalMatch =
-      matches
-        .filter((match) => match.round_number === maxRound)
-        .sort((a, b) => a.slot_index - b.slot_index)[0] ?? null;
-
-    if (!finalMatch?.winner_entry_id) {
-      return championName
-        ? { headline: "Tournament complete", detail: `Champion: ${championName}` }
-        : null;
-    }
-
-    if (finalMatch.winner_entry_id === myEntryId) {
-      return {
-        headline: "You are the champion",
-        detail: "Congratulations — you won the tournament.",
-      };
-    }
-
-    const playedFinal =
-      finalMatch.entry_one_id === myEntryId ||
-      finalMatch.entry_two_id === myEntryId;
-
-    if (playedFinal) {
-      return {
-        headline: "Runner-up",
-        detail: championName
-          ? `Champion: ${championName}`
-          : "Thanks for reaching the final.",
-      };
-    }
-
-    return {
-      headline: "Tournament complete",
-      detail: championName ? `Champion: ${championName}` : undefined,
-    };
-  }, [
-    tournamentStatus,
-    myEntryId,
-    myEntryActive,
-    matches,
-    championName,
-  ]);
+  const participantResult = useMemo(
+    () =>
+      computeParticipantTournamentResult(
+        tournamentStatus,
+        matches,
+        myEntryId,
+        myEntryActive,
+        championName
+      ),
+    [tournamentStatus, myEntryId, myEntryActive, matches, championName]
+  );
 
   const sectionClass = bracketSectionClass(prominent, matches.length > 0);
   const titleClass = prominent
@@ -294,15 +332,20 @@ export default function TournamentBracketPanel({
     );
   }
 
-  const showReadyBanner = Boolean(playerBracketState.readyMatch);
+  const showReadyBanner =
+    !suppressWaitingBanners && Boolean(playerBracketState.readyMatch);
   const showJoinBanner =
-    !showReadyBanner && Boolean(playerBracketState.joinMatch);
+    !suppressWaitingBanners &&
+    !showReadyBanner &&
+    Boolean(playerBracketState.joinMatch);
   const showByeWaiting =
+    !suppressWaitingBanners &&
     myEntryActive &&
     tournamentInProgress &&
     playerBracketState.advancedByBye &&
     !playerBracketState.hasActivePlayableMatch;
   const showWaitingForNext =
+    !suppressWaitingBanners &&
     myEntryActive &&
     tournamentInProgress &&
     !playerBracketState.readyMatch &&
@@ -310,7 +353,7 @@ export default function TournamentBracketPanel({
     !playerBracketState.hasActivePlayableMatch;
 
   return (
-    <section className={sectionClass}>
+    <section id="tournament-bracket" className={sectionClass}>
       <div>
         <h2 className={titleClass}>Bracket</h2>
         <p className="mt-1 text-sm text-zinc-400">
@@ -318,7 +361,7 @@ export default function TournamentBracketPanel({
         </p>
       </div>
 
-      {participantResult ? (
+      {participantResult && !suppressWaitingBanners ? (
         <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/40 px-4 py-4">
           <p className="text-lg font-bold text-emerald-100">
             {participantResult.headline}

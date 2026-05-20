@@ -2027,7 +2027,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                 </button>
                 {tournamentRedirectCountdown !== null ? (
                   <p className="text-sm text-zinc-400">
-                    Returning to bracket in {tournamentRedirectCountdown}s…
+                    Returning to tournament waiting room in{" "}
+                    {tournamentRedirectCountdown}s…
                   </p>
                 ) : null}
               </div>
