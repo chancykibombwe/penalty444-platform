@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import RequireAuth from "../../../components/auth/RequireAuth";
 import TournamentAdminActions from "../../../components/tournament/TournamentAdminActions";
 import TournamentBracketPanel, {
@@ -10,15 +10,53 @@ import TournamentBracketPanel, {
   computePlayerBracketState,
 } from "../../../components/tournament/TournamentBracketPanel";
 import TournamentEntryActions from "../../../components/tournament/TournamentEntryActions";
+import TournamentLiveFeed from "../../../components/tournament/TournamentLiveFeed";
+import TournamentLiveNow from "../../../components/tournament/TournamentLiveNow";
+import TournamentPresenceCard from "../../../components/tournament/TournamentPresenceCard";
+import TournamentSummaryStats from "../../../components/tournament/TournamentSummaryStats";
 import TournamentWaitingRoom from "../../../components/tournament/TournamentWaitingRoom";
-import { deriveTournamentWaitingRoomState } from "../../../lib/tournament/playerWaitingRoom";
 import {
-  formatTournamentStatus,
-  statusBadgeClass,
-} from "../../../components/tournament/TournamentListPanel";
+  deriveTournamentWaitingRoomState,
+  getPlayerRoundLabel,
+  getTournamentTotalRounds,
+} from "../../../lib/tournament/playerWaitingRoom";
 import { resolveChampionName } from "../../../lib/tournament/champion";
 import { useTournamentDetailSync } from "../../../lib/tournament/useTournamentDetailSync";
 import { useTournamentRealtime } from "../../../lib/tournament/useTournamentRealtime";
+import {
+  derivePlayerPresence,
+  deriveTournamentSummary,
+  getPresenceLabel,
+  getPresenceToneClass,
+} from "../../../lib/tournament/tournamentPresence";
+import {
+  getEventSubtitle,
+  getTournamentStateBadge,
+  getTournamentTier,
+} from "../../../lib/tournament/tournamentBranding";
+import {
+  clearActiveTournamentIfMatches,
+  clearActiveTournamentIfPlayerMismatch,
+  saveActiveTournament,
+  type ActiveTournamentState,
+} from "../../../lib/tournament/activeTournament";
+
+function formatCountdown(targetIso: string | null, nowMs: number): string | null {
+  if (!targetIso) return null;
+  const targetMs = new Date(targetIso).getTime();
+  if (!Number.isFinite(targetMs)) return null;
+  const diff = targetMs - nowMs;
+  if (diff <= 0) return null;
+  const totalSeconds = Math.floor(diff / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+  if (hours > 0)
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
 
 export default function TournamentDetailPage() {
   const params = useParams();
@@ -92,6 +130,143 @@ export default function TournamentDetailPage() {
   const myEntryId = myEntry?.id ?? null;
   const myEntryActive = myEntry != null && myEntry.status !== "withdrawn";
   const tournamentInProgress = tournament?.status === "in_progress";
+
+  const presence = useMemo(
+    () =>
+      tournament
+        ? derivePlayerPresence({
+            tournamentStatus: tournament.status,
+            myEntry,
+            matches,
+            championUserId: tournament.winner_id,
+            currentUserId,
+          })
+        : "VIEWING",
+    [tournament, myEntry, matches, currentUserId]
+  );
+
+  const totalBracketRounds = useMemo(
+    () => getTournamentTotalRounds(matches),
+    [matches]
+  );
+
+  const playerRoundLabel = useMemo(
+    () => (myEntry ? getPlayerRoundLabel(myEntry.id, matches) : null),
+    [myEntry, matches]
+  );
+
+  const tournamentSummary = useMemo(
+    () =>
+      tournament
+        ? deriveTournamentSummary({
+            tournamentStatus: tournament.status,
+            entries,
+            matches,
+          })
+        : null,
+    [tournament, entries, matches]
+  );
+
+  const presenceRoundLabel =
+    playerRoundLabel ?? tournamentSummary?.currentRoundLabel ?? null;
+
+  const tournamentTier = useMemo(
+    () => getTournamentTier(tournament?.max_players ?? null),
+    [tournament?.max_players]
+  );
+
+  const tournamentStateBadge = useMemo(
+    () =>
+      tournament
+        ? getTournamentStateBadge(tournament.status, {
+            hasChampion: Boolean(championName),
+          })
+        : null,
+    [tournament, championName]
+  );
+
+  const tournamentSubtitle = useMemo(
+    () =>
+      tournament
+        ? getEventSubtitle({
+            tier: tournamentTier,
+            format: tournament.format,
+            status: tournament.status,
+            championName,
+          })
+        : null,
+    [tournament, tournamentTier, championName]
+  );
+
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const startsAt = tournament?.starts_at ?? null;
+  const startsCountdown = useMemo(
+    () =>
+      tournament?.status === "registration" || tournament?.status === "check_in"
+        ? formatCountdown(startsAt, nowMs)
+        : null,
+    [tournament?.status, startsAt, nowMs]
+  );
+
+  useEffect(() => {
+    if (!startsCountdown) return;
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [startsCountdown]);
+
+  // Persistent active-tournament snapshot. Mirrors the activeMatch system so a
+  // refresh / tab-close / nav-away always restores a clear Resume Tournament
+  // CTA on the tournaments list page.
+  useEffect(() => {
+    if (!tournament) return;
+    if (!currentUserId) return;
+
+    // Wipe any leftover snapshot bound to a different account before deciding.
+    clearActiveTournamentIfPlayerMismatch(currentUserId);
+
+    const status = tournament.status;
+    const userIsActiveParticipant =
+      myEntry != null && myEntry.status !== "withdrawn";
+
+    // Terminal states or non-participation = no snapshot for this tournament.
+    if (
+      status === "completed" ||
+      status === "cancelled" ||
+      !userIsActiveParticipant
+    ) {
+      clearActiveTournamentIfMatches(tournament.id);
+      return;
+    }
+
+    // Only meaningful lifecycle states are persisted.
+    let lastKnownState: ActiveTournamentState;
+    if (status === "registration") lastKnownState = "registration";
+    else if (status === "check_in") lastKnownState = "check_in";
+    else if (status === "in_progress") lastKnownState = "in_progress";
+    else lastKnownState = "unknown";
+
+    saveActiveTournament({
+      tournamentId: tournament.id,
+      tournamentName: tournament.name,
+      playerId: currentUserId,
+      lastKnownState,
+      tierLabel: tournamentTier.label,
+    });
+  }, [
+    tournament,
+    currentUserId,
+    myEntry,
+    tournamentTier.label,
+  ]);
+
+  // If the user becomes a champion or the tournament finishes, drop the
+  // snapshot proactively even before the effect above re-evaluates.
+  useEffect(() => {
+    if (!tournament) return;
+    if (tournament.status === "completed" || tournament.status === "cancelled") {
+      clearActiveTournamentIfMatches(tournament.id);
+    }
+  }, [tournament]);
 
   const playerBracketState = useMemo(
     () =>
@@ -172,6 +347,8 @@ export default function TournamentDetailPage() {
             <TournamentWaitingRoom
               tournamentId={tournament.id}
               tournamentStatus={tournament.status}
+              tournamentName={tournament.name}
+              tournamentTierLabel={tournamentTier.label}
               matches={matches}
               myEntry={myEntry}
               championName={championName}
@@ -190,44 +367,110 @@ export default function TournamentDetailPage() {
             />
 
             <header
-              className={`rounded-2xl border bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 ${
+              className={`relative overflow-hidden rounded-3xl border-2 bg-gradient-to-br from-black via-zinc-950 to-zinc-900 p-4 shadow-2xl sm:p-6 ${
                 tournament.status === "cancelled"
-                  ? "border-red-500/40"
-                  : "border-zinc-800"
+                  ? "border-red-500/45"
+                  : tournamentInProgress
+                    ? `border-cyan-500/45 ring-1 ${tournamentTier.ringClass} ${tournamentTier.glowClass}`
+                    : tournament.status === "completed"
+                      ? "border-yellow-300/40 ring-1 ring-yellow-500/15 shadow-[0_0_36px_rgba(234,179,8,0.16)]"
+                      : `border-zinc-800 ring-1 ${tournamentTier.ringClass}`
               }`}
             >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h1 className="text-3xl font-bold text-white">
+              <div
+                aria-hidden
+                className={`pointer-events-none absolute -top-32 -right-32 h-64 w-64 rounded-full blur-3xl opacity-30 ${
+                  tournamentInProgress
+                    ? "bg-cyan-500/30"
+                    : tournament.status === "completed"
+                      ? "bg-yellow-500/25"
+                      : tournament.status === "cancelled"
+                        ? "bg-red-500/20"
+                        : tournamentTier.id === "elite"
+                          ? "bg-fuchsia-500/25"
+                          : tournamentTier.id === "major"
+                            ? "bg-orange-500/25"
+                            : tournamentTier.id === "arena"
+                              ? "bg-amber-500/20"
+                              : tournamentTier.id === "knockout"
+                                ? "bg-cyan-500/20"
+                                : "bg-sky-500/20"
+                }`}
+              />
+
+              <div className="relative flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${tournamentTier.pillClass}`}
+                    >
+                      🏟 {tournamentTier.label}
+                    </span>
+                    {tournamentStateBadge ? (
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${tournamentStateBadge.className}`}
+                      >
+                        {tournamentStateBadge.pulse ? (
+                          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current opacity-90" />
+                        ) : null}
+                        {tournamentStateBadge.label}
+                      </span>
+                    ) : null}
+                    <span className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-900/70 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-zinc-200">
+                      {tournamentTier.capacityLabel}
+                    </span>
+                    {myEntry ? (
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${getPresenceToneClass(
+                          presence
+                        )}`}
+                      >
+                        {getPresenceLabel(presence)}
+                      </span>
+                    ) : null}
+                    {isHost ? (
+                      <span className="inline-flex items-center rounded-full border border-amber-500/45 bg-amber-950/40 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-amber-200">
+                        Host: You
+                      </span>
+                    ) : creatorUsername ? (
+                      <span className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-900/70 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-zinc-300">
+                        Host · {creatorUsername}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <p className="mt-3 text-[10px] font-black uppercase tracking-[0.32em] text-zinc-500 sm:text-[11px]">
+                    Tournament
+                  </p>
+                  <h1
+                    className={`mt-1 break-words text-3xl font-black tracking-tight sm:text-4xl md:text-5xl ${
+                      tournament.status === "completed"
+                        ? "bg-gradient-to-r from-yellow-200 via-amber-200 to-yellow-100 bg-clip-text text-transparent"
+                        : "text-white"
+                    }`}
+                  >
                     {tournament.name}
                   </h1>
-                  <p className="mt-2 text-sm text-zinc-400">
-                    {tournament.format.replace("_", " ")} · up to{" "}
-                    {tournament.max_players} players ·{" "}
+                  {tournamentSubtitle ? (
+                    <p className="mt-1.5 text-xs text-zinc-400 sm:text-sm">
+                      {tournamentSubtitle}
+                    </p>
+                  ) : null}
+                  <p className="mt-1 text-[11px] text-zinc-500 sm:text-xs">
                     {tournament.rounds_per_match} rounds per match
                   </p>
-                  <p className="mt-2 text-xs font-bold text-amber-200/90">
-                    {isHost ? (
-                      <span className="uppercase tracking-widest">
-                        HOSTED BY YOU
-                      </span>
-                    ) : (
-                      <>
-                        <span className="uppercase tracking-widest">
-                          HOST:{" "}
-                        </span>
-                        <span className="text-amber-100">
-                          {creatorUsername ?? "Host"}
-                        </span>
-                      </>
-                    )}
-                  </p>
                 </div>
-                <span
-                  className={`shrink-0 rounded-xl border px-3.5 py-2 text-sm font-bold tracking-wide shadow-md ${statusBadgeClass(tournament.status)}`}
-                >
-                  {formatTournamentStatus(tournament.status)}
-                </span>
+
+                {startsCountdown ? (
+                  <div className="shrink-0 rounded-2xl border border-amber-400/45 bg-amber-950/40 px-4 py-3 text-center shadow-lg">
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-200/90">
+                      Starts in
+                    </p>
+                    <p className="mt-1 text-2xl font-black tabular-nums text-amber-100 sm:text-3xl">
+                      {startsCountdown}
+                    </p>
+                  </div>
+                ) : null}
               </div>
 
               {tournament.status === "cancelled" ? (
@@ -239,7 +482,7 @@ export default function TournamentDetailPage() {
               {tournament.starts_at &&
               (tournament.status === "registration" ||
                 tournament.status === "check_in") ? (
-                <p className="mt-4 rounded-xl border border-amber-500/25 bg-amber-950/20 px-4 py-3 text-sm text-amber-100/95">
+                <p className="mt-4 rounded-xl border border-amber-500/25 bg-amber-950/20 px-4 py-3 text-xs text-amber-100/95 sm:text-sm">
                   Starts automatically at{" "}
                   {new Date(tournament.starts_at).toLocaleString(undefined, {
                     dateStyle: "medium",
@@ -255,48 +498,100 @@ export default function TournamentDetailPage() {
                 </p>
               ) : null}
 
-              <dl className="mt-5 flex flex-wrap gap-x-8 gap-y-3 border-t border-zinc-800/80 pt-4 text-sm">
+              <dl className="mt-5 grid grid-cols-2 gap-3 border-t border-zinc-800/80 pt-4 sm:grid-cols-4 sm:gap-4">
                 <div>
-                  <dt className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                  <dt className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 sm:text-[11px]">
                     Registered
                   </dt>
-                  <dd className="mt-0.5 font-semibold text-white">
+                  <dd className="mt-1 text-lg font-black tabular-nums text-white sm:text-xl">
                     {registeredCount}
-                    {tournament.max_players
-                      ? ` / ${tournament.max_players}`
-                      : null}
+                    {tournament.max_players ? (
+                      <span className="ml-1 text-sm font-bold text-zinc-500">
+                        / {tournament.max_players}
+                      </span>
+                    ) : null}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                  <dt className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 sm:text-[11px]">
                     Ready
                   </dt>
-                  <dd className="mt-0.5 font-semibold text-white">
+                  <dd className="mt-1 text-lg font-black tabular-nums text-white sm:text-xl">
                     {readyCount}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-                    Starts
+                  <dt className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 sm:text-[11px]">
+                    {tournamentInProgress
+                      ? "Current round"
+                      : tournament.status === "completed"
+                        ? "Rounds played"
+                        : "Bracket"}
                   </dt>
-                  <dd className="mt-0.5 font-semibold text-white">
-                    {tournament.starts_at
-                      ? new Date(tournament.starts_at).toLocaleString()
-                      : "TBD"}
+                  <dd className="mt-1 text-lg font-black text-white sm:text-xl">
+                    {tournamentInProgress && playerRoundLabel
+                      ? playerRoundLabel
+                      : matches.length > 0
+                        ? totalBracketRounds > 0
+                          ? `${totalBracketRounds} rounds`
+                          : `${matches.length} matches`
+                        : "Not yet drawn"}
                   </dd>
                 </div>
-                {matches.length > 0 ? (
-                  <div>
-                    <dt className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-                      Bracket
-                    </dt>
-                    <dd className="mt-0.5 font-semibold text-white">
-                      {matches.length} matches
-                    </dd>
-                  </div>
-                ) : null}
+                <div>
+                  <dt className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 sm:text-[11px]">
+                    {tournamentInProgress
+                      ? "Live since"
+                      : tournament.status === "completed"
+                        ? "Finished"
+                        : "Starts"}
+                  </dt>
+                  <dd className="mt-1 text-sm font-bold text-white sm:text-base">
+                    {tournamentInProgress
+                      ? tournament.starts_at
+                        ? new Date(tournament.starts_at).toLocaleTimeString(
+                            undefined,
+                            { hour: "2-digit", minute: "2-digit" }
+                          )
+                        : "—"
+                      : tournament.status === "completed"
+                        ? new Date(tournament.updated_at).toLocaleDateString(
+                            undefined,
+                            { dateStyle: "medium" }
+                          )
+                        : tournament.starts_at
+                          ? new Date(tournament.starts_at).toLocaleString(
+                              undefined,
+                              { dateStyle: "medium", timeStyle: "short" }
+                            )
+                          : "TBD"}
+                  </dd>
+                </div>
               </dl>
             </header>
+
+            {tournament.status !== "cancelled" ? (
+              <TournamentPresenceCard
+                presence={presence}
+                tournamentStatus={tournament.status}
+                hasReadyMatch={Boolean(playerBracketState.readyMatch)}
+                currentRoundLabel={presenceRoundLabel}
+                hideWhenViewing={!myEntry}
+              />
+            ) : null}
+
+            {tournament.status !== "cancelled" ? (
+              <TournamentSummaryStats
+                tournamentStatus={tournament.status}
+                entries={entries}
+                matches={matches}
+                championName={championName}
+              />
+            ) : null}
+
+            {tournamentInProgress ? (
+              <TournamentLiveNow entries={entries} matches={matches} />
+            ) : null}
 
             {bracketFirst ? (
               <>
@@ -309,6 +604,7 @@ export default function TournamentDetailPage() {
                   onUpdated={refresh}
                   prominent
                   suppressWaitingBanners={showWaitingRoom}
+                  maxPlayers={tournament.max_players}
                 />
                 {tournament.status !== "cancelled" ? (
                   <section className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
@@ -367,9 +663,16 @@ export default function TournamentDetailPage() {
                   currentUserId={currentUserId}
                   onUpdated={refresh}
                   suppressWaitingBanners={showWaitingRoom}
+                  maxPlayers={tournament.max_players}
                 />
               </>
             )}
+
+            <TournamentLiveFeed
+              tournament={tournament}
+              entries={entries}
+              matches={matches}
+            />
           </>
         ) : null}
       </section>

@@ -136,3 +136,44 @@ export function isWalkoverByeMatch(
 ): boolean {
   return status === "walkover" && isByeMatch(entryOneId, entryTwoId);
 }
+
+export type MatchSideDisplay =
+  | { kind: "player"; entryId: string; name: string }
+  | { kind: "free_pass" }
+  | { kind: "waiting" }
+  | { kind: "tbd" };
+
+/**
+ * Display state for one side of a bracket card. Replaces dead "TBD" labels
+ * with more alive copy where possible:
+ *  - `player`: a known entry occupies the slot
+ *  - `free_pass`: opponent has a BYE
+ *  - `waiting`: slot is empty but a feeder match upstream will fill it
+ *  - `tbd`: fallback (e.g. round-1 unseeded slot)
+ */
+export function getMatchSideDisplay(
+  match: {
+    round_number: number;
+    entry_one_id: string | null;
+    entry_two_id: string | null;
+  },
+  side: 1 | 2,
+  entryById: Map<string, TournamentEntryRow>
+): MatchSideDisplay {
+  const entryId = side === 1 ? match.entry_one_id : match.entry_two_id;
+  if (entryId) {
+    const entry = entryById.get(entryId);
+    return {
+      kind: "player",
+      entryId,
+      name: entry?.username ?? "Unknown",
+    };
+  }
+  if (isByeSlot(match.entry_one_id, match.entry_two_id, side)) {
+    return { kind: "free_pass" };
+  }
+  if (match.round_number > 1) {
+    return { kind: "waiting" };
+  }
+  return { kind: "tbd" };
+}

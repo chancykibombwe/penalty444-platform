@@ -4,6 +4,15 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase/client";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
+import {
+  clearActiveTournament,
+  clearActiveTournamentIfMatches,
+  getActiveTournament,
+} from "../../lib/tournament/activeTournament";
+import {
+  getTournamentStateBadge,
+  getTournamentTier,
+} from "../../lib/tournament/tournamentBranding";
 import TournamentEntryActions from "./TournamentEntryActions";
 
 export type TournamentRow = {
@@ -306,10 +315,17 @@ function getEmptyMessage(filter: TournamentListFilter) {
 
 type TournamentListPanelProps = {
   listVersion?: number;
+  /**
+   * Optional active-tournament id from the localStorage snapshot. When this
+   * matches a fetched row the card is pinned to the top and the Resume CTA is
+   * elevated. The panel also runs stale-cleanup against fetched rows.
+   */
+  activeTournamentId?: string | null;
 };
 
 export default function TournamentListPanel({
   listVersion = 0,
+  activeTournamentId = null,
 }: TournamentListPanelProps) {
   const [tournaments, setTournaments] = useState<TournamentRow[]>([]);
   const [entriesByTournament, setEntriesByTournament] = useState<
@@ -565,7 +581,7 @@ export default function TournamentListPanel({
     myEntriesByTournament
   );
 
-  const filteredTournaments =
+  const baseSortedTournaments =
     filter === "completed"
       ? [...matchedForTab].sort(
           (a, b) =>
@@ -576,27 +592,83 @@ export default function TournamentListPanel({
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
 
+  // Pin the active tournament to the top so the user always lands on the
+  // session they're already part of.
+  const filteredTournaments = useMemo(() => {
+    if (!activeTournamentId) return baseSortedTournaments;
+    const index = baseSortedTournaments.findIndex(
+      (t) => t.id === activeTournamentId
+    );
+    if (index <= 0) return baseSortedTournaments;
+    const next = [...baseSortedTournaments];
+    const [pinned] = next.splice(index, 1);
+    next.unshift(pinned);
+    return next;
+  }, [baseSortedTournaments, activeTournamentId]);
+
+  // Stale-cleanup: if the snapshot still references a tournament we just
+  // confirmed is completed / cancelled / withdrawn, drop the snapshot. This
+  // prevents Resume CTAs from clinging to dead sessions across refreshes.
+  useEffect(() => {
+    if (!activeTournamentId) return;
+    if (tournaments.length === 0) return;
+
+    const snapshot = getActiveTournament(currentUserId ?? undefined);
+    if (!snapshot) return;
+    if (snapshot.tournamentId !== activeTournamentId) return;
+
+    const fresh = tournaments.find((t) => t.id === activeTournamentId);
+    if (!fresh) {
+      // Could be filtered (cancelled rows are excluded from fetch).
+      clearActiveTournamentIfMatches(activeTournamentId);
+      return;
+    }
+
+    const normalizedStatus = normalizeTournamentStatus(fresh.status);
+    if (
+      normalizedStatus === "completed" ||
+      normalizedStatus === "cancelled"
+    ) {
+      clearActiveTournamentIfMatches(activeTournamentId);
+      return;
+    }
+
+    if (!currentUserId) return;
+    const myEntry = myEntriesByTournament.get(activeTournamentId);
+    if (!myEntry || myEntry.status === "withdrawn") {
+      // The user isn't in this tournament anymore — drop the snapshot.
+      clearActiveTournament();
+    }
+  }, [
+    activeTournamentId,
+    tournaments,
+    myEntriesByTournament,
+    currentUserId,
+  ]);
+
   const sectionCopy = getSectionCopy(filter);
   const showInitialLoading = isInitialLoading && tournaments.length === 0;
 
   return (
-    <section className="space-y-6 rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 shadow-2xl">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium uppercase tracking-wide text-zinc-500">
+    <section className="space-y-5 rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-4 shadow-2xl sm:space-y-6 sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3 sm:items-end sm:gap-4">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 sm:text-sm">
             Events
           </p>
-          <h2 className="mt-2 text-2xl font-bold text-white">
+          <h2 className="mt-1 text-xl font-bold text-white sm:mt-2 sm:text-2xl">
             {sectionCopy.title}
           </h2>
-          <p className="mt-2 text-zinc-400">{sectionCopy.description}</p>
+          <p className="mt-1 text-sm text-zinc-400 sm:mt-2 sm:text-base">
+            {sectionCopy.description}
+          </p>
         </div>
 
         <button
           type="button"
           onClick={refresh}
           disabled={isInitialLoading || isRefreshing}
-          className="rounded-xl border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-200 hover:border-zinc-400 disabled:opacity-50"
+          className="shrink-0 rounded-xl border border-zinc-600 px-3 py-2 text-xs font-semibold text-zinc-200 hover:border-zinc-400 disabled:opacity-50 sm:px-4 sm:text-sm"
         >
           {isRefreshing ? "Refreshing…" : "Refresh"}
         </button>
@@ -657,53 +729,105 @@ export default function TournamentListPanel({
               tournament,
               entries
             );
+            const tier = getTournamentTier(tournament.max_players);
+            const stateBadge = getTournamentStateBadge(tournament.status, {
+              hasChampion: Boolean(championUsername),
+            });
+            const isActiveForMe =
+              Boolean(activeTournamentId) &&
+              tournament.id === activeTournamentId;
 
             return (
               <li
                 key={tournament.id}
-                className={`rounded-2xl border p-5 ${
-                  isCompleted
-                    ? "border-zinc-700/80 bg-zinc-950/35"
-                    : isHost
-                      ? "border-amber-500/35 bg-zinc-950/60"
-                      : "border-zinc-800 bg-zinc-950/60"
+                className={`relative overflow-hidden rounded-2xl border p-4 sm:p-5 ${
+                  isActiveForMe
+                    ? "border-2 border-cyan-300/65 bg-gradient-to-br from-cyan-950/40 via-zinc-950 to-black shadow-2xl shadow-cyan-950/40 ring-2 ring-cyan-400/30"
+                    : isCompleted
+                      ? "border-yellow-300/30 bg-gradient-to-br from-yellow-950/15 via-zinc-950/55 to-black"
+                      : isLive
+                        ? `border-cyan-500/40 bg-gradient-to-br from-cyan-950/25 via-zinc-950/60 to-black ${tier.glowClass}`
+                        : isHost
+                          ? "border-amber-500/35 bg-zinc-950/60"
+                          : `border-zinc-800 bg-gradient-to-br from-zinc-950 via-zinc-950/60 to-black ring-1 ${tier.ringClass}`
                 }`}
               >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3
-                        className={`text-lg font-bold ${
-                          isCompleted ? "text-zinc-200" : "text-white"
-                        }`}
+                {isActiveForMe ? (
+                  <span className="absolute left-4 top-0 inline-flex -translate-y-1/2 items-center gap-1.5 rounded-full border border-cyan-300/65 bg-cyan-500/20 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100 shadow-[0_0_16px_rgba(34,211,238,0.35)]">
+                    <span
+                      className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.8)]"
+                      aria-hidden
+                    />
+                    Active for you
+                  </span>
+                ) : null}
+                <div
+                  aria-hidden
+                  className={`pointer-events-none absolute -top-20 -right-20 h-40 w-40 rounded-full blur-3xl opacity-25 ${
+                    isLive
+                      ? "bg-cyan-500/40"
+                      : isCompleted
+                        ? "bg-yellow-500/25"
+                        : tier.id === "elite"
+                          ? "bg-fuchsia-500/25"
+                          : tier.id === "major"
+                            ? "bg-orange-500/20"
+                            : tier.id === "arena"
+                              ? "bg-amber-500/20"
+                              : tier.id === "knockout"
+                                ? "bg-cyan-500/15"
+                                : "bg-sky-500/15"
+                  }`}
+                />
+
+                <div className="relative flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span
+                        className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${tier.pillClass}`}
                       >
-                        <Link
-                          href={`/tournaments/${tournament.id}`}
-                          className={
-                            isCompleted
-                              ? "hover:text-zinc-100"
-                              : "hover:text-amber-200"
-                          }
-                        >
-                          {tournament.name}
-                        </Link>
-                      </h3>
+                        {tier.shortLabel}
+                      </span>
+                      <span className="inline-flex items-center rounded-md border border-zinc-700 bg-zinc-900/70 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-zinc-300">
+                        {tier.capacityLabel}
+                      </span>
                       {isHost ? (
-                        <span className="rounded-md border border-amber-500/50 bg-amber-950/40 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-200">
-                          HOST: YOU
+                        <span className="inline-flex items-center rounded-md border border-amber-500/50 bg-amber-950/40 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-200">
+                          Host: You
                         </span>
                       ) : null}
                     </div>
-                    <p className="mt-1 text-xs text-zinc-500">
-                      Single elimination · {tournament.rounds_per_match} rounds
+                    <h3
+                      className={`mt-2 break-words text-base font-black tracking-tight sm:text-lg ${
+                        isCompleted
+                          ? "bg-gradient-to-r from-yellow-200 via-amber-200 to-yellow-100 bg-clip-text text-transparent"
+                          : "text-white"
+                      }`}
+                    >
+                      <Link
+                        href={`/tournaments/${tournament.id}`}
+                        className={
+                          isCompleted
+                            ? "hover:opacity-90"
+                            : "hover:text-amber-200"
+                        }
+                      >
+                        {tournament.name}
+                      </Link>
+                    </h3>
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      {tier.subtitle} · {tournament.rounds_per_match} rounds
                       per match
                     </p>
                   </div>
 
                   <span
-                    className={`rounded-lg border px-2.5 py-1 text-xs font-bold tracking-wide ${statusBadgeClass(tournament.status)}`}
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${stateBadge.className}`}
                   >
-                    {formatTournamentStatus(tournament.status)}
+                    {stateBadge.pulse ? (
+                      <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current opacity-90" />
+                    ) : null}
+                    {stateBadge.label}
                   </span>
                 </div>
 
@@ -774,28 +898,47 @@ export default function TournamentListPanel({
                   ) : (
                     <div className="space-y-4">
                       {showLiveAccess ? (
-                        <div className="space-y-2 rounded-xl border border-cyan-500/30 bg-cyan-950/20 px-3 py-3">
-                          {isActiveParticipant ? (
-                            <>
-                              <p className="text-sm font-semibold text-cyan-100">
-                                Your tournament is live.
-                              </p>
-                              <p className="text-xs text-zinc-400">
-                                Open the tournament page to play your bracket
-                                match.
-                              </p>
-                            </>
-                          ) : isHost ? (
-                            <p className="text-xs text-amber-200/90">
-                              Hosting — open the tournament page to manage and
-                              play bracket matches.
-                            </p>
-                          ) : null}
+                        <div className="space-y-2 rounded-xl border border-cyan-500/35 bg-cyan-950/25 px-3 py-3 shadow-[0_0_18px_rgba(34,211,238,0.12)]">
+                          <p className="inline-flex items-center gap-2 text-sm font-bold text-cyan-100">
+                            <span
+                              className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.8)]"
+                              aria-hidden
+                            />
+                            {isActiveParticipant
+                              ? "Your tournament is live"
+                              : isHost
+                                ? "Tournament is live"
+                                : "Live tournament"}
+                          </p>
+                          <p className="text-xs text-zinc-400">
+                            {isActiveParticipant
+                              ? "Resume to play your next bracket match."
+                              : isHost
+                                ? "Resume to manage and play bracket matches."
+                                : "Open the tournament page for bracket access."}
+                          </p>
                           <Link
                             href={`/tournaments/${tournament.id}`}
-                            className="inline-flex rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2 text-sm font-bold text-zinc-950 hover:from-amber-400 hover:to-orange-500"
+                            className="inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-500 to-amber-500 px-4 py-3 text-sm font-black text-zinc-950 shadow-lg hover:from-cyan-400 hover:to-amber-400 sm:w-auto sm:py-2"
                           >
-                            Open Tournament
+                            Resume Tournament →
+                          </Link>
+                        </div>
+                      ) : isActiveParticipant ? (
+                        <div className="space-y-2 rounded-xl border border-amber-500/35 bg-amber-950/25 px-3 py-3">
+                          <p className="text-sm font-bold text-amber-100">
+                            You&apos;re in this tournament
+                          </p>
+                          <p className="text-xs text-amber-100/80">
+                            {myEntry?.status === "checked_in"
+                              ? "You&apos;re ready. The bracket opens when the host starts it."
+                              : "Mark yourself ready before the bracket opens."}
+                          </p>
+                          <Link
+                            href={`/tournaments/${tournament.id}`}
+                            className="inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-3 text-sm font-black text-zinc-950 hover:from-amber-400 hover:to-orange-500 sm:w-auto sm:py-2"
+                          >
+                            Resume Tournament →
                           </Link>
                         </div>
                       ) : null}

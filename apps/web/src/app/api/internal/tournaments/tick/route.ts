@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { processNoShowDeadlines } from "@/lib/tournament/processNoShowDeadlines";
+import { processTournamentCleanup } from "@/lib/tournament/processTournamentCleanup";
 import {
   startTournament,
   TOURNAMENT_START_SYSTEM_USER_ID,
@@ -107,6 +108,7 @@ export async function POST(request: NextRequest) {
     }
 
     const noShow = await processNoShowDeadlines(admin);
+    const cleanup = await processTournamentCleanup(admin);
 
     return NextResponse.json({
       ok: true,
@@ -114,6 +116,7 @@ export async function POST(request: NextRequest) {
       started,
       failed,
       noShow,
+      cleanup,
     });
   } catch (error) {
     console.error("POST /api/internal/tournaments/tick failed:", error);

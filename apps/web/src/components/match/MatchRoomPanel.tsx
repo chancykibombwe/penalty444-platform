@@ -12,6 +12,11 @@ import {
   getCurrentPlayerIdentity,
   type PlayerIdentity,
 } from "../../lib/auth/playerIdentity";
+import {
+  clearTournamentMatchHandoff,
+  readTournamentMatchHandoff,
+  type TournamentMatchHandoff,
+} from "../../lib/tournament/matchHandoff";
 
 type Lane = "LEFT" | "CENTER" | "RIGHT";
 type Role = "KICKER" | "KEEPER";
@@ -207,9 +212,23 @@ function getLaneButtonClass(
 
 function resultLabel(result?: ShotResult) {
   if (result === "GOAL") return "GOAL!";
-  if (result === "SAVE") return "SAVE!";
-  if (result === "DRAW") return "DRAW!";
+  if (result === "SAVE") return "SAVED!";
+  if (result === "DRAW") return "DRAW";
   return "Waiting for result";
+}
+
+function resultSubheadline(result?: ShotResult): string {
+  if (result === "GOAL") return "Net found — kicker wins the round.";
+  if (result === "SAVE") return "Keeper read it — no goal.";
+  if (result === "DRAW") return "Even round — no advantage.";
+  return "";
+}
+
+function resultEmoji(result?: ShotResult): string {
+  if (result === "GOAL") return "⚽";
+  if (result === "SAVE") return "🧤";
+  if (result === "DRAW") return "·";
+  return "";
 }
 
 function normalizeAuthoritativeResult(
@@ -342,6 +361,16 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const [tournamentRedirectCountdown, setTournamentRedirectCountdown] = useState<
     number | null
   >(null);
+  const [tournamentHandoff, setTournamentHandoff] =
+    useState<TournamentMatchHandoff | null>(null);
+  const [tournamentStagingCountdown, setTournamentStagingCountdown] = useState<
+    number | null
+  >(null);
+  const [tournamentIntroVisible, setTournamentIntroVisible] = useState(false);
+  const tournamentStagingDismissedRef = useRef(false);
+  // Note: `matchType` can lag the actual handoff (the match:update payload may
+  // arrive a few hundred ms after mount). Treating the handoff as proof of
+  // tournament context lets the staging UI render immediately.
   const [playerCount, setPlayerCount] = useState(1);
   const [timer, setTimer] = useState<number | null>(null);
   const [disconnectCountdown, setDisconnectCountdown] = useState<number | null>(
@@ -351,6 +380,19 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const disconnectCountdownTickIntervalRef = useRef<number | null>(null);
 
   const normalizedRoomCode = roomCode.trim().toUpperCase();
+
+  // Read the tournament handoff once on mount (if present). This carries
+  // round label + isFinal so the staging screen can show a richer intro.
+  // The handoff is consumed and cleared so it cannot leak into a later match
+  // in the same tab/session.
+  useEffect(() => {
+    const handoff = readTournamentMatchHandoff(normalizedRoomCode);
+    if (handoff) {
+      setTournamentHandoff(handoff);
+      clearTournamentMatchHandoff(normalizedRoomCode);
+    }
+  }, [normalizedRoomCode]);
+
   const lastPickRoundRef = useRef<number | null>(null);
   /** Pick round when the local player locked a lane (authoritative result guard). */
   const resolvingPickRoundRef = useRef<number | null>(null);
@@ -1119,6 +1161,81 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     };
   }, [matchEnded, matchType, tournamentId, router]);
 
+  const isTournamentMatch =
+    matchType === "tournament" || tournamentHandoff !== null;
+
+  const isFinalTournamentMatch =
+    isTournamentMatch && (tournamentHandoff?.isFinal ?? false);
+
+  const tournamentRoundDisplayLabel =
+    tournamentHandoff?.roundLabel ?? (isTournamentMatch ? "Tournament" : null);
+
+  // Pre-match tournament staging: 3 / 2 / 1 countdown overlay shown only on a
+  // fresh tournament match (no picks yet, no result, no match-ended state).
+  // Display-only — does NOT block socket events or input. If the user picks a
+  // lane or the round advances, the overlay is hidden immediately.
+  useEffect(() => {
+    if (!isTournamentMatch || matchEnded || matchAborted) {
+      setTournamentStagingCountdown(null);
+      return;
+    }
+
+    if (tournamentStagingDismissedRef.current) return;
+
+    // Only show on a fresh match (round 1, no pick yet, no reveal, no goals).
+    const everyScoreZero = Object.values(scores).every((v) => !v || v === 0);
+    const isFreshMatch =
+      round <= 1 &&
+      !hasSubmittedPick &&
+      revealStage === "IDLE" &&
+      everyScoreZero;
+
+    if (!isFreshMatch) {
+      setTournamentStagingCountdown(null);
+      return;
+    }
+
+    let secondsLeft = 3;
+    setTournamentStagingCountdown(secondsLeft);
+    const intervalId = window.setInterval(() => {
+      secondsLeft -= 1;
+      if (secondsLeft <= 0) {
+        window.clearInterval(intervalId);
+        setTournamentStagingCountdown(0);
+        tournamentStagingDismissedRef.current = true;
+        // After countdown, briefly show the intro pill.
+        setTournamentIntroVisible(true);
+        window.setTimeout(() => setTournamentIntroVisible(false), 3000);
+        // Hide the overlay shortly after reaching 0.
+        window.setTimeout(() => setTournamentStagingCountdown(null), 250);
+        return;
+      }
+      setTournamentStagingCountdown(secondsLeft);
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [
+    isTournamentMatch,
+    matchEnded,
+    matchAborted,
+    matchInstance,
+    round,
+    hasSubmittedPick,
+    revealStage,
+    scores,
+  ]);
+
+  // If the user picks before the staging finishes, dismiss it instantly so it
+  // never blocks the lane buttons visually.
+  useEffect(() => {
+    if (hasSubmittedPick && tournamentStagingCountdown !== null) {
+      tournamentStagingDismissedRef.current = true;
+      setTournamentStagingCountdown(null);
+    }
+  }, [hasSubmittedPick, tournamentStagingCountdown]);
+
   useEffect(() => {
     if (
       matchEnded ||
@@ -1202,7 +1319,6 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const myScore = myPlayerId ? activeScores[myPlayerId] ?? 0 : 0;
   const opponentScore = opponentId ? activeScores[opponentId] ?? 0 : 0;
 
-  const isTournamentMatch = matchType === "tournament";
 
   const showOpponentRematchPrompt = useMemo(() => {
     if (isTournamentMatch) return false;
@@ -1407,15 +1523,89 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     });
   }
 
+  const showTournamentStaging =
+    isTournamentMatch && tournamentStagingCountdown !== null;
+
+  const myRoleNow: Role | null = myPlayerId ? roles[myPlayerId] ?? null : null;
+  const myFirstRoleLabel =
+    myRoleNow === "KICKER"
+      ? "You are Kicker first"
+      : myRoleNow === "KEEPER"
+        ? "You are Keeper first"
+        : "Roles set in a moment";
+
   return (
     <>
       <style
         dangerouslySetInnerHTML={{
-          __html: `@keyframes matchScreenShake{0%,100%{transform:translate3d(0,0,0)}15%{transform:translate3d(-10px,0,0)}30%{transform:translate3d(10px,0,0)}45%{transform:translate3d(-8px,0,0)}60%{transform:translate3d(8px,0,0)}75%{transform:translate3d(-4px,0,0)}90%{transform:translate3d(4px,0,0)}}@keyframes matchTimerUrgentPulse{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,0.45),0 0 24px rgba(248,113,113,0.18)}50%{box-shadow:0 0 0 10px rgba(248,113,113,0),0 0 36px rgba(248,113,113,0.42)}}@keyframes matchTimerUrgentScale{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}@keyframes matchSuddenDeathTimerGlow{0%,100%{box-shadow:0 0 18px rgba(250,204,21,0.18),inset 0 0 18px rgba(250,204,21,0.08)}50%{box-shadow:0 0 30px rgba(250,204,21,0.34),inset 0 0 24px rgba(250,204,21,0.12)}}@keyframes matchGoalFlash{0%{box-shadow:0 0 0 0 rgba(52,211,153,0.55)}100%{box-shadow:0 0 0 18px rgba(52,211,153,0)}}@keyframes matchSaveFlash{0%{box-shadow:0 0 0 0 rgba(249,115,22,0.5)}100%{box-shadow:0 0 0 16px rgba(249,115,22,0)}}@keyframes matchDrawFlash{0%{box-shadow:0 0 0 0 rgba(212,212,216,0.45)}100%{box-shadow:0 0 0 14px rgba(212,212,216,0)}}@keyframes matchResultReveal{0%{opacity:0.45;transform:translateY(10px) scale(0.98)}100%{opacity:1;transform:translateY(0) scale(1)}}@keyframes matchScorePulse{0%{transform:scale(1)}35%{transform:scale(1.28)}100%{transform:scale(1)}}.match-timer-urgent{animation:matchTimerUrgentPulse 0.9s ease-in-out infinite,matchTimerUrgentScale 0.9s ease-in-out infinite}.match-timer-sudden-death{animation:matchSuddenDeathTimerGlow 1.4s ease-in-out infinite}.goal-flash{animation:matchGoalFlash 0.6s ease-out}.save-flash{animation:matchSaveFlash 0.6s ease-out}.draw-flash{animation:matchDrawFlash 0.5s ease-out}.match-result-reveal-active{animation:matchResultReveal 0.9s ease-out infinite alternate}.match-result-reveal-done{animation:matchResultReveal 0.45s ease-out}.match-result-headline-goal{text-shadow:0 0 24px rgba(52,211,153,0.45)}.match-result-headline-save{text-shadow:0 0 24px rgba(56,189,248,0.42)}.match-result-headline-draw{text-shadow:0 0 22px rgba(250,204,21,0.34)}.match-score-pulse{animation:matchScorePulse 0.45s cubic-bezier(0.22,1,0.36,1)}.match-lane-ready{transition:transform 180ms ease,box-shadow 180ms ease,background-color 180ms ease,border-color 180ms ease,color 180ms ease}`,
+          __html: `@keyframes tournamentArenaIn{0%{opacity:0;transform:translateY(10px) scale(0.97)}100%{opacity:1;transform:translateY(0) scale(1)}}@keyframes tournamentArenaCount{0%{opacity:0;transform:scale(0.6)}30%{opacity:1;transform:scale(1.05)}70%{opacity:1;transform:scale(1)}100%{opacity:0.85;transform:scale(0.95)}}@keyframes tournamentArenaBackdrop{from{opacity:0}to{opacity:1}}@keyframes tournamentIntroSlide{0%{opacity:0;transform:translateY(-6px)}15%{opacity:1;transform:translateY(0)}85%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-4px)}}.tournament-arena-overlay{animation:tournamentArenaBackdrop 0.2s ease-out forwards}.tournament-arena-card{animation:tournamentArenaIn 0.32s cubic-bezier(0.22,1,0.36,1) forwards}.tournament-arena-count{animation:tournamentArenaCount 1s ease-out forwards}.tournament-intro-pill{animation:tournamentIntroSlide 3s ease-out forwards}@keyframes matchScreenShake{0%,100%{transform:translate3d(0,0,0)}15%{transform:translate3d(-10px,0,0)}30%{transform:translate3d(10px,0,0)}45%{transform:translate3d(-8px,0,0)}60%{transform:translate3d(8px,0,0)}75%{transform:translate3d(-4px,0,0)}90%{transform:translate3d(4px,0,0)}}@keyframes matchTimerUrgentPulse{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,0.45),0 0 24px rgba(248,113,113,0.18)}50%{box-shadow:0 0 0 10px rgba(248,113,113,0),0 0 36px rgba(248,113,113,0.42)}}@keyframes matchTimerUrgentScale{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}@keyframes matchSuddenDeathTimerGlow{0%,100%{box-shadow:0 0 18px rgba(250,204,21,0.18),inset 0 0 18px rgba(250,204,21,0.08)}50%{box-shadow:0 0 30px rgba(250,204,21,0.34),inset 0 0 24px rgba(250,204,21,0.12)}}@keyframes matchGoalFlash{0%{box-shadow:0 0 0 0 rgba(52,211,153,0.55)}100%{box-shadow:0 0 0 18px rgba(52,211,153,0)}}@keyframes matchSaveFlash{0%{box-shadow:0 0 0 0 rgba(249,115,22,0.5)}100%{box-shadow:0 0 0 16px rgba(249,115,22,0)}}@keyframes matchDrawFlash{0%{box-shadow:0 0 0 0 rgba(212,212,216,0.45)}100%{box-shadow:0 0 0 14px rgba(212,212,216,0)}}@keyframes matchResultReveal{0%{opacity:0.45;transform:translateY(10px) scale(0.98)}100%{opacity:1;transform:translateY(0) scale(1)}}@keyframes matchScorePulse{0%{transform:scale(1)}35%{transform:scale(1.28)}100%{transform:scale(1)}}@keyframes matchWaitingDot{0%,80%,100%{opacity:0.25;transform:scale(0.85)}40%{opacity:1;transform:scale(1.05)}}.match-timer-urgent{animation:matchTimerUrgentPulse 0.9s ease-in-out infinite,matchTimerUrgentScale 0.9s ease-in-out infinite}.match-timer-sudden-death{animation:matchSuddenDeathTimerGlow 1.4s ease-in-out infinite}.goal-flash{animation:matchGoalFlash 0.6s ease-out}.save-flash{animation:matchSaveFlash 0.6s ease-out}.draw-flash{animation:matchDrawFlash 0.5s ease-out}.match-result-reveal-active{animation:matchResultReveal 0.9s ease-out infinite alternate}.match-result-reveal-done{animation:matchResultReveal 0.45s ease-out}.match-result-headline-goal{text-shadow:0 0 24px rgba(52,211,153,0.45)}.match-result-headline-save{text-shadow:0 0 24px rgba(56,189,248,0.42)}.match-result-headline-draw{text-shadow:0 0 22px rgba(250,204,21,0.34)}.match-score-pulse{animation:matchScorePulse 0.45s cubic-bezier(0.22,1,0.36,1)}.match-lane-ready{transition:transform 180ms ease,box-shadow 180ms ease,background-color 180ms ease,border-color 180ms ease,color 180ms ease}.match-waiting-dots{display:inline-flex;align-items:center;gap:3px}.match-waiting-dot{display:inline-block;width:5px;height:5px;border-radius:9999px;background:currentColor;animation:matchWaitingDot 1.2s ease-in-out infinite}.match-waiting-dot:nth-child(2){animation-delay:0.18s}.match-waiting-dot:nth-child(3){animation-delay:0.36s}`,
         }}
       />
+      {showTournamentStaging ? (
+        <div
+          className="tournament-arena-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/85 px-4 py-6 backdrop-blur-sm"
+          aria-live="polite"
+          aria-label="Match starting"
+        >
+          <div
+            className={`tournament-arena-card w-full max-w-md overflow-hidden rounded-3xl border-2 px-5 py-7 text-center shadow-2xl sm:px-7 sm:py-8 ${
+              isFinalTournamentMatch
+                ? "border-yellow-300/70 bg-gradient-to-br from-yellow-950/70 via-amber-950/70 to-black shadow-[0_0_56px_rgba(234,179,8,0.32)]"
+                : "border-amber-500/60 bg-gradient-to-br from-amber-950/55 via-zinc-950 to-black shadow-[0_0_42px_rgba(251,191,36,0.22)]"
+            }`}
+          >
+            <p
+              className={`text-[10px] font-black uppercase tracking-[0.32em] ${
+                isFinalTournamentMatch ? "text-yellow-300" : "text-amber-300"
+              }`}
+            >
+              {isFinalTournamentMatch ? "Championship match" : "Tournament match"}
+            </p>
+            <h2
+              className={`mt-2 break-words text-2xl font-black tracking-tight sm:text-3xl ${
+                isFinalTournamentMatch ? "text-yellow-100" : "text-white"
+              }`}
+            >
+              {tournamentRoundDisplayLabel ?? "Match starting"}
+            </h2>
+            <div className="mt-4 flex items-center justify-center gap-2 text-sm font-bold text-zinc-200 sm:text-base">
+              <span className="min-w-0 max-w-[40%] truncate text-white">
+                {myName}
+              </span>
+              <span
+                className={`shrink-0 text-[10px] font-black uppercase tracking-[0.28em] ${
+                  isFinalTournamentMatch
+                    ? "text-yellow-300"
+                    : "text-amber-300"
+                }`}
+              >
+                vs
+              </span>
+              <span className="min-w-0 max-w-[40%] truncate text-white">
+                {opponentName}
+              </span>
+            </div>
+            <p className="mt-4 text-xs font-bold uppercase tracking-[0.22em] text-zinc-400 sm:text-sm">
+              Match starting…
+            </p>
+            <p
+              key={tournamentStagingCountdown}
+              className={`tournament-arena-count mt-3 text-7xl font-black tabular-nums leading-none sm:text-8xl ${
+                isFinalTournamentMatch ? "text-yellow-100" : "text-amber-100"
+              }`}
+            >
+              {tournamentStagingCountdown && tournamentStagingCountdown > 0
+                ? tournamentStagingCountdown
+                : "GO"}
+            </p>
+            <p className="mt-4 text-[11px] font-semibold text-zinc-400">
+              First to finish the shootout advances
+            </p>
+          </div>
+        </div>
+      ) : null}
       <div
-        className={`main-container mx-auto max-w-6xl space-y-8 px-4 py-8 text-white md:space-y-10 md:px-6 md:py-10 ${
+        className={`main-container mx-auto max-w-6xl space-y-6 px-3 py-5 text-white sm:space-y-8 sm:px-4 sm:py-8 md:space-y-10 md:px-6 md:py-10 ${
           screenEffect === "GOAL"
             ? "zoom-impact scale-[1.06] transition-transform duration-300 ease-out ring-2 ring-green-400/80 shadow-[0_0_40px_rgba(34,197,94,0.55)]"
             : screenEffect === "SAVE"
@@ -1444,9 +1634,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                     : "border-zinc-800 from-zinc-950 via-zinc-900 to-black"
         }`}
       >
-        <div className="border-b border-zinc-800 px-6 py-5">
+        <div className="border-b border-zinc-800 px-4 py-4 md:px-6 md:py-5">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div>
+            <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span
                   className={`rounded-full px-3 py-1 font-black uppercase tracking-[0.2em] ${
@@ -1463,8 +1653,16 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                 </span>
 
                 {isTournamentMatch ? (
-                  <span className="rounded-full border border-amber-500/45 bg-amber-950/40 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-amber-200">
-                    Tournament Match
+                  <span
+                    className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest ${
+                      isFinalTournamentMatch
+                        ? "border-yellow-300/60 bg-yellow-500/15 text-yellow-100 shadow-[0_0_18px_rgba(234,179,8,0.25)]"
+                        : "border-amber-500/45 bg-amber-950/40 text-amber-200"
+                    }`}
+                  >
+                    {isFinalTournamentMatch
+                      ? "🏆 Championship"
+                      : tournamentRoundDisplayLabel ?? "Tournament"}
                   </span>
                 ) : null}
 
@@ -1479,7 +1677,27 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                 </span>
               </div>
 
-              <h1 className="mt-4 text-3xl font-black md:text-5xl">
+              {tournamentIntroVisible && isTournamentMatch ? (
+                <div
+                  className={`tournament-intro-pill mt-3 flex flex-wrap items-center gap-2 rounded-2xl border px-3 py-2 ${
+                    isFinalTournamentMatch
+                      ? "border-yellow-300/55 bg-yellow-500/10 text-yellow-100"
+                      : "border-amber-500/40 bg-amber-950/30 text-amber-100"
+                  }`}
+                  aria-live="polite"
+                >
+                  <span className="text-[10px] font-black uppercase tracking-[0.25em] opacity-90">
+                    {tournamentRoundDisplayLabel ?? "Tournament"}
+                  </span>
+                  <span className="text-sm font-bold">
+                    {myFirstRoleLabel}
+                  </span>
+                  <span className="text-xs font-semibold opacity-80">
+                    · First to finish the shootout advances
+                  </span>
+                </div>
+              ) : null}
+              <h1 className="mt-3 break-words text-2xl font-black sm:text-3xl md:mt-4 md:text-5xl">
                 {myName}{" "}
                 <span
                   className={
@@ -1506,7 +1724,11 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               >
                 {status}
               </p>
-              <p className="text-xs text-yellow-400">{opponentStatus}</p>
+              {opponentStatus ? (
+                <p className="mt-1 text-xs font-semibold text-amber-300/85">
+                  {opponentStatus}
+                </p>
+              ) : null}
               {disconnectCountdown !== null ? (
                 <div className="mt-2 max-w-2xl rounded-xl border border-red-500/40 bg-red-950/35 px-3 py-2">
                   <p className="text-sm font-semibold text-red-200">
@@ -1551,7 +1773,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             </div>
 
             <div
-              className={`min-w-[9.5rem] rounded-3xl border px-6 py-5 text-center shadow-lg transition-all duration-300 ${
+              className={`w-full self-stretch rounded-3xl border px-5 py-4 text-center shadow-lg transition-all duration-300 md:w-auto md:min-w-[9.5rem] md:self-auto md:px-6 md:py-5 ${
                 isTimerUrgent
                   ? "match-timer-urgent border-red-400/90 bg-red-500/20"
                   : isSuddenDeath
@@ -1560,7 +1782,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               }`}
             >
               <p
-                className={`text-xs font-bold uppercase tracking-[0.2em] ${
+                className={`text-xs font-black uppercase tracking-[0.22em] ${
                   isTimerUrgent
                     ? "text-red-200"
                     : isSuddenDeath
@@ -1568,10 +1790,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                       : "text-zinc-400"
                 }`}
               >
-                Timer
+                {isTimerUrgent ? "Lock in!" : "Timer"}
               </p>
               <p
-                className={`mt-1 text-5xl font-black tabular-nums transition-transform duration-300 ${
+                className={`mt-1 text-5xl font-black tabular-nums transition-transform duration-300 md:text-6xl ${
                   isTimerUrgent
                     ? "text-red-200"
                     : isSuddenDeath
@@ -1579,33 +1801,35 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                       : "text-white"
                 }`}
               >
-                {timer !== null ? timer : "-"}
+                {timer !== null ? timer : "—"}
               </p>
               <p
-                className={`text-xs ${
+                className={`text-[11px] font-bold uppercase tracking-wider ${
                   isTimerUrgent
-                    ? "text-red-200/80"
+                    ? "text-red-200/85"
                     : isSuddenDeath
                       ? "text-yellow-200/70"
                       : "text-zinc-500"
                 }`}
               >
-                seconds
+                {isTimerUrgent ? "Hurry" : "seconds"}
               </p>
             </div>
           </div>
         </div>
 
-        <div className="grid gap-4 p-6 md:grid-cols-4">
-          <div className="rounded-3xl border border-zinc-800 bg-black/40 p-5">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
+        <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4 md:gap-4 md:p-6">
+          <div className="rounded-2xl border border-zinc-800 bg-black/40 p-3 md:rounded-3xl md:p-5">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 md:text-xs">
               Your Role
             </p>
-            <p className="mt-3 text-2xl font-black">{myRole || "-"}</p>
+            <p className="mt-2 text-xl font-black md:mt-3 md:text-2xl">
+              {myRole || "—"}
+            </p>
           </div>
 
           <div
-            className={`rounded-3xl border bg-black/40 p-5 ${
+            className={`rounded-2xl border bg-black/40 p-3 md:rounded-3xl md:p-5 ${
               isSuddenDeath
                 ? "border-amber-400/45 shadow-[inset_0_0_24px_rgba(251,191,36,0.06)]"
                 : isLateGame
@@ -1614,7 +1838,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             }`}
           >
             <p
-              className={`text-xs font-bold uppercase tracking-[0.18em] ${
+              className={`text-[10px] font-bold uppercase tracking-[0.18em] md:text-xs ${
                 isSuddenDeath
                   ? "text-amber-300/90"
                   : isLateGame
@@ -1625,30 +1849,32 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               Round
             </p>
             <p
-              className={`mt-3 font-black ${
+              className={`mt-2 font-black md:mt-3 ${
                 isSuddenDeath
-                  ? "text-3xl text-amber-200 md:text-4xl"
+                  ? "text-2xl text-amber-200 md:text-4xl"
                   : isLateGame
-                    ? "text-2xl text-zinc-100"
-                    : "text-2xl"
+                    ? "text-xl text-zinc-100 md:text-2xl"
+                    : "text-xl md:text-2xl"
               }`}
             >
               {roundLabel}
             </p>
           </div>
 
-          <div className="rounded-3xl border border-zinc-800 bg-black/40 p-5">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
+          <div className="rounded-2xl border border-zinc-800 bg-black/40 p-3 md:rounded-3xl md:p-5">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 md:text-xs">
               Players
             </p>
-            <p className="mt-3 text-2xl font-black">{playerCount}/2</p>
+            <p className="mt-2 text-xl font-black md:mt-3 md:text-2xl">
+              {playerCount}/2
+            </p>
           </div>
 
-          <div className="rounded-3xl border border-zinc-800 bg-black/40 p-5">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
+          <div className="rounded-2xl border border-zinc-800 bg-black/40 p-3 md:rounded-3xl md:p-5">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 md:text-xs">
               Pick Status
             </p>
-            <p className="mt-3 text-2xl font-black">
+            <p className="mt-2 text-xl font-black md:mt-3 md:text-2xl">
               {revealStage === "LOCKED"
                 ? "Locked"
                 : revealStage === "REVEALING"
@@ -1662,29 +1888,31 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       </section>
 
       {isSuddenDeath && !matchEnded ? (
-        <section className="rounded-[2rem] border border-yellow-400 bg-yellow-500/10 p-6 shadow-xl">
-          <p className="text-sm font-black uppercase tracking-[0.3em] text-yellow-300">
+        <section className="rounded-3xl border border-yellow-400 bg-yellow-500/10 p-5 shadow-xl sm:p-6 md:rounded-[2rem]">
+          <p className="text-xs font-black uppercase tracking-[0.3em] text-yellow-300 sm:text-sm">
             Sudden Death
           </p>
-          <h2 className="mt-2 text-3xl font-black">
+          <h2 className="mt-2 text-2xl font-black sm:text-3xl">
             One clean cycle decides everything.
           </h2>
-          <p className="mt-2 text-yellow-100">
+          <p className="mt-2 text-sm text-yellow-100 sm:text-base">
             Both players were tied after normal rounds. Score while your
             opponent fails and the match ends.
           </p>
         </section>
       ) : null}
 
-      <section className="grid gap-5 md:grid-cols-2 md:gap-6">
-        <div className="rounded-[2rem] border border-zinc-800 bg-zinc-950/95 p-7 shadow-xl">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
+      <section className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-2 md:gap-6">
+        <div className="min-w-0 rounded-3xl border border-zinc-800 bg-zinc-950/95 p-4 shadow-xl sm:p-5 md:rounded-[2rem] md:p-7">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 md:text-xs">
             Your Score
           </p>
-          <p className="mt-2 text-sm text-zinc-400">{myName}</p>
-          <div className="mt-4 flex items-end justify-between gap-4">
+          <p className="mt-1 truncate text-xs text-zinc-400 sm:text-sm md:mt-2">
+            {myName}
+          </p>
+          <div className="mt-3 flex items-end justify-between gap-2 md:mt-4 md:gap-4">
             <p
-              className={`text-7xl font-black tabular-nums transition-all duration-500 ease-out ${
+              className={`text-5xl font-black tabular-nums transition-all duration-500 ease-out sm:text-6xl md:text-7xl ${
                 scorePulse === "p1"
                   ? "match-score-pulse scale-[1.24] text-white drop-shadow-[0_0_22px_rgba(255,255,255,0.65)]"
                   : "text-white"
@@ -1692,20 +1920,22 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             >
               {myScore}
             </p>
-            <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-black">
+            <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-black sm:px-3 sm:py-1 sm:text-xs">
               YOU
             </span>
           </div>
         </div>
 
-        <div className="rounded-[2rem] border border-zinc-800 bg-zinc-950/95 p-7 shadow-xl">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
-            Opponent Score
+        <div className="min-w-0 rounded-3xl border border-zinc-800 bg-zinc-950/95 p-4 shadow-xl sm:p-5 md:rounded-[2rem] md:p-7">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 md:text-xs">
+            Opponent
           </p>
-          <p className="mt-2 text-sm text-zinc-400">{opponentName}</p>
-          <div className="mt-4 flex items-end justify-between gap-4">
+          <p className="mt-1 truncate text-xs text-zinc-400 sm:text-sm md:mt-2">
+            {opponentName}
+          </p>
+          <div className="mt-3 flex items-end justify-between gap-2 md:mt-4 md:gap-4">
             <p
-              className={`text-7xl font-black tabular-nums transition-all duration-500 ease-out ${
+              className={`text-5xl font-black tabular-nums transition-all duration-500 ease-out sm:text-6xl md:text-7xl ${
                 scorePulse === "p2"
                   ? "match-score-pulse scale-[1.24] text-white drop-shadow-[0_0_22px_rgba(255,255,255,0.65)]"
                   : "text-white"
@@ -1713,41 +1943,77 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             >
               {opponentScore}
             </p>
-            <span className="rounded-full border border-zinc-600 px-3 py-1 text-xs font-black text-zinc-300">
-              OPPONENT
+            <span className="shrink-0 rounded-full border border-zinc-600 px-2 py-0.5 text-[10px] font-black text-zinc-300 sm:px-3 sm:py-1 sm:text-xs">
+              OPP
             </span>
           </div>
         </div>
       </section>
 
       {!matchEnded ? (
-        <section className="rounded-[2rem] border border-zinc-800 bg-zinc-900/95 p-7 shadow-xl">
+        <section className="rounded-[2rem] border border-zinc-800 bg-zinc-900/95 p-5 shadow-xl md:p-7">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
-              <h2 className="text-2xl font-black">
-                {hasSubmittedPick || myPick ? "Pick Locked" : "Choose Your Lane"}
+              <h2 className="text-2xl font-black md:text-3xl">
+                {hasSubmittedPick || myPick ? "Pick locked in" : "Choose your lane"}
               </h2>
               <p className="mt-2 text-sm text-zinc-400">
                 {hasSubmittedPick || myPick
-                  ? `You selected ${myPick ?? "your lane"}. Waiting for the other player.`
-                  : "Pick LEFT, CENTER, or RIGHT before the timer expires."}
+                  ? `You picked ${myPick ?? "your lane"}.`
+                  : myRole === "KICKER"
+                    ? "Pick LEFT, CENTER, or RIGHT before the timer expires."
+                    : myRole === "KEEPER"
+                      ? "Guess the kicker's lane before the timer expires."
+                      : "Pick LEFT, CENTER, or RIGHT before the timer expires."}
               </p>
+              {(hasSubmittedPick || myPick) && !isRevealLocked ? (
+                <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                  <span
+                    className="inline-block h-2 w-2 rounded-full bg-emerald-300"
+                    aria-hidden
+                  />
+                  Waiting for opponent
+                  <span className="match-waiting-dots" aria-hidden>
+                    <span className="match-waiting-dot" />
+                    <span className="match-waiting-dot" />
+                    <span className="match-waiting-dot" />
+                  </span>
+                </p>
+              ) : null}
             </div>
 
-            {myRole ? (
-              <span className="rounded-full border border-zinc-700 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-zinc-300">
-                Playing as {myRole}
-              </span>
-            ) : null}
+            <div className="flex flex-wrap items-center gap-2 md:flex-col md:items-end">
+              {myRole ? (
+                <span
+                  className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.18em] ${
+                    myRole === "KICKER"
+                      ? "border-amber-400/60 bg-amber-500/10 text-amber-100"
+                      : "border-sky-400/60 bg-sky-500/10 text-sky-100"
+                  }`}
+                >
+                  Playing as {myRole}
+                </span>
+              ) : null}
+              {opponentStatus && !isRevealLocked ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/45 bg-amber-500/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-amber-200">
+                  <span
+                    className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300"
+                    aria-hidden
+                  />
+                  Opponent locked
+                </span>
+              ) : null}
+            </div>
           </div>
 
-          <div className="mt-7 grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="mt-6 grid grid-cols-1 gap-4 md:mt-7 md:grid-cols-3">
             {LANES.map((lane) => (
               <button
                 key={lane}
                 onClick={() => pick(lane)}
                 disabled={!canPick}
-                className={`group rounded-3xl border px-5 py-8 text-center ${getLaneButtonClass(
+                aria-pressed={myPick === lane}
+                className={`group rounded-3xl border px-5 py-7 text-center md:py-8 ${getLaneButtonClass(
                   lane,
                   {
                     canPick,
@@ -1757,14 +2023,16 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                   }
                 )}`}
               >
-                <p className="text-5xl font-black">{laneEmoji(lane)}</p>
-                <p className="mt-3 text-lg font-black">{lane}</p>
+                <p className="text-5xl font-black md:text-6xl">
+                  {laneEmoji(lane)}
+                </p>
+                <p className="mt-3 text-lg font-black md:text-xl">{lane}</p>
                 {myPick === lane ? (
-                  <p className="mt-2 text-xs font-bold uppercase tracking-[0.18em] text-emerald-200">
-                    Locked
+                  <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/25 px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-emerald-100 ring-1 ring-emerald-300/60">
+                    <span aria-hidden>✓</span> Locked in
                   </p>
                 ) : isRevealLocked ? (
-                  <p className="mt-2 text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
+                  <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">
                     Reveal in progress
                   </p>
                 ) : null}
@@ -1775,7 +2043,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       ) : null}
 
       <section
-        className={`rounded-[2rem] border p-7 shadow-2xl transition-all duration-300 ${resultStyle(
+        className={`rounded-[2rem] border p-5 shadow-2xl transition-all duration-300 md:p-7 ${resultStyle(
           shownResult?.result
         )} ${
           revealStage === "REVEALED"
@@ -1784,26 +2052,44 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               ? "match-result-reveal-active"
               : ""
         }`}
+        aria-live="polite"
       >
         <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div className="md:max-w-xl">
             <p className="text-xs font-black uppercase tracking-[0.25em] text-white/60">
-              Current Result
+              {shownResult?.round
+                ? `Round ${shownResult.round} · Result`
+                : "Current result"}
             </p>
 
             <h2
-              className={`mt-3 text-4xl font-black transition-all duration-300 md:text-5xl ${resultHeadlineClass(
+              className={`mt-3 inline-flex items-center gap-3 text-4xl font-black transition-all duration-300 md:text-6xl ${resultHeadlineClass(
                 shownResult?.result,
                 revealStage
               )}`}
             >
-              {revealStage === "REVEALING"
-                ? "Revealing..."
-                : resultLabel(shownResult?.result)}
+              {revealStage === "REVEALING" ? (
+                "Revealing…"
+              ) : (
+                <>
+                  {shownResult?.result ? (
+                    <span aria-hidden className="text-3xl md:text-5xl">
+                      {resultEmoji(shownResult.result)}
+                    </span>
+                  ) : null}
+                  <span>{resultLabel(shownResult?.result)}</span>
+                </>
+              )}
             </h2>
 
+            {revealStage !== "REVEALING" && shownResult?.result ? (
+              <p className="mt-2 text-sm font-bold uppercase tracking-[0.18em] text-white/80 md:text-base">
+                {resultSubheadline(shownResult.result)}
+              </p>
+            ) : null}
+
             {revealStage !== "REVEALING" && resultFlavorMessage ? (
-              <p className="mt-2 text-sm font-medium italic text-white/70">
+              <p className="mt-2 text-sm font-medium italic text-white/65">
                 {resultFlavorMessage}
               </p>
             ) : null}
@@ -1813,9 +2099,20 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                 {shownResult.statusMessage}
               </p>
             ) : null}
+
+            {revealStage === "REVEALED" && !matchEnded && shownResult?.result ? (
+              <p className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/30 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.22em] text-white/85">
+                <span className="match-waiting-dots" aria-hidden>
+                  <span className="match-waiting-dot" />
+                  <span className="match-waiting-dot" />
+                  <span className="match-waiting-dot" />
+                </span>
+                Next round · Roles switching
+              </p>
+            ) : null}
           </div>
 
-          <div className="grid grid-cols-2 gap-4 text-sm md:w-[440px]">
+          <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 md:w-[440px] md:gap-4">
             <div
               className={`rounded-2xl border bg-black/25 p-4 transition-all duration-300 ${
                 shownResult?.result === "GOAL"
@@ -1831,12 +2128,12 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                 {kickerResultLabel}
                 <span className="ml-1 text-white/40">· Kicker</span>
               </p>
-              <p className="mt-2 text-3xl font-black">
+              <p className="mt-2 text-3xl font-black md:text-4xl">
                 {shownResult?.kickerPick
                   ? `${laneEmoji(shownResult.kickerPick)} ${
                       shownResult.kickerPick
                     }`
-                  : "-"}
+                  : "—"}
               </p>
             </div>
 
@@ -1855,12 +2152,12 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                 {keeperResultLabel}
                 <span className="ml-1 text-white/40">· Keeper</span>
               </p>
-              <p className="mt-2 text-3xl font-black">
+              <p className="mt-2 text-3xl font-black md:text-4xl">
                 {shownResult?.keeperPick
                   ? `${laneEmoji(shownResult.keeperPick)} ${
                       shownResult.keeperPick
                     }`
-                  : "-"}
+                  : "—"}
               </p>
             </div>
           </div>
@@ -1869,7 +2166,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
       {matchEnded && matchEndOutcome ? (
         <section
-          className={`rounded-[2rem] border p-8 shadow-2xl md:p-10 ${
+          className={`rounded-3xl border p-5 shadow-2xl sm:p-7 md:rounded-[2rem] md:p-10 ${
             matchEndOutcome === "victory"
               ? "border-emerald-400/70 bg-gradient-to-br from-emerald-950/55 via-zinc-950 to-amber-950/35 ring-2 ring-emerald-400/25 shadow-[0_0_48px_rgba(16,185,129,0.22)]"
               : matchEndOutcome === "defeat"
@@ -1890,35 +2187,57 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           </p>
 
           <h2
-            className={`mt-4 text-5xl font-black tracking-tight md:text-6xl ${
-              matchEndOutcome === "victory"
-                ? "bg-gradient-to-r from-emerald-200 via-emerald-100 to-amber-200 bg-clip-text text-transparent drop-shadow-[0_0_24px_rgba(52,211,153,0.35)]"
-                : matchEndOutcome === "defeat"
-                  ? "text-red-100 drop-shadow-[0_0_20px_rgba(248,113,113,0.25)]"
-                  : "text-yellow-100 drop-shadow-[0_0_18px_rgba(250,204,21,0.2)]"
+            className={`mt-3 break-words text-4xl font-black tracking-tight sm:text-5xl md:mt-4 md:text-6xl ${
+              isFinalTournamentMatch && matchEndOutcome === "victory"
+                ? "bg-gradient-to-r from-yellow-200 via-amber-200 to-orange-200 bg-clip-text text-transparent drop-shadow-[0_0_32px_rgba(234,179,8,0.5)]"
+                : matchEndOutcome === "victory"
+                  ? "bg-gradient-to-r from-emerald-200 via-emerald-100 to-amber-200 bg-clip-text text-transparent drop-shadow-[0_0_24px_rgba(52,211,153,0.35)]"
+                  : matchEndOutcome === "defeat"
+                    ? "text-red-100 drop-shadow-[0_0_20px_rgba(248,113,113,0.25)]"
+                    : "text-yellow-100 drop-shadow-[0_0_18px_rgba(250,204,21,0.2)]"
             }`}
           >
-            {matchEndOutcome === "victory"
-              ? "Victory"
-              : matchEndOutcome === "defeat"
-                ? "Defeat"
-                : "Draw"}
+            {isTournamentMatch
+              ? matchEndOutcome === "victory"
+                ? isFinalTournamentMatch
+                  ? "Champion!"
+                  : "You advanced"
+                : matchEndOutcome === "defeat"
+                  ? "You were eliminated"
+                  : "Match drawn"
+              : matchEndOutcome === "victory"
+                ? "Victory"
+                : matchEndOutcome === "defeat"
+                  ? "Defeat"
+                  : "Draw"}
           </h2>
 
           <p
             className={`mt-3 max-w-xl text-base font-semibold leading-relaxed md:text-lg ${
-              matchEndOutcome === "victory"
-                ? "text-emerald-100/90"
-                : matchEndOutcome === "defeat"
-                  ? "text-zinc-300"
-                  : "text-yellow-100/85"
+              isFinalTournamentMatch && matchEndOutcome === "victory"
+                ? "text-yellow-100"
+                : matchEndOutcome === "victory"
+                  ? "text-emerald-100/90"
+                  : matchEndOutcome === "defeat"
+                    ? "text-zinc-300"
+                    : "text-yellow-100/85"
             }`}
           >
-            {matchEndOutcome === "victory"
-              ? `You outscored ${opponentName}.`
-              : matchEndOutcome === "defeat"
-                ? `${opponentName} took this one.`
-                : "Nothing separated both players."}
+            {isTournamentMatch
+              ? matchEndOutcome === "victory"
+                ? isFinalTournamentMatch
+                  ? `You beat ${opponentName} to win the tournament.`
+                  : `You beat ${opponentName}. On to the next round.`
+                : matchEndOutcome === "defeat"
+                  ? isFinalTournamentMatch
+                    ? `${opponentName} took the final. Great run.`
+                    : `${opponentName} took this one. Your run ends here.`
+                  : "Match split. Returning to tournament."
+              : matchEndOutcome === "victory"
+                ? `You outscored ${opponentName}.`
+                : matchEndOutcome === "defeat"
+                  ? `${opponentName} took this one.`
+                  : "Nothing separated both players."}
           </p>
 
           <div
@@ -1933,21 +2252,23 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             <p className="text-center text-xs font-bold uppercase tracking-[0.25em] text-zinc-500">
               Final score
             </p>
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-4 text-center md:gap-8">
-              <div className="min-w-[7rem]">
-                <p className="text-sm font-semibold text-zinc-400">{myName}</p>
-                <p className="mt-1 text-6xl font-black tabular-nums text-white md:text-8xl">
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-3 text-center sm:gap-4 md:mt-4 md:gap-8">
+              <div className="min-w-[5rem] sm:min-w-[7rem]">
+                <p className="truncate text-xs font-semibold text-zinc-400 sm:text-sm">
+                  {myName}
+                </p>
+                <p className="mt-1 text-5xl font-black tabular-nums text-white sm:text-6xl md:text-8xl">
                   {myScore}
                 </p>
               </div>
-              <span className="text-4xl font-black text-zinc-600 md:text-5xl">
+              <span className="text-3xl font-black text-zinc-600 sm:text-4xl md:text-5xl">
                 —
               </span>
-              <div className="min-w-[7rem]">
-                <p className="text-sm font-semibold text-zinc-400">
+              <div className="min-w-[5rem] sm:min-w-[7rem]">
+                <p className="truncate text-xs font-semibold text-zinc-400 sm:text-sm">
                   {opponentName}
                 </p>
-                <p className="mt-1 text-6xl font-black tabular-nums text-white md:text-8xl">
+                <p className="mt-1 text-5xl font-black tabular-nums text-white sm:text-6xl md:text-8xl">
                   {opponentScore}
                 </p>
               </div>
@@ -2017,20 +2338,73 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             ) : null}
 
             {isTournamentMatch && tournamentId ? (
-              <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+              <div
+                className={`flex w-full flex-col gap-3 rounded-2xl border px-5 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between ${
+                  isFinalTournamentMatch && matchEndOutcome === "victory"
+                    ? "border-yellow-300/55 bg-gradient-to-r from-yellow-900/35 via-amber-950/30 to-black shadow-[0_0_28px_rgba(234,179,8,0.22)]"
+                    : matchEndOutcome === "victory"
+                      ? "border-emerald-400/40 bg-emerald-950/30"
+                      : matchEndOutcome === "defeat"
+                        ? "border-red-500/30 bg-red-950/25"
+                        : "border-yellow-400/30 bg-yellow-950/20"
+                }`}
+                aria-live="polite"
+              >
+                <div className="flex flex-col gap-1">
+                  <p
+                    className={`text-xs font-black uppercase tracking-[0.25em] ${
+                      isFinalTournamentMatch && matchEndOutcome === "victory"
+                        ? "text-yellow-200"
+                        : matchEndOutcome === "victory"
+                          ? "text-emerald-300/90"
+                          : matchEndOutcome === "defeat"
+                            ? "text-red-300/90"
+                            : "text-yellow-200/90"
+                    }`}
+                  >
+                    {isFinalTournamentMatch && matchEndOutcome === "victory"
+                      ? "🏆 Champion"
+                      : matchEndOutcome === "victory"
+                        ? "You advanced"
+                        : matchEndOutcome === "defeat"
+                          ? "Eliminated"
+                          : "Match drawn"}
+                  </p>
+                  {tournamentRedirectCountdown !== null ? (
+                    <p className="inline-flex items-baseline gap-2 text-sm font-semibold text-zinc-200">
+                      {isFinalTournamentMatch && matchEndOutcome === "victory"
+                        ? "Champion moment on tournament page in"
+                        : matchEndOutcome === "victory"
+                          ? "Returning to tournament in"
+                          : matchEndOutcome === "defeat"
+                            ? "Returning to tournament in"
+                            : "Returning to tournament in"}
+                      <span className="text-2xl font-black tabular-nums text-white">
+                        {tournamentRedirectCountdown}s
+                      </span>
+                    </p>
+                  ) : (
+                    <p className="text-sm font-semibold text-zinc-200">
+                      Returning to tournament…
+                    </p>
+                  )}
+                </div>
                 <button
                   type="button"
-                  onClick={() => router.push(`/tournaments/${tournamentId}`)}
-                  className="rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 px-5 py-4 font-black text-zinc-950 hover:from-amber-400 hover:to-orange-500"
+                  onClick={() => {
+                    clearActiveMatch();
+                    router.push(`/tournaments/${tournamentId}`);
+                  }}
+                  className={`rounded-2xl px-5 py-3 font-black shadow-lg ${
+                    isFinalTournamentMatch && matchEndOutcome === "victory"
+                      ? "bg-gradient-to-r from-yellow-300 to-amber-500 text-zinc-950 hover:from-yellow-200 hover:to-amber-400"
+                      : "bg-gradient-to-r from-amber-500 to-orange-600 text-zinc-950 hover:from-amber-400 hover:to-orange-500"
+                  }`}
                 >
-                  Back to Tournament
+                  {isFinalTournamentMatch && matchEndOutcome === "victory"
+                    ? "Open Tournament →"
+                    : "Back to Tournament →"}
                 </button>
-                {tournamentRedirectCountdown !== null ? (
-                  <p className="text-sm text-zinc-400">
-                    Returning to tournament waiting room in{" "}
-                    {tournamentRedirectCountdown}s…
-                  </p>
-                ) : null}
               </div>
             ) : (
               <a
