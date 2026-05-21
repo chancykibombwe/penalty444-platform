@@ -15,6 +15,7 @@ import TournamentLiveNow from "../../../components/tournament/TournamentLiveNow"
 import TournamentPresenceCard from "../../../components/tournament/TournamentPresenceCard";
 import TournamentSummaryStats from "../../../components/tournament/TournamentSummaryStats";
 import TournamentWaitingRoom from "../../../components/tournament/TournamentWaitingRoom";
+import TournamentLiveSpotlight from "../../../components/live/TournamentLiveSpotlight";
 import {
   deriveTournamentWaitingRoomState,
   getPlayerRoundLabel,
@@ -676,7 +677,15 @@ export default function TournamentDetailPage() {
             ) : null}
 
             {tournamentInProgress ? (
-              <TournamentLiveNow entries={entries} matches={matches} />
+              <>
+                <TournamentLiveSpotlight
+                  tournamentId={tournament.id}
+                  tournamentName={tournament.name}
+                  matches={matches}
+                  entries={entries}
+                />
+                <TournamentLiveNow entries={entries} matches={matches} />
+              </>
             ) : null}
 
             {bracketFirst ? (

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactElement, type SVGProps } from "react";
+import NotificationBell from "../live/NotificationBell";
 import { getActiveMatch } from "../../lib/match/activeMatch";
 import { supabase } from "../../lib/supabase/client";
 
@@ -262,9 +263,10 @@ export default function Navbar() {
                 Resume Match
               </Link>
             ) : null}
+            <NotificationBell />
           </div>
 
-          {/* Mobile-only compact controls: Resume Match (if any) on the right of the logo */}
+          {/* Mobile-only compact controls: Resume Match (if any) + bell on the right of the logo */}
           <div className="flex items-center gap-2 md:hidden">
             {activeRoomCode ? (
               <Link
@@ -279,6 +281,7 @@ export default function Navbar() {
                 Resume
               </Link>
             ) : null}
+            <NotificationBell />
           </div>
         </div>
       </header>

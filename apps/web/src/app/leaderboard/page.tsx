@@ -1,10 +1,25 @@
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
+import RankBadge from "../../components/player/RankBadge";
+import {
+  getRankTier,
+  resolvePlayerTier,
+  type RankTier,
+} from "../../lib/player/ranks";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
 );
+
+type LeaderboardTab = "global" | "weekly" | "tournament" | "friends";
+
+const TAB_LABELS: Record<LeaderboardTab, string> = {
+  global: "Global",
+  weekly: "Weekly",
+  tournament: "Tournament",
+  friends: "Friends",
+};
 
 type LeaderboardScope = "season" | "all-time";
 
@@ -60,21 +75,17 @@ function formatSeasonCountdown(endsAt: string) {
   return `Ends in ${hours}h ${minutes}m`;
 }
 
-function getTierBadgeClass(tier: string) {
-  switch (tier.toLowerCase()) {
-    case "bronze":
-      return "border-amber-500/80 bg-amber-950/90 text-amber-100 shadow-[0_0_22px_rgba(180,83,9,0.22)] ring-1 ring-amber-300/10";
-    case "silver":
-      return "border-slate-300/70 bg-slate-950/90 text-slate-100 shadow-[0_0_22px_rgba(148,163,184,0.18)] ring-1 ring-white/10";
-    case "gold":
-      return "border-yellow-300/80 bg-yellow-950/90 text-yellow-100 shadow-[0_0_24px_rgba(234,179,8,0.24)] ring-1 ring-yellow-200/15";
-    case "diamond":
-      return "border-cyan-300/80 bg-cyan-950/90 text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.22)] ring-1 ring-cyan-100/15";
-    case "legend":
-      return "border-fuchsia-300/80 bg-fuchsia-950/90 text-fuchsia-100 shadow-[0_0_26px_rgba(217,70,239,0.26)] ring-1 ring-fuchsia-100/15";
-    default:
-      return "border-zinc-600 bg-zinc-900 text-zinc-300 shadow-[0_0_18px_rgba(24,24,27,0.45)] ring-1 ring-white/5";
+function resolveTierForRow(row: LeaderboardPlayer): RankTier {
+  // Prefer the rating-derived tier so the new ladder always wins; fall back
+  // to legacy DB string when rating is 0/null but tier name is present.
+  if (row.rankPoints > 0) {
+    return getRankTier(row.rankPoints, row.matches);
   }
+  return resolvePlayerTier({
+    rating: row.rankPoints,
+    matchesPlayed: row.matches,
+    legacyTierName: row.tier,
+  });
 }
 
 function getPodiumClass(index: number) {
@@ -145,7 +156,12 @@ function parseLimit(value: string | undefined) {
 
 function buildLeaderboardHref(
   scope: LeaderboardScope,
-  options: { search?: string; page?: number; limit?: number } = {}
+  options: {
+    search?: string;
+    page?: number;
+    limit?: number;
+    tab?: LeaderboardTab;
+  } = {}
 ) {
   const page = options.page ?? 1;
   const limit = options.limit ?? 100;
@@ -158,8 +174,18 @@ function buildLeaderboardHref(
   if (options.search) {
     params.set("search", options.search);
   }
+  if (options.tab && options.tab !== "global") {
+    params.set("tab", options.tab);
+  }
 
   return `/leaderboard?${params.toString()}`;
+}
+
+function parseTab(value: string | undefined): LeaderboardTab {
+  if (value === "weekly" || value === "tournament" || value === "friends") {
+    return value;
+  }
+  return "global";
 }
 
 function hasValidUserId(userId: string) {
@@ -175,7 +201,13 @@ function buildChallengeHref(userId: string, username: string) {
   return `/lobby?${params.toString()}`;
 }
 
-function buildPlayerProfileHref(userId: string) {
+function buildPlayerProfileHref(userId: string, username?: string | null) {
+  // Phase 9: prefer the public `/profile/[username]` route. Fall back to
+  // `/players/[userId]` (still supported) when no username is available.
+  const trimmed = (username ?? "").trim();
+  if (trimmed.length > 0) {
+    return `/profile/${encodeURIComponent(trimmed)}`;
+  }
   return `/players/${userId}`;
 }
 
@@ -187,12 +219,19 @@ export default async function LeaderboardPage({
     search?: string;
     page?: string;
     limit?: string;
+    tab?: string;
   }>;
 }) {
-  const { scope: rawScope, search: rawSearch, page: rawPage, limit: rawLimit } =
-    await searchParams;
+  const {
+    scope: rawScope,
+    search: rawSearch,
+    page: rawPage,
+    limit: rawLimit,
+    tab: rawTab,
+  } = await searchParams;
   const scope: LeaderboardScope =
     rawScope === "all-time" ? "all-time" : "season";
+  const tab: LeaderboardTab = parseTab(rawTab);
   const search = rawSearch?.trim() ?? "";
   const hasActiveSearch = search.length > 0;
   const page = parsePage(rawPage);
@@ -219,13 +258,18 @@ export default async function LeaderboardPage({
   const statsSelect =
     "user_id, username, matches, wins, losses, draws, goals_for, goals_against, rank_points, tier";
 
+  // Phase 6: leaderboard only shows ranked players (matches >= 10). Placement
+  // players are surfaced via a separate count badge in the header.
+  const RANKED_MATCH_FLOOR = 10;
+
   const statsResult =
     scope === "all-time"
       ? await (() => {
           let query = supabase
             .from("player_stats")
             .select(statsSelect)
-            .eq("game_id", "penalty444");
+            .eq("game_id", "penalty444")
+            .gte("matches", RANKED_MATCH_FLOOR);
 
           if (hasActiveSearch) {
             query = query.ilike("username", `%${search}%`);
@@ -244,7 +288,8 @@ export default async function LeaderboardPage({
               .from("season_player_stats")
               .select(statsSelect)
               .eq("game_id", "penalty444")
-              .eq("season_id", activeSeason.id);
+              .eq("season_id", activeSeason.id)
+              .gte("matches", RANKED_MATCH_FLOOR);
 
             if (hasActiveSearch) {
               query = query.ilike("username", `%${search}%`);
@@ -259,6 +304,14 @@ export default async function LeaderboardPage({
           })()
         : { data: [], error: null };
 
+  const placementCountResult = await supabase
+    .from("player_stats")
+    .select("user_id", { count: "exact", head: true })
+    .eq("game_id", "penalty444")
+    .lt("matches", RANKED_MATCH_FLOOR)
+    .gt("matches", 0);
+  const placementPlayerCount = placementCountResult.count ?? 0;
+
   const error = statsResult.error;
   const leaderboard = buildLeaderboard((statsResult.data ?? []) as PlayerStatsRow[]);
   const topPlayers = leaderboard.slice(0, 3);
@@ -267,21 +320,40 @@ export default async function LeaderboardPage({
     scope === "season"
       ? `No ${activeSeason?.name ?? "Season"} matches yet.`
       : "No completed matches yet.";
-  const hrefOptions = { search, page, limit };
+  const hrefOptions = { search, page, limit, tab };
   const seasonScopeHref = buildLeaderboardHref("season", hrefOptions);
   const allTimeScopeHref = buildLeaderboardHref("all-time", hrefOptions);
-  const clearSearchHref = buildLeaderboardHref(scope, { page, limit });
+  const clearSearchHref = buildLeaderboardHref(scope, { page, limit, tab });
   const previousPageHref = buildLeaderboardHref(scope, {
     search,
     page: page - 1,
     limit,
+    tab,
   });
   const nextPageHref = buildLeaderboardHref(scope, {
     search,
     page: page + 1,
     limit,
+    tab,
   });
   const showNextPage = leaderboard.length === limit;
+  const tabHrefs: Record<LeaderboardTab, string> = {
+    global: buildLeaderboardHref(scope, { search, page: 1, limit, tab: "global" }),
+    weekly: buildLeaderboardHref(scope, { search, page: 1, limit, tab: "weekly" }),
+    tournament: buildLeaderboardHref(scope, {
+      search,
+      page: 1,
+      limit,
+      tab: "tournament",
+    }),
+    friends: buildLeaderboardHref(scope, {
+      search,
+      page: 1,
+      limit,
+      tab: "friends",
+    }),
+  };
+  const isPlaceholderTab = tab !== "global";
 
   return (
     <section className="space-y-10 rounded-[2rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top,_rgba(234,179,8,0.10),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(34,211,238,0.07),_transparent_28%),linear-gradient(180deg,_#050505,_#09090b_42%,_#020202)] p-5 shadow-[0_40px_120px_rgba(0,0,0,0.65)] sm:p-7 lg:p-9">
@@ -302,6 +374,19 @@ export default async function LeaderboardPage({
           <div className="rounded-xl border border-zinc-700/80 bg-black/45 px-4 py-2 text-sm font-semibold text-zinc-100 shadow-lg shadow-black/30">
             Penalty444
           </div>
+          {placementPlayerCount > 0 ? (
+            <div
+              className="rounded-xl border border-cyan-400/45 bg-cyan-950/30 px-4 py-2 text-sm font-semibold text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.18)]"
+              title="Players still completing their placement matches"
+            >
+              <span className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-300">
+                In placement
+              </span>
+              <span className="ml-2 font-black tabular-nums text-white">
+                {placementPlayerCount}
+              </span>
+            </div>
+          ) : null}
           <Link
             href={seasonScopeHref}
             className={getScopeChipClass(scope === "season")}
@@ -322,13 +407,60 @@ export default async function LeaderboardPage({
         </div>
       </div>
 
+      <nav
+        className="-mx-1 flex gap-2 overflow-x-auto rounded-2xl border border-zinc-800/80 bg-black/45 p-2 shadow-lg shadow-black/30"
+        aria-label="Leaderboard tabs"
+      >
+        {(Object.keys(TAB_LABELS) as LeaderboardTab[]).map((t) => {
+          const isActive = tab === t;
+          return (
+            <Link
+              key={t}
+              href={tabHrefs[t]}
+              aria-current={isActive ? "page" : undefined}
+              className={`shrink-0 rounded-xl px-4 py-2 text-sm font-black uppercase tracking-[0.18em] transition ${
+                isActive
+                  ? "border border-cyan-300/60 bg-cyan-950/40 text-cyan-100 shadow-[0_0_22px_rgba(34,211,238,0.22)]"
+                  : "border border-transparent text-zinc-400 hover:border-zinc-700 hover:text-white"
+              }`}
+            >
+              {TAB_LABELS[t]}
+            </Link>
+          );
+        })}
+      </nav>
+
+      {isPlaceholderTab ? (
+        <div className="rounded-2xl border border-zinc-800/80 bg-black/45 p-6 text-zinc-300 shadow-lg shadow-black/30">
+          <p className="text-xs font-black uppercase tracking-[0.3em] text-cyan-300/85">
+            {TAB_LABELS[tab]} leaderboard
+          </p>
+          <h2 className="mt-1 text-2xl font-black text-white sm:text-3xl">
+            Coming soon
+          </h2>
+          <p className="mt-2 max-w-xl text-sm text-zinc-500">
+            {tab === "weekly"
+              ? "Weekly resets ladder will track 7-day performance once seasonal scoring lands."
+              : tab === "tournament"
+                ? "Bracket performance points unlock when the tournament scoring system ships."
+                : "Connect with friends to see how you stack up. Friend graph coming soon."}
+          </p>
+          <Link
+            href={tabHrefs.global}
+            className="mt-4 inline-flex rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-white hover:border-zinc-500"
+          >
+            Back to Global
+          </Link>
+        </div>
+      ) : null}
+
       {error ? (
         <div className="rounded-2xl border border-red-800 bg-red-950/40 p-5 text-red-200">
           Failed to load leaderboard: {error.message}
         </div>
       ) : null}
 
-      {topPlayers.length > 0 ? (
+      {!isPlaceholderTab && topPlayers.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-3 md:items-start">
           {topPlayers.map((player, index) => (
             <div
@@ -341,19 +473,18 @@ export default async function LeaderboardPage({
                 <div className="text-4xl font-black tracking-tight text-white">
                   #{index + 1}
                 </div>
-                <span
-                  className={`inline-flex rounded-full border px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide ${getTierBadgeClass(
-                    player.tier
-                  )}`}
-                >
-                  {player.tier}
-                </span>
+                <RankBadge
+                  tier={resolveTierForRow(player)}
+                  rating={player.rankPoints}
+                  showRating={false}
+                  variant="chip"
+                />
               </div>
 
               <div className="mt-7 flex flex-col items-center text-center">
                 {hasValidUserId(player.id) ? (
                   <Link
-                    href={buildPlayerProfileHref(player.id)}
+                    href={buildPlayerProfileHref(player.id, player.username)}
                     className="flex h-20 w-20 items-center justify-center rounded-full border border-white/15 bg-black/70 text-2xl font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_45px_rgba(0,0,0,0.45)] transition hover:border-white/30 hover:text-yellow-100 md:h-24 md:w-24 md:text-3xl"
                   >
                     {getInitials(player.username)}
@@ -365,7 +496,7 @@ export default async function LeaderboardPage({
                 )}
                 {hasValidUserId(player.id) ? (
                   <Link
-                    href={buildPlayerProfileHref(player.id)}
+                    href={buildPlayerProfileHref(player.id, player.username)}
                     className="mt-5 max-w-full truncate text-2xl font-black tracking-tight text-white transition hover:text-yellow-100"
                   >
                     {player.username}
@@ -396,6 +527,7 @@ export default async function LeaderboardPage({
         </div>
       ) : null}
 
+      {isPlaceholderTab ? null : (
       <form
         action="/leaderboard"
         method="get"
@@ -428,7 +560,9 @@ export default async function LeaderboardPage({
           ) : null}
         </div>
       </form>
+      )}
 
+      {isPlaceholderTab ? null : (
       <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_28px_80px_rgba(0,0,0,0.45)]">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1050px] text-left">
@@ -490,7 +624,7 @@ export default async function LeaderboardPage({
                       <div className="flex items-center gap-3">
                         {hasValidUserId(player.id) ? (
                           <Link
-                            href={buildPlayerProfileHref(player.id)}
+                            href={buildPlayerProfileHref(player.id, player.username)}
                             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700/80 bg-black/60 text-xs font-black text-white shadow-inner transition hover:border-zinc-500 hover:text-yellow-100"
                           >
                             {getInitials(player.username)}
@@ -502,7 +636,7 @@ export default async function LeaderboardPage({
                         )}
                         {hasValidUserId(player.id) ? (
                           <Link
-                            href={buildPlayerProfileHref(player.id)}
+                            href={buildPlayerProfileHref(player.id, player.username)}
                             className="font-bold text-white transition hover:text-yellow-100"
                           >
                             {player.username}
@@ -524,13 +658,12 @@ export default async function LeaderboardPage({
                     </td>
 
                     <td className="px-4 py-4">
-                      <span
-                        className={`inline-flex rounded-full border px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide ${getTierBadgeClass(
-                          player.tier
-                        )}`}
-                      >
-                        {player.tier}
-                      </span>
+                      <RankBadge
+                        tier={resolveTierForRow(player)}
+                        rating={player.rankPoints}
+                        showRating={false}
+                        variant="chip"
+                      />
                     </td>
                     <td className="px-4 py-4 text-lg font-black text-yellow-100">
                       {player.rankPoints}
@@ -572,6 +705,7 @@ export default async function LeaderboardPage({
           ) : null}
         </div>
       </div>
+      )}
     </section>
   );
 }

@@ -27,6 +27,7 @@ import {
   swapRoles,
 } from "./gameplay/resolveShot";
 import { resolveMatchOutcome } from "./gameplay/matchOutcome";
+import { applyPlayerProgressionFromMatch } from "./player/progression";
 import {
   maybeCompleteTournament,
   reconcileTournamentCompletion,
@@ -724,6 +725,15 @@ async function saveMatchResult(room: Room) {
     await advanceTournamentFromRoom(room);
   } catch (advanceError) {
     console.error("Tournament advancement crashed:", advanceError);
+  }
+
+  // Phase 6: real competitive progression. Runs after bracket advancement
+  // so tournament context (final / champion) is up to date when we award
+  // bonuses. Never throws into the match save path; errors are logged.
+  try {
+    await applyPlayerProgressionFromMatch(supabase, room, outcome);
+  } catch (progressionError) {
+    console.error("Player progression crashed:", progressionError);
   }
 }
 

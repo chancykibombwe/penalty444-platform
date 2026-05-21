@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSocket, isSocketEventForRoom } from "../../lib/socket/client";
 import {
@@ -17,12 +18,38 @@ import {
   readTournamentMatchHandoff,
   type TournamentMatchHandoff,
 } from "../../lib/tournament/matchHandoff";
-
-type Lane = "LEFT" | "CENTER" | "RIGHT";
-type Role = "KICKER" | "KEEPER";
-type ShotResult = "GOAL" | "SAVE" | "DRAW";
-type MatchPhase = "NORMAL" | "SUDDEN_DEATH";
-type RevealStage = "IDLE" | "LOCKED" | "REVEALING" | "REVEALED";
+import MatchAtmosphereLayer from "./MatchAtmosphereLayer";
+import MatchStagingScreen from "./MatchStagingScreen";
+import MatchResultOverlay from "./MatchResultOverlay";
+import MatchScoreboard from "./MatchScoreboard";
+import RoundTransition, {
+  type RoundTransitionKind,
+} from "./RoundTransition";
+import {
+  accentForContext,
+  classifyRoundTransition,
+  getPostMatchPresentation,
+  laneEmoji,
+  LANES,
+  MATCH_PRESENTATION_CSS,
+  MATCH_REVEAL_HOLD_TOURNAMENT_MS,
+  MATCH_STAGING_SECONDS_TOURNAMENT,
+  MATCH_TENSION_CASUAL_MS,
+  MATCH_TENSION_TOURNAMENT_MS,
+  pickResultFlavorMessage,
+  RESULT_OVERLAY_VISIBLE_MS,
+  resultBackgroundClass as resultStyle,
+  resultEmoji,
+  resultHeadlineClass,
+  resultLabel,
+  resultSubheadline,
+  ROUND_TRANSITION_VISIBLE_MS,
+  type Lane,
+  type MatchPhase,
+  type RevealStage,
+  type Role,
+  type ShotResult,
+} from "./matchPresentation";
 
 type MatchResultPayload = {
   roomCode?: string;
@@ -69,15 +96,20 @@ type MatchEndPayload = {
   tournamentId?: string;
 };
 
-const MATCH_RESULT_REVEAL_MS = 900;
-const TOURNAMENT_MATCH_RESULT_REVEAL_MS = 350;
+/**
+ * Pre-reveal tension window. Server timing is unchanged — this is just how
+ * long the client lingers in the REVEALING stage before showing the result.
+ * Tournament: long enough for the 3-2-1 ticker; casual: brief sync flash.
+ */
+const MATCH_RESULT_REVEAL_MS = MATCH_TENSION_CASUAL_MS;
+const TOURNAMENT_MATCH_RESULT_REVEAL_MS = MATCH_TENSION_TOURNAMENT_MS;
 /**
  * Minimum time the tournament result stays visible on screen before the
  * client allows the next round's `match:update` to clear it. The server still
  * resolves immediately; this is purely client-side dramatic hold so players
  * don't get yanked into the next round in <500ms.
  */
-const TOURNAMENT_REVEAL_HOLD_MS = 4_000;
+const TOURNAMENT_REVEAL_HOLD_MS = MATCH_REVEAL_HOLD_TOURNAMENT_MS;
 const TOURNAMENT_POST_MATCH_REDIRECT_MS = 4500;
 
 type MatchAbortedPayload = {
@@ -106,82 +138,6 @@ type MatchStatusPayload = {
   suddenDeathRound?: number;
   suddenRound?: number;
 };
-
-const LANES: Lane[] = ["LEFT", "CENTER", "RIGHT"];
-
-const GOAL_MESSAGES = [
-  "Clinical finish.",
-  "Keeper went the wrong way.",
-  "Buried with confidence.",
-  "No chance for the keeper.",
-] as const;
-
-const SAVE_MESSAGES = [
-  "Keeper read it.",
-  "Big stop.",
-  "Denied.",
-  "Perfect guess.",
-] as const;
-
-const DRAW_MESSAGES = [
-  "No advantage.",
-  "Both froze.",
-  "Reset and go again.",
-  "Nothing separates them.",
-] as const;
-
-function pickResultFlavorMessage(result: ShotResult): string {
-  const pool =
-    result === "GOAL"
-      ? GOAL_MESSAGES
-      : result === "SAVE"
-        ? SAVE_MESSAGES
-        : DRAW_MESSAGES;
-
-  return pool[Math.floor(Math.random() * pool.length)] ?? "";
-}
-
-function laneEmoji(lane: Lane) {
-  if (lane === "LEFT") return "↙";
-  if (lane === "CENTER") return "⬆";
-  return "↘";
-}
-
-function resultStyle(result?: ShotResult) {
-  if (result === "GOAL") {
-    return "border-emerald-400/80 bg-emerald-500/15 text-emerald-100 shadow-[0_0_36px_rgba(52,211,153,0.22)]";
-  }
-
-  if (result === "SAVE") {
-    return "border-sky-400/80 bg-sky-500/15 text-sky-100 shadow-[0_0_36px_rgba(56,189,248,0.22)]";
-  }
-
-  if (result === "DRAW") {
-    return "border-yellow-400/80 bg-yellow-500/15 text-yellow-100 shadow-[0_0_32px_rgba(250,204,21,0.18)]";
-  }
-
-  return "border-zinc-800 bg-zinc-900 text-white";
-}
-
-function resultHeadlineClass(result?: ShotResult, revealStage?: RevealStage) {
-  if (revealStage === "REVEALING") {
-    return "match-result-reveal-active text-white";
-  }
-
-  if (result === "GOAL") {
-    return "match-result-headline-goal text-emerald-100";
-  }
-
-  if (result === "SAVE") {
-    return "match-result-headline-save text-sky-100";
-  }
-
-  if (result === "DRAW") {
-    return "match-result-headline-draw text-yellow-100";
-  }
-
-  return "text-white";
-}
 
 function getLaneButtonClass(
   lane: Lane,
@@ -215,27 +171,6 @@ function getLaneButtonClass(
   }
 
   return "match-lane-ready border-zinc-700 bg-black/35 text-white hover:-translate-y-0.5 hover:border-white hover:bg-white hover:text-black active:scale-[0.98]";
-}
-
-function resultLabel(result?: ShotResult) {
-  if (result === "GOAL") return "GOAL!";
-  if (result === "SAVE") return "SAVED!";
-  if (result === "DRAW") return "DRAW";
-  return "Waiting for result";
-}
-
-function resultSubheadline(result?: ShotResult): string {
-  if (result === "GOAL") return "Net found — kicker wins the round.";
-  if (result === "SAVE") return "Keeper read it — no goal.";
-  if (result === "DRAW") return "Even round — no advantage.";
-  return "";
-}
-
-function resultEmoji(result?: ShotResult): string {
-  if (result === "GOAL") return "⚽";
-  if (result === "SAVE") return "🧤";
-  if (result === "DRAW") return "·";
-  return "";
 }
 
 function normalizeAuthoritativeResult(
@@ -502,6 +437,23 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const [resultFlavorMessage, setResultFlavorMessage] = useState<string | null>(
     null
   );
+  // Phase 4 — Match Presentation Reconstruction (display-only state).
+  // `roundTransition` is shown briefly when the round advances or the phase
+  // shifts to sudden death. `resultBurstResult` flashes the full-screen
+  // GOAL/SAVE/DRAW burst on reveal. Neither affects gameplay.
+  const [roundTransition, setRoundTransition] = useState<{
+    kind: RoundTransitionKind;
+    label: string;
+    sublabel?: string;
+  } | null>(null);
+  const [resultBurstResult, setResultBurstResult] = useState<ShotResult | null>(
+    null
+  );
+  const prevRoundRef = useRef<number | null>(null);
+  const prevPhaseRef = useRef<MatchPhase>("NORMAL");
+  // Used to drive the 3-2-1 ticker visible during the REVEALING tension window.
+  const revealingStartedAtRef = useRef<number | null>(null);
+  const [tensionTick, setTensionTick] = useState(0);
   const [matchStartedAt, setMatchStartedAt] = useState<number | null>(null);
   const [earlyCancelDeadlineAt, setEarlyCancelDeadlineAt] = useState<
     number | null
@@ -1025,10 +977,13 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       const bothLocked = Boolean(
         authoritative.kickerPick && authoritative.keeperPick
       );
-      const revealDelayMs = bothLocked
-        ? 0
-        : tournamentContextRef.current.isTournament
-          ? TOURNAMENT_MATCH_RESULT_REVEAL_MS
+      // Tournament matches always linger in REVEALING long enough to fit the
+      // "PICK LOCKED → 3-2-1 → REVEAL" cinematic. Casual matches keep the
+      // brief sync flash so quick rounds don't feel sluggish.
+      const revealDelayMs = tournamentContextRef.current.isTournament
+        ? TOURNAMENT_MATCH_RESULT_REVEAL_MS
+        : bothLocked
+          ? 0
           : MATCH_RESULT_REVEAL_MS;
 
       if (revealDelayMs <= 0) {
@@ -1039,6 +994,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
       setPendingResult(authoritative);
       setRevealStage("REVEALING");
+      revealingStartedAtRef.current = Date.now();
       setStatus("Both players locked. Revealing result...");
       matchResultRevealArmedRef.current = true;
 
@@ -1289,7 +1245,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       return;
     }
 
-    let secondsLeft = 3;
+    let secondsLeft = MATCH_STAGING_SECONDS_TOURNAMENT;
     setTournamentStagingCountdown(secondsLeft);
     const intervalId = window.setInterval(() => {
       secondsLeft -= 1;
@@ -1351,6 +1307,90 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     matchStartedAt,
     earlyCancelDeadlineAt,
   ]);
+
+  // Phase 4: pre-reveal tension ticker.
+  // Ticks every 120ms while in REVEALING so the 3-2-1 countdown can render
+  // off `revealingStartedAtRef`. Cleared automatically when the stage exits.
+  useEffect(() => {
+    if (revealStage !== "REVEALING") {
+      revealingStartedAtRef.current = null;
+      setTensionTick(0);
+      return;
+    }
+
+    let cancelled = false;
+    const interval = window.setInterval(() => {
+      if (cancelled) return;
+      setTensionTick((prev) => prev + 1);
+    }, 120);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [revealStage]);
+
+  // Phase 4: round transition overlay. Fires on round/phase change, never on
+  // initial mount. Self-clears after ROUND_TRANSITION_VISIBLE_MS so the
+  // overlay never lingers across rounds.
+  useEffect(() => {
+    if (matchEnded || matchAborted) {
+      setRoundTransition(null);
+      prevRoundRef.current = round;
+      prevPhaseRef.current = phase;
+      return;
+    }
+
+    if (isTournamentMatch && tournamentStagingCountdown !== null) {
+      // Don't stack a round transition on top of the staging screen — the
+      // staging screen already handles the "Round 1" intro for tournaments.
+      prevRoundRef.current = round;
+      prevPhaseRef.current = phase;
+      return;
+    }
+
+    const transition = classifyRoundTransition({
+      newRound: round,
+      prevRound: prevRoundRef.current,
+      maxRounds,
+      phase,
+      prevPhase: prevPhaseRef.current,
+    });
+
+    prevRoundRef.current = round;
+    prevPhaseRef.current = phase;
+
+    if (!transition) return;
+
+    setRoundTransition(transition);
+    const timeout = window.setTimeout(() => {
+      setRoundTransition(null);
+    }, ROUND_TRANSITION_VISIBLE_MS);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    round,
+    phase,
+    maxRounds,
+    matchEnded,
+    matchAborted,
+    isTournamentMatch,
+    tournamentStagingCountdown,
+  ]);
+
+  // Phase 4: full-screen GOAL/SAVE/DRAW burst on reveal.
+  useEffect(() => {
+    if (revealStage !== "REVEALED" || !result?.result) {
+      return;
+    }
+
+    setResultBurstResult(result.result);
+    const timeout = window.setTimeout(() => {
+      setResultBurstResult(null);
+    }, RESULT_OVERLAY_VISIBLE_MS);
+
+    return () => window.clearTimeout(timeout);
+  }, [revealStage, result?.result, result?.round]);
 
   useEffect(() => {
     if (timer === null || timer <= 0) return;
@@ -1489,6 +1529,23 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     return "draw" as const;
   }, [matchEnded, myScore, opponentScore]);
 
+  const postMatchCopy = useMemo(() => {
+    if (!matchEndOutcome) return null;
+    return getPostMatchPresentation({
+      outcome: matchEndOutcome,
+      isTournament: isTournamentMatch,
+      isFinal: isFinalTournamentMatch,
+      opponentName,
+      roundLabel: tournamentRoundDisplayLabel,
+    });
+  }, [
+    matchEndOutcome,
+    isTournamentMatch,
+    isFinalTournamentMatch,
+    opponentName,
+    tournamentRoundDisplayLabel,
+  ]);
+
   const showLeaveMatchControls = useMemo(() => {
     return (
       !matchEnded &&
@@ -1620,6 +1677,28 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const showTournamentStaging =
     isTournamentMatch && tournamentStagingCountdown !== null;
 
+  const presentationAccent = accentForContext({
+    isTournament: isTournamentMatch,
+    isFinal: isFinalTournamentMatch,
+  });
+
+  const opponentRoleNow: Role | null = opponentId
+    ? roles[opponentId] ?? null
+    : null;
+
+  const tensionCountdown = useMemo(() => {
+    void tensionTick;
+    if (revealStage !== "REVEALING" || revealingStartedAtRef.current === null) {
+      return null;
+    }
+    const elapsed = Date.now() - revealingStartedAtRef.current;
+    if (elapsed < 400) return null;
+    if (elapsed < 700) return 3;
+    if (elapsed < 1000) return 2;
+    if (elapsed < 1300) return 1;
+    return null;
+  }, [revealStage, tensionTick]);
+
   const myRoleNow: Role | null = myPlayerId ? roles[myPlayerId] ?? null : null;
   const myFirstRoleLabel =
     myRoleNow === "KICKER"
@@ -1630,80 +1709,41 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
   return (
     <>
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `@keyframes tournamentArenaIn{0%{opacity:0;transform:translateY(10px) scale(0.97)}100%{opacity:1;transform:translateY(0) scale(1)}}@keyframes tournamentArenaCount{0%{opacity:0;transform:scale(0.6)}30%{opacity:1;transform:scale(1.05)}70%{opacity:1;transform:scale(1)}100%{opacity:0.85;transform:scale(0.95)}}@keyframes tournamentArenaBackdrop{from{opacity:0}to{opacity:1}}@keyframes tournamentIntroSlide{0%{opacity:0;transform:translateY(-6px)}15%{opacity:1;transform:translateY(0)}85%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-4px)}}.tournament-arena-overlay{animation:tournamentArenaBackdrop 0.2s ease-out forwards}.tournament-arena-card{animation:tournamentArenaIn 0.32s cubic-bezier(0.22,1,0.36,1) forwards}.tournament-arena-count{animation:tournamentArenaCount 1s ease-out forwards}.tournament-intro-pill{animation:tournamentIntroSlide 3s ease-out forwards}@keyframes matchScreenShake{0%,100%{transform:translate3d(0,0,0)}15%{transform:translate3d(-10px,0,0)}30%{transform:translate3d(10px,0,0)}45%{transform:translate3d(-8px,0,0)}60%{transform:translate3d(8px,0,0)}75%{transform:translate3d(-4px,0,0)}90%{transform:translate3d(4px,0,0)}}@keyframes matchTimerUrgentPulse{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,0.45),0 0 24px rgba(248,113,113,0.18)}50%{box-shadow:0 0 0 10px rgba(248,113,113,0),0 0 36px rgba(248,113,113,0.42)}}@keyframes matchTimerUrgentScale{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}@keyframes matchSuddenDeathTimerGlow{0%,100%{box-shadow:0 0 18px rgba(250,204,21,0.18),inset 0 0 18px rgba(250,204,21,0.08)}50%{box-shadow:0 0 30px rgba(250,204,21,0.34),inset 0 0 24px rgba(250,204,21,0.12)}}@keyframes matchGoalFlash{0%{box-shadow:0 0 0 0 rgba(52,211,153,0.55)}100%{box-shadow:0 0 0 18px rgba(52,211,153,0)}}@keyframes matchSaveFlash{0%{box-shadow:0 0 0 0 rgba(249,115,22,0.5)}100%{box-shadow:0 0 0 16px rgba(249,115,22,0)}}@keyframes matchDrawFlash{0%{box-shadow:0 0 0 0 rgba(212,212,216,0.45)}100%{box-shadow:0 0 0 14px rgba(212,212,216,0)}}@keyframes matchResultReveal{0%{opacity:0.45;transform:translateY(10px) scale(0.98)}100%{opacity:1;transform:translateY(0) scale(1)}}@keyframes matchScorePulse{0%{transform:scale(1)}35%{transform:scale(1.28)}100%{transform:scale(1)}}@keyframes matchWaitingDot{0%,80%,100%{opacity:0.25;transform:scale(0.85)}40%{opacity:1;transform:scale(1.05)}}.match-timer-urgent{animation:matchTimerUrgentPulse 0.9s ease-in-out infinite,matchTimerUrgentScale 0.9s ease-in-out infinite}.match-timer-sudden-death{animation:matchSuddenDeathTimerGlow 1.4s ease-in-out infinite}.goal-flash{animation:matchGoalFlash 0.6s ease-out}.save-flash{animation:matchSaveFlash 0.6s ease-out}.draw-flash{animation:matchDrawFlash 0.5s ease-out}.match-result-reveal-active{animation:matchResultReveal 0.9s ease-out infinite alternate}.match-result-reveal-done{animation:matchResultReveal 0.45s ease-out}.match-result-headline-goal{text-shadow:0 0 24px rgba(52,211,153,0.45)}.match-result-headline-save{text-shadow:0 0 24px rgba(56,189,248,0.42)}.match-result-headline-draw{text-shadow:0 0 22px rgba(250,204,21,0.34)}.match-score-pulse{animation:matchScorePulse 0.45s cubic-bezier(0.22,1,0.36,1)}.match-lane-ready{transition:transform 180ms ease,box-shadow 180ms ease,background-color 180ms ease,border-color 180ms ease,color 180ms ease}.match-waiting-dots{display:inline-flex;align-items:center;gap:3px}.match-waiting-dot{display:inline-block;width:5px;height:5px;border-radius:9999px;background:currentColor;animation:matchWaitingDot 1.2s ease-in-out infinite}.match-waiting-dot:nth-child(2){animation-delay:0.18s}.match-waiting-dot:nth-child(3){animation-delay:0.36s}`,
-        }}
+      <style dangerouslySetInnerHTML={{ __html: MATCH_PRESENTATION_CSS }} />
+      <MatchAtmosphereLayer
+        accent={presentationAccent}
+        intense={isSuddenDeath || isFinalTournamentMatch}
       />
-      {showTournamentStaging ? (
-        <div
-          className="tournament-arena-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/85 px-4 py-6 backdrop-blur-sm"
-          aria-live="polite"
-          aria-label="Match starting"
-        >
-          <div
-            className={`tournament-arena-card w-full max-w-md overflow-hidden rounded-3xl border-2 px-5 py-7 text-center shadow-2xl sm:px-7 sm:py-8 ${
-              isFinalTournamentMatch
-                ? "border-yellow-300/70 bg-gradient-to-br from-yellow-950/70 via-amber-950/70 to-black shadow-[0_0_56px_rgba(234,179,8,0.32)]"
-                : "border-amber-500/60 bg-gradient-to-br from-amber-950/55 via-zinc-950 to-black shadow-[0_0_42px_rgba(251,191,36,0.22)]"
-            }`}
-          >
-            <p
-              className={`text-[10px] font-black uppercase tracking-[0.32em] ${
-                isFinalTournamentMatch ? "text-yellow-300" : "text-amber-300"
-              }`}
-            >
-              {isFinalTournamentMatch ? "Championship match" : "Tournament match"}
-            </p>
-            <h2
-              className={`mt-2 break-words text-2xl font-black tracking-tight sm:text-3xl ${
-                isFinalTournamentMatch ? "text-yellow-100" : "text-white"
-              }`}
-            >
-              {tournamentRoundDisplayLabel ?? "Match starting"}
-            </h2>
-            <div className="mt-4 flex items-center justify-center gap-2 text-sm font-bold text-zinc-200 sm:text-base">
-              <span className="min-w-0 max-w-[40%] truncate text-white">
-                {myName}
-              </span>
-              <span
-                className={`shrink-0 text-[10px] font-black uppercase tracking-[0.28em] ${
-                  isFinalTournamentMatch
-                    ? "text-yellow-300"
-                    : "text-amber-300"
-                }`}
-              >
-                vs
-              </span>
-              <span className="min-w-0 max-w-[40%] truncate text-white">
-                {opponentName}
-              </span>
-            </div>
-            <p className="mt-4 text-xs font-bold uppercase tracking-[0.22em] text-zinc-400 sm:text-sm">
-              Match starting…
-            </p>
-            <p
-              key={tournamentStagingCountdown}
-              className={`tournament-arena-count mt-3 text-7xl font-black tabular-nums leading-none sm:text-8xl ${
-                isFinalTournamentMatch ? "text-yellow-100" : "text-amber-100"
-              }`}
-            >
-              {tournamentStagingCountdown && tournamentStagingCountdown > 0
-                ? tournamentStagingCountdown
-                : "GO"}
-            </p>
-            <p className="mt-4 text-[11px] font-semibold text-zinc-400">
-              First to finish the shootout advances
-            </p>
-          </div>
-        </div>
+      <MatchStagingScreen
+        visible={showTournamentStaging}
+        title={tournamentRoundDisplayLabel ?? "Match starting"}
+        tournamentName={
+          isFinalTournamentMatch ? "Championship" : isTournamentMatch ? "Tournament" : null
+        }
+        leftName={myName}
+        rightName={opponentName}
+        seconds={tournamentStagingCountdown}
+        accent={presentationAccent}
+      />
+      {roundTransition ? (
+        <RoundTransition
+          visible
+          kind={roundTransition.kind}
+          label={roundTransition.label}
+          sublabel={roundTransition.sublabel}
+          accent={presentationAccent}
+        />
       ) : null}
+      <MatchResultOverlay
+        visible={resultBurstResult !== null}
+        result={resultBurstResult}
+      />
       <div
-        className={`main-container mx-auto max-w-6xl space-y-6 px-3 py-5 text-white sm:space-y-8 sm:px-4 sm:py-8 md:space-y-10 md:px-6 md:py-10 ${
+        className={`relative z-10 main-container mx-auto max-w-6xl space-y-6 px-3 py-5 text-white sm:space-y-8 sm:px-4 sm:py-8 md:space-y-10 md:px-6 md:py-10 ${
           screenEffect === "GOAL"
             ? "zoom-impact scale-[1.06] transition-transform duration-300 ease-out ring-2 ring-green-400/80 shadow-[0_0_40px_rgba(34,197,94,0.55)]"
             : screenEffect === "SAVE"
-              ? "shake-impact ring-2 ring-orange-500 shadow-[0_0_36px_rgba(249,115,22,0.55)] [animation:matchScreenShake_0.6s_ease-in-out]"
+              ? "shake-impact ring-2 ring-sky-500 shadow-[0_0_36px_rgba(56,189,248,0.55)] match-screen-shake"
               : screenEffect === "DRAW"
                 ? "soft-impact scale-[1.03] transition-transform duration-300 ease-out ring-1 ring-zinc-300/90 shadow-[0_0_28px_rgba(212,212,216,0.45)]"
                 : isSuddenDeath
@@ -1996,60 +2036,44 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         </section>
       ) : null}
 
-      <section className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-2 md:gap-6">
-        <div className="min-w-0 rounded-3xl border border-zinc-800 bg-zinc-950/95 p-4 shadow-xl sm:p-5 md:rounded-[2rem] md:p-7">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 md:text-xs">
-            Your Score
-          </p>
-          <p className="mt-1 truncate text-xs text-zinc-400 sm:text-sm md:mt-2">
-            {myName}
-          </p>
-          <div className="mt-3 flex items-end justify-between gap-2 md:mt-4 md:gap-4">
-            <p
-              className={`text-5xl font-black tabular-nums transition-all duration-500 ease-out sm:text-6xl md:text-7xl ${
-                scorePulse === "p1"
-                  ? "match-score-pulse scale-[1.24] text-white drop-shadow-[0_0_22px_rgba(255,255,255,0.65)]"
-                  : "text-white"
-              }`}
-            >
-              {myScore}
-            </p>
-            <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-black sm:px-3 sm:py-1 sm:text-xs">
-              YOU
-            </span>
-          </div>
-        </div>
-
-        <div className="min-w-0 rounded-3xl border border-zinc-800 bg-zinc-950/95 p-4 shadow-xl sm:p-5 md:rounded-[2rem] md:p-7">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 md:text-xs">
-            Opponent
-          </p>
-          <p className="mt-1 truncate text-xs text-zinc-400 sm:text-sm md:mt-2">
-            {opponentName}
-          </p>
-          <div className="mt-3 flex items-end justify-between gap-2 md:mt-4 md:gap-4">
-            <p
-              className={`text-5xl font-black tabular-nums transition-all duration-500 ease-out sm:text-6xl md:text-7xl ${
-                scorePulse === "p2"
-                  ? "match-score-pulse scale-[1.24] text-white drop-shadow-[0_0_22px_rgba(255,255,255,0.65)]"
-                  : "text-white"
-              }`}
-            >
-              {opponentScore}
-            </p>
-            <span className="shrink-0 rounded-full border border-zinc-600 px-2 py-0.5 text-[10px] font-black text-zinc-300 sm:px-3 sm:py-1 sm:text-xs">
-              OPP
-            </span>
-          </div>
-        </div>
-      </section>
+      <MatchScoreboard
+        myName={myName}
+        opponentName={opponentName}
+        myScore={myScore}
+        opponentScore={opponentScore}
+        myRole={myRoleNow}
+        opponentRole={opponentRoleNow}
+        scorePulse={scorePulse}
+        isSuddenDeath={isSuddenDeath}
+        isTournament={isTournamentMatch}
+        isFinal={isFinalTournamentMatch}
+      />
 
       {!matchEnded ? (
-        <section className="rounded-[2rem] border border-zinc-800 bg-zinc-900/95 p-5 shadow-xl md:p-7">
+        <section className="relative rounded-[2rem] border border-zinc-800 bg-zinc-900/95 p-5 shadow-xl md:p-7">
+          {revealStage === "LOCKED" && !isRevealLocked ? (
+            <div
+              className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[2rem] bg-black/50 backdrop-blur-[2px]"
+              aria-live="polite"
+            >
+              <div className="p444-pick-locked-pulse rounded-2xl border border-cyan-400/50 bg-cyan-950/40 px-6 py-4 text-center shadow-[0_0_32px_rgba(56,189,248,0.25)]">
+                <p className="text-[10px] font-black uppercase tracking-[0.34em] text-cyan-300">
+                  Pick locked
+                </p>
+                <p className="mt-1 text-lg font-black text-white">
+                  Waiting for opponent…
+                </p>
+              </div>
+            </div>
+          ) : null}
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <h2 className="text-2xl font-black md:text-3xl">
-                {hasSubmittedPick || myPick ? "Pick locked in" : "Choose your lane"}
+                {revealStage === "LOCKED"
+                  ? "Pick locked"
+                  : hasSubmittedPick || myPick
+                    ? "Pick locked in"
+                    : "Choose your lane"}
               </h2>
               <p className="mt-2 text-sm text-zinc-400">
                 {hasSubmittedPick || myPick
@@ -2157,13 +2181,24 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             </p>
 
             <h2
-              className={`mt-3 inline-flex items-center gap-3 text-4xl font-black transition-all duration-300 md:text-6xl ${resultHeadlineClass(
+              className={`mt-3 inline-flex items-center gap-3 text-4xl font-black transition-all duration-300 sm:text-5xl md:text-7xl ${resultHeadlineClass(
                 shownResult?.result,
                 revealStage
               )}`}
             >
               {revealStage === "REVEALING" ? (
-                "Revealing…"
+                tensionCountdown !== null ? (
+                  <span
+                    key={tensionCountdown}
+                    className="tabular-nums text-white drop-shadow-[0_0_28px_rgba(56,189,248,0.45)]"
+                  >
+                    {tensionCountdown}
+                  </span>
+                ) : (
+                  <span className="text-2xl uppercase tracking-[0.22em] text-cyan-200/90 md:text-3xl">
+                    Pick locked
+                  </span>
+                )
               ) : (
                 <>
                   {shownResult?.result ? (
@@ -2277,33 +2312,37 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                   : "text-yellow-200/90"
             }`}
           >
-            Match Complete
+            {postMatchCopy?.eyebrow ?? "Match Complete"}
           </p>
 
+          {postMatchCopy?.progression ? (
+            <p
+              className={`mt-4 text-[11px] font-black uppercase tracking-[0.28em] ${
+                matchEndOutcome === "victory"
+                  ? isFinalTournamentMatch
+                    ? "text-yellow-300"
+                    : "text-amber-300"
+                  : matchEndOutcome === "defeat"
+                    ? "text-red-300/90"
+                    : "text-yellow-200/90"
+              }`}
+            >
+              {postMatchCopy.progression}
+            </p>
+          ) : null}
+
           <h2
-            className={`mt-3 break-words text-4xl font-black tracking-tight sm:text-5xl md:mt-4 md:text-6xl ${
+            className={`mt-2 break-words text-4xl font-black uppercase tracking-tight sm:text-5xl md:mt-3 md:text-6xl ${
               isFinalTournamentMatch && matchEndOutcome === "victory"
                 ? "bg-gradient-to-r from-yellow-200 via-amber-200 to-orange-200 bg-clip-text text-transparent drop-shadow-[0_0_32px_rgba(234,179,8,0.5)]"
                 : matchEndOutcome === "victory"
-                  ? "bg-gradient-to-r from-emerald-200 via-emerald-100 to-amber-200 bg-clip-text text-transparent drop-shadow-[0_0_24px_rgba(52,211,153,0.35)]"
+                  ? "bg-gradient-to-r from-emerald-200 via-emerald-100 to-cyan-200 bg-clip-text text-transparent drop-shadow-[0_0_24px_rgba(52,211,153,0.35)]"
                   : matchEndOutcome === "defeat"
                     ? "text-red-100 drop-shadow-[0_0_20px_rgba(248,113,113,0.25)]"
                     : "text-yellow-100 drop-shadow-[0_0_18px_rgba(250,204,21,0.2)]"
             }`}
           >
-            {isTournamentMatch
-              ? matchEndOutcome === "victory"
-                ? isFinalTournamentMatch
-                  ? "Champion!"
-                  : "You advanced"
-                : matchEndOutcome === "defeat"
-                  ? "You were eliminated"
-                  : "Match drawn"
-              : matchEndOutcome === "victory"
-                ? "Victory"
-                : matchEndOutcome === "defeat"
-                  ? "Defeat"
-                  : "Draw"}
+            {postMatchCopy?.headline ?? "Match Complete"}
           </h2>
 
           <p
@@ -2317,21 +2356,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                     : "text-yellow-100/85"
             }`}
           >
-            {isTournamentMatch
-              ? matchEndOutcome === "victory"
-                ? isFinalTournamentMatch
-                  ? `You beat ${opponentName} to win the tournament.`
-                  : `You beat ${opponentName}. On to the next round.`
-                : matchEndOutcome === "defeat"
-                  ? isFinalTournamentMatch
-                    ? `${opponentName} took the final. Great run.`
-                    : `${opponentName} took this one. Your run ends here.`
-                  : "Match split. Returning to tournament."
-              : matchEndOutcome === "victory"
-                ? `You outscored ${opponentName}.`
-                : matchEndOutcome === "defeat"
-                  ? `${opponentName} took this one.`
-                  : "Nothing separated both players."}
+            {postMatchCopy?.subline ?? ""}
           </p>
 
           <div
@@ -2429,6 +2454,28 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               >
                 {rematchRequested ? "Rematch Requested" : "Rematch"}
               </button>
+            ) : null}
+
+            {opponentName && opponentName !== "Opponent" ? (
+              <Link
+                href={`/profile/${encodeURIComponent(opponentName)}`}
+                className="inline-flex items-center gap-1.5 rounded-2xl border border-zinc-700 bg-black/40 px-5 py-4 text-center text-sm font-black uppercase tracking-wider text-zinc-200 transition-colors hover:border-cyan-400/55 hover:text-cyan-100"
+              >
+                <span aria-hidden>👤</span>
+                View Opponent
+              </Link>
+            ) : null}
+
+            {!isTournamentMatch &&
+            opponentName &&
+            opponentName !== "Opponent" ? (
+              <Link
+                href={`/lobby?challenge=${encodeURIComponent(opponentName)}`}
+                className="inline-flex items-center gap-1.5 rounded-2xl border border-cyan-500/45 bg-cyan-500/10 px-5 py-4 text-center text-sm font-black uppercase tracking-wider text-cyan-100 transition-colors hover:bg-cyan-500/20"
+              >
+                <span aria-hidden>⚔</span>
+                Challenge Again
+              </Link>
             ) : null}
 
             {isTournamentMatch && tournamentId ? (

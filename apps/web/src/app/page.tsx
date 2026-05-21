@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import ActivityFeed from "../components/home/ActivityFeed";
 import ContinuePlayingCard from "../components/home/ContinuePlayingCard";
 import GameCard, {
   type GameCardData,
@@ -12,11 +11,23 @@ import HomeShared from "../components/home/HomeShared";
 import HomeTournamentPreview from "../components/home/HomeTournamentPreview";
 import PlayerStatsStrip from "../components/home/PlayerStatsStrip";
 import QuickActionCard from "../components/home/QuickActionCard";
+import FeaturedLiveMatches from "../components/live/FeaturedLiveMatches";
+import GlobalActivityFeed from "../components/live/GlobalActivityFeed";
+import LiveMatchPreview from "../components/live/LiveMatchPreview";
+import PlatformLiveStatus from "../components/live/PlatformLiveStatus";
+import PlayerMomentsStrip from "../components/live/PlayerMomentsStrip";
+import FeaturedPlayers from "../components/social/FeaturedPlayers";
 import { getCurrentPlayerIdentity } from "../lib/auth/playerIdentity";
 import {
   getActiveMatch,
   type ActiveMatch,
 } from "../lib/match/activeMatch";
+import {
+  deriveRecentForm,
+  deriveStreak,
+  type CompetitiveStats,
+} from "../lib/player/stats";
+import { supabase } from "../lib/supabase/client";
 import {
   getActiveTournament,
   subscribeActiveTournament,
@@ -71,6 +82,7 @@ export default function HomePage() {
   const [activeMatch, setActiveMatch] = useState<ActiveMatch | null>(null);
   const [activeTournament, setActiveTournament] =
     useState<ActiveTournament | null>(null);
+  const [playerStats, setPlayerStats] = useState<CompetitiveStats | null>(null);
 
   function refreshActiveMatch() {
     setActiveMatch(getActiveMatch());
@@ -79,12 +91,89 @@ export default function HomePage() {
   useEffect(() => {
     let cancelled = false;
 
-    void getCurrentPlayerIdentity().then((identity) => {
+    void getCurrentPlayerIdentity().then(async (identity) => {
       if (cancelled) return;
       setUsername(identity?.username ?? null);
       setActiveTournament(
         getActiveTournament(identity?.playerId ?? undefined)
       );
+
+      if (!identity?.playerId) {
+        setPlayerStats(null);
+        return;
+      }
+
+      // Best-effort home stats lookup. Failure is silent so the home page
+      // never blocks on a missing row — the strip renders Unranked safely.
+      try {
+        const [statsResult, matchesResult, tournamentWinsResult] =
+          await Promise.all([
+            supabase
+              .from("player_stats")
+              .select(
+                "username, matches, wins, losses, draws, goals_for, goals_against, rank_points, tier"
+              )
+              .eq("game_id", "penalty444")
+              .eq("user_id", identity.playerId)
+              .maybeSingle(),
+            supabase
+              .from("match_results")
+              .select("winner_id, is_draw, created_at")
+              .or(
+                `player_one_id.eq.${identity.playerId},player_two_id.eq.${identity.playerId}`
+              )
+              .order("created_at", { ascending: false })
+              .limit(5),
+            supabase
+              .from("tournaments")
+              .select("id", { count: "exact", head: true })
+              .eq("game_id", "penalty444")
+              .eq("winner_id", identity.playerId),
+          ]);
+        if (cancelled) return;
+
+        const row = statsResult.data;
+        const recent = (matchesResult.data ?? []) as Array<{
+          winner_id: string | null;
+          is_draw: boolean | null;
+          created_at: string | null;
+        }>;
+        const recentForm = deriveRecentForm(recent, identity.playerId, 5);
+        const streak = deriveStreak(recentForm);
+        const tournamentWins = tournamentWinsResult.count ?? 0;
+
+        if (!row) {
+          setPlayerStats({
+            username: identity.username ?? null,
+            rating: null,
+            matches: 0,
+            wins: 0,
+            losses: 0,
+            draws: 0,
+            tournamentWins,
+            recentForm,
+            streak,
+          });
+          return;
+        }
+
+        setPlayerStats({
+          username: row.username ?? identity.username ?? null,
+          rating: row.rank_points ?? null,
+          matches: row.matches ?? 0,
+          wins: row.wins ?? 0,
+          losses: row.losses ?? 0,
+          draws: row.draws ?? 0,
+          goalsFor: row.goals_for ?? 0,
+          goalsAgainst: row.goals_against ?? 0,
+          tournamentWins,
+          legacyTierName: row.tier ?? null,
+          recentForm,
+          streak,
+        });
+      } catch {
+        if (!cancelled) setPlayerStats(null);
+      }
     });
 
     refreshActiveMatch();
@@ -230,9 +319,19 @@ export default function HomePage() {
         </div>
       </section>
 
-      <PlayerStatsStrip username={username} />
+      <PlayerStatsStrip username={username} stats={playerStats} />
 
-      <ActivityFeed seeMoreHref="/tournaments" />
+      <PlatformLiveStatus />
+
+      <FeaturedLiveMatches />
+
+      <LiveMatchPreview />
+
+      <FeaturedPlayers />
+
+      <PlayerMomentsStrip />
+
+      <GlobalActivityFeed seeMoreHref="/tournaments" />
 
       <footer className="rounded-2xl border border-zinc-800/80 bg-zinc-950/60 px-4 py-3 text-center text-[11px] text-zinc-500 sm:px-5">
         444 Arena · Competitive multiplayer · Skill over luck
