@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import MatchAtmosphereLayer from "../match/MatchAtmosphereLayer";
 import { supabase } from "../../lib/supabase/client";
 import {
@@ -9,6 +9,7 @@ import {
   watchableStatusLabel,
   type WatchableMatch,
 } from "../../lib/live/watch";
+import { useVisibleInterval } from "../../lib/polling/useVisibleInterval";
 import LivePulseBadge from "../live/LivePulseBadge";
 import WatchMatchHeader from "./WatchMatchHeader";
 
@@ -33,6 +34,18 @@ type Props = {
   pollMs?: number;
 };
 
+/**
+ * Sprint 2 TASK 5: spectator polling tiers.
+ *
+ *   - live match → `pollMs` (default 6s, ⩾ 4s clamp).
+ *   - completed match, recent → slower poll for final result settle.
+ *   - completed match, stable for `STOP_AFTER_STABLE_MS` → polling
+ *     halts entirely. UI still works; spectators can refresh manually.
+ *   - hidden tab → no polling (handled by `useVisibleInterval`).
+ */
+const COMPLETED_POLL_MULTIPLIER = 4;
+const STOP_AFTER_STABLE_MS = 120_000;
+
 export default function SpectatorMatchView({
   roomCode,
   initialMatch = null,
@@ -40,30 +53,54 @@ export default function SpectatorMatchView({
 }: Props) {
   const [match, setMatch] = useState<WatchableMatch | null>(initialMatch);
   const [loading, setLoading] = useState(initialMatch === null);
-  const mountedRef = useRef(true);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    let cancelled = false;
+  /**
+   * A watch session is "completed" when we have a final score persisted.
+   * This works for both casual matches (no `bracketMatch`) and tournament
+   * matches (`bracketMatch.status === "completed" | "walkover"`).
+   */
+  const isMatchCompleted = (m: WatchableMatch | null): boolean => {
+    if (!m) return false;
+    if (m.finalScore !== null) return true;
+    const bracketStatus = m.bracketMatch?.status;
+    return bracketStatus === "completed" || bracketStatus === "walkover";
+  };
 
-    async function load(initial: boolean) {
+  const completedAtRef = useRef<number | null>(
+    isMatchCompleted(initialMatch) ? Date.now() : null
+  );
+
+  const isCompleted = isMatchCompleted(match);
+  const completedFor = completedAtRef.current
+    ? Date.now() - completedAtRef.current
+    : 0;
+  const shouldStopPolling =
+    isCompleted && completedFor > STOP_AFTER_STABLE_MS;
+
+  const effectiveInterval = isCompleted
+    ? Math.max(pollMs, 4_000) * COMPLETED_POLL_MULTIPLIER
+    : Math.max(pollMs, 4_000);
+
+  useVisibleInterval(
+    async (signal) => {
       const next = await fetchWatchableMatch(supabase, roomCode);
-      if (cancelled || !mountedRef.current) return;
+      if (signal.aborted) return;
       setMatch(next);
-      if (initial) setLoading(false);
+      setLoading(false);
+      if (isMatchCompleted(next) && completedAtRef.current === null) {
+        completedAtRef.current = Date.now();
+        console.log(
+          `[Polling] watch route entered completed-slowdown roomCode=${roomCode}`
+        );
+      }
+    },
+    {
+      intervalMs: effectiveInterval,
+      paused: shouldStopPolling,
+      runImmediately: initialMatch === null,
+      deps: [roomCode, effectiveInterval],
     }
-
-    if (initialMatch === null) {
-      void load(true);
-    }
-    const interval = window.setInterval(() => void load(false), pollMs);
-
-    return () => {
-      cancelled = true;
-      mountedRef.current = false;
-      window.clearInterval(interval);
-    };
-  }, [roomCode, pollMs, initialMatch]);
+  );
 
   if (loading) {
     return <WatchSkeleton />;

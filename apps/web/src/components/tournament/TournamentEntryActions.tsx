@@ -5,6 +5,10 @@ import { useState, type ReactNode } from "react";
 import { supabase } from "../../lib/supabase/client";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
 import {
+  lockTournamentEntry,
+  refundTournamentEntry,
+} from "../../lib/economy/tournamentEntryClient";
+import {
   formatEntryStatus,
   type TournamentEntryRow,
   type TournamentRow,
@@ -78,6 +82,15 @@ export default function TournamentEntryActions({
         return;
       }
 
+      // Phase 11 TASK 4: try to lock the tournament entry escrow first.
+      // For free tournaments / economy off, the server returns
+      // `skipped: true` and we proceed normally.
+      const lock = await lockTournamentEntry(tournament.id);
+      if (lock.ok === false) {
+        setMessage(`Could not reserve entry fee: ${lock.error}`);
+        return;
+      }
+
       const { error } = await supabase.from("tournament_entries").insert({
         tournament_id: tournament.id,
         user_id: identity.playerId,
@@ -86,6 +99,10 @@ export default function TournamentEntryActions({
       });
 
       if (error) {
+        // Roll back the escrow if registration failed.
+        if (lock.skipped !== true) {
+          await refundTournamentEntry(tournament.id);
+        }
         setMessage(error.message);
         return;
       }
@@ -202,6 +219,10 @@ export default function TournamentEntryActions({
         setMessage(error.message);
         return;
       }
+
+      // Phase 11 TASK 4: refund any locked entry escrow. Safe even
+      // when none exists (server returns skipped=true).
+      await refundTournamentEntry(tournament.id);
 
       setMessage("You have withdrawn from this tournament.");
       onUpdated();

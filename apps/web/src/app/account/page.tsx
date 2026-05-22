@@ -7,6 +7,7 @@ import CompetitiveProfileCard from "../../components/player/CompetitiveProfileCa
 import PromotionToast from "../../components/player/PromotionToast";
 import RecentForm from "../../components/player/RecentForm";
 import TrophiesPreview from "../../components/player/TrophiesPreview";
+import WalletPanel from "../../components/account/WalletPanel";
 import RivalCard from "../../components/social/RivalCard";
 import { ViewProfileButton } from "../../components/social/SocialActions";
 import { pushNotification } from "../../components/live/NotificationBell";
@@ -477,6 +478,8 @@ export default function AccountPage() {
           </div>
 
           <TrophiesPreview count={tournamentWins} />
+
+          <WalletPanel userId={account?.id ?? null} />
 
           {stats?.username ? (
             <section

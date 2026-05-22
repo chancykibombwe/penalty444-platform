@@ -1,6 +1,22 @@
 import { io, Socket } from "socket.io-client";
+import { supabase } from "../supabase/client";
 
 let socket: Socket | null = null;
+
+/**
+ * Sprint 2 TASK 2: pass the Supabase access token in the socket handshake
+ * so the realtime server can verify identity (`socket.data.userId`). The
+ * server treats this as best-effort today; missing tokens are tolerated
+ * to preserve gameplay for anonymous / legacy clients during rollout.
+ */
+async function readAccessToken(): Promise<string | null> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data?.session?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export function getSocket(): Socket {
   if (!socket) {
@@ -9,6 +25,11 @@ export function getSocket(): Socket {
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
+      auth: (cb) => {
+        void readAccessToken().then((accessToken) => {
+          cb({ accessToken: accessToken ?? "" });
+        });
+      },
     });
   }
   return socket;

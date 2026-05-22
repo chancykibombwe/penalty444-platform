@@ -19,6 +19,23 @@ export type RequestRealtimeTournamentRoomResult =
     }
   | { ok: false; error: string };
 
+function realtimeBaseUrl(): string {
+  return process.env.REALTIME_INTERNAL_URL ?? "http://localhost:4000";
+}
+
+function realtimeSecret(): string {
+  const secret = process.env.REALTIME_INTERNAL_SECRET ?? "";
+  if (!secret) {
+    throw new Error("Realtime internal API is not configured.");
+  }
+  return secret;
+}
+
+/**
+ * Sprint 1 TASK 5: ask the realtime server to ENSURE a room exists,
+ * WITHOUT emitting `tournament:matchReady`. We notify only after the
+ * `room_code` is safely persisted on `tournament_matches`.
+ */
 async function postRealtimeTournamentRoom(payload: {
   tournamentId: string;
   tournamentMatchId: string;
@@ -26,22 +43,20 @@ async function postRealtimeTournamentRoom(payload: {
   notifyPlayerIds: string[];
   maxRounds: number;
 }): Promise<{ roomCode: string; existing: boolean }> {
-  const baseUrl =
-    process.env.REALTIME_INTERNAL_URL ?? "http://localhost:4000";
-  const secret = process.env.REALTIME_INTERNAL_SECRET ?? "";
-
-  if (!secret) {
-    throw new Error("Realtime internal API is not configured.");
-  }
-
-  const response = await fetch(`${baseUrl}/internal/tournament-rooms`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-realtime-internal-secret": secret,
-    },
-    body: JSON.stringify(payload),
-  });
+  const response = await fetch(
+    `${realtimeBaseUrl()}/internal/tournament-rooms`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-realtime-internal-secret": realtimeSecret(),
+      },
+      body: JSON.stringify({
+        ...payload,
+        notify: false,
+      }),
+    }
+  );
 
   const data = (await response.json().catch(() => ({}))) as {
     roomCode?: string;
@@ -61,6 +76,52 @@ async function postRealtimeTournamentRoom(payload: {
     roomCode: data.roomCode,
     existing: Boolean(data.existing),
   };
+}
+
+/**
+ * Sprint 1 TASK 5: tell the realtime server to emit
+ * `tournament:matchReady` to the given players. Called ONLY after we've
+ * persisted `room_code` to Supabase.
+ *
+ * Failures are non-fatal — players still have the existing
+ * tournament-detail page fallback to discover the match.
+ */
+async function postRealtimeTournamentNotify(payload: {
+  tournamentId: string;
+  tournamentMatchId: string;
+  roomCode: string;
+  notifyPlayerIds: string[];
+}): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const response = await fetch(
+      `${realtimeBaseUrl()}/internal/tournament-rooms/notify`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-realtime-internal-secret": realtimeSecret(),
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+
+    const data = (await response.json().catch(() => ({}))) as {
+      ok?: boolean;
+      error?: string;
+    };
+
+    if (!response.ok) {
+      return { ok: false, error: data.error ?? "Failed to notify players." };
+    }
+
+    return { ok: Boolean(data.ok) || true };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error ? error.message : "Failed to notify players.",
+    };
+  }
 }
 
 async function resolveMaxRounds(
@@ -154,6 +215,7 @@ export async function requestRealtimeTournamentRoom({
 
     const notifyPlayerIds = [entryOne.user_id, entryTwo.user_id];
 
+    // Step 1: ensure the realtime room exists. NO notification yet.
     const realtimeResult = await postRealtimeTournamentRoom({
       tournamentId,
       tournamentMatchId,
@@ -162,12 +224,39 @@ export async function requestRealtimeTournamentRoom({
       maxRounds: resolvedMaxRounds,
     });
 
-    const persisted = await persistTournamentMatchRoom(
-      admin,
+    // Step 2: persist room_code to Supabase BEFORE notifying players.
+    let persisted: { roomCode: string; persisted: boolean };
+    try {
+      persisted = await persistTournamentMatchRoom(
+        admin,
+        tournamentId,
+        tournamentMatchId,
+        realtimeResult.roomCode
+      );
+    } catch (persistError) {
+      console.warn(
+        "[TournamentRoom] notify skipped persistence failed",
+        persistError instanceof Error
+          ? persistError.message
+          : persistError
+      );
+      throw persistError;
+    }
+
+    // Step 3: now that room_code is safely stored, notify the two players.
+    //   Failure here is non-fatal — fallback paths (tournament detail
+    //   polling) still surface the ready match.
+    const notifyResult = await postRealtimeTournamentNotify({
       tournamentId,
       tournamentMatchId,
-      realtimeResult.roomCode
-    );
+      roomCode: persisted.roomCode,
+      notifyPlayerIds,
+    });
+    if (!notifyResult.ok) {
+      console.warn(
+        `[TournamentRoom] notify after persistence soft-failed: ${notifyResult.error ?? "unknown"}`
+      );
+    }
 
     return {
       ok: true,

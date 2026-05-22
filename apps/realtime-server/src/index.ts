@@ -53,6 +53,32 @@ import {
   setPlayerActiveRoom,
 } from "./room/lifecycle";
 import {
+  bindResolveSeqMap,
+  scheduleRoomCleanup,
+  startStaleRoomSweeper,
+  touchRoomActivity,
+} from "./room/cleanup";
+import {
+  bindSpectatorServer,
+  mirrorToSpectators,
+  pruneSpectatorOnDisconnect,
+  registerSpectatorHandlers,
+} from "./socket/spectator";
+import { verifySocketJwt } from "./security/jwt";
+import {
+  getEconomyMode,
+  listStuckEscrows,
+  listStuckSettlements,
+  lockTournamentEntryForPlayer,
+  reconcileEconomy,
+  refundAllMatchEscrows,
+  refundAllTournamentEntryEscrows,
+  refundTournamentEntryForPlayer,
+  seedTestWalletBalance,
+  settleMatchEconomyForRoom,
+  settleTournamentEconomyForTournament,
+} from "./economy";
+import {
   bindPublicOfferHandlers,
   emitPublicOffers,
   emitPublicOffersToSocket,
@@ -116,6 +142,7 @@ const io = new Server(server, {
 });
 
 bindStakesSocketServer(io);
+bindSpectatorServer(io);
 
 function isAuthorizedInternalRequest(req: express.Request): boolean {
   if (!realtimeInternalSecret) {
@@ -130,6 +157,259 @@ function isAuthorizedInternalRequest(req: express.Request): boolean {
   return headerSecret === realtimeInternalSecret;
 }
 
+/**
+ * Phase 11 TASK 6: dev-only test wallet seeder.
+ *
+ * POST /internal/economy/test-seed
+ *   headers: x-realtime-internal-secret
+ *   body: { userId: string, amountMinor: number, note?: string }
+ *
+ * Guarded by THREE conditions, ALL of which must hold:
+ *   1. ECONOMY_ENABLED=true
+ *   2. ECONOMY_TEST_MODE=true
+ *   3. ECONOMY_REAL_MONEY_ENABLED=false (enforced inside seeder)
+ *
+ * In production the env vars block this. The internal-secret header
+ * prevents misuse from non-trusted callers. Idempotency key derives
+ * from (userId, amountMinor, note), so retries collapse.
+ */
+app.post("/internal/economy/test-seed", async (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    res.status(401).json({ error: "Unauthorized." });
+    return;
+  }
+  if (getEconomyMode() !== "test") {
+    res
+      .status(409)
+      .json({ error: "Economy is not in test mode.", mode: getEconomyMode() });
+    return;
+  }
+
+  const body = req.body as {
+    userId?: string;
+    amountMinor?: number;
+    note?: string;
+  };
+  const userId = body.userId?.trim();
+  const amountMinor = Number(body.amountMinor ?? 0);
+  const note = body.note?.toString();
+
+  if (!userId) {
+    res.status(400).json({ error: "userId required." });
+    return;
+  }
+  if (
+    !Number.isFinite(amountMinor) ||
+    !Number.isInteger(amountMinor) ||
+    amountMinor <= 0
+  ) {
+    res.status(400).json({ error: "amountMinor must be a positive integer." });
+    return;
+  }
+
+  try {
+    const result = await seedTestWalletBalance({ userId, amountMinor, note });
+    if (result.ok === false) {
+      res.status(400).json({ error: result.reason });
+      return;
+    }
+    res.status(200).json({ ok: true, mode: "test" });
+  } catch (error) {
+    console.error("[Economy] test-seed crashed:", error);
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
+ * Phase 11 TASK 4: lock a tournament entry escrow.
+ *
+ * POST /internal/economy/tournament-entry/lock
+ *   body: { userId, tournamentId }
+ *
+ * Reads `entry_fee_minor` from the tournament row (server-authoritative
+ * — never trusts client amounts). Returns `{ ok: true, skipped: true }`
+ * for free tournaments or when economy is off.
+ */
+app.post("/internal/economy/tournament-entry/lock", async (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    res.status(401).json({ error: "Unauthorized." });
+    return;
+  }
+  const body = req.body as { userId?: string; tournamentId?: string };
+  const userId = body.userId?.trim();
+  const tournamentId = body.tournamentId?.trim();
+  if (!userId || !tournamentId) {
+    res.status(400).json({ error: "userId and tournamentId required." });
+    return;
+  }
+  if (!supabase) {
+    res.status(503).json({ error: "Supabase not configured." });
+    return;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("tournaments")
+      .select("id, entry_fee_minor, status")
+      .eq("id", tournamentId)
+      .maybeSingle();
+    if (error || !data) {
+      res.status(404).json({ error: "Tournament not found." });
+      return;
+    }
+    const entryFeeMinor = Number(data.entry_fee_minor ?? 0);
+
+    const result = await lockTournamentEntryForPlayer({
+      userId,
+      tournamentId,
+      entryFeeMinor,
+    });
+    if (result.ok === false) {
+      res.status(400).json({ error: result.reason });
+      return;
+    }
+    res.status(200).json({
+      ok: true,
+      skipped: result.skipped ?? false,
+      entryFeeMinor,
+    });
+  } catch (err) {
+    console.error("[Economy] tournament-entry/lock crashed:", err);
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
+ * Phase 12 TASK 7 — Economy operations endpoints.
+ *
+ * All require `x-realtime-internal-secret`. JSON-only summaries. Never
+ * expose user-identifying data unless strictly required.
+ */
+app.get("/internal/economy/health", (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    res.status(401).json({ error: "Unauthorized." });
+    return;
+  }
+  const mode = getEconomyMode();
+  const realMoney = process.env.ECONOMY_REAL_MONEY_ENABLED === "true";
+  const jwtEnforce = process.env.SOCKET_JWT_ENFORCE === "true";
+  res.json({
+    mode,
+    realMoneyEnabled: realMoney,
+    jwtEnforce,
+    blockers: economyLaunchBlockers(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.post("/internal/economy/reconcile", async (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    res.status(401).json({ error: "Unauthorized." });
+    return;
+  }
+  try {
+    const summary = await reconcileEconomy();
+    res.json(summary);
+  } catch (err) {
+    console.error("[EconomyRecovery] reconcile endpoint crashed:", err);
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+app.get("/internal/economy/escrows/stuck", async (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    res.status(401).json({ error: "Unauthorized." });
+    return;
+  }
+  const limit = Math.max(1, Math.min(200, Number(req.query.limit ?? 50)));
+  try {
+    const rows = await listStuckEscrows(limit);
+    res.json({ count: rows.length, rows });
+  } catch (err) {
+    console.error("[EconomyRecovery] stuck-escrows endpoint crashed:", err);
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+app.get("/internal/economy/settlements/stuck", async (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    res.status(401).json({ error: "Unauthorized." });
+    return;
+  }
+  const limit = Math.max(1, Math.min(200, Number(req.query.limit ?? 50)));
+  try {
+    const rows = await listStuckSettlements(limit);
+    res.json({ count: rows.length, rows });
+  } catch (err) {
+    console.error(
+      "[EconomyRecovery] stuck-settlements endpoint crashed:",
+      err
+    );
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+app.post("/internal/economy/tournament/refund-fanout", async (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    res.status(401).json({ error: "Unauthorized." });
+    return;
+  }
+  const body = req.body as { tournamentId?: string };
+  const tournamentId = body.tournamentId?.trim();
+  if (!tournamentId) {
+    res.status(400).json({ error: "tournamentId required." });
+    return;
+  }
+  try {
+    const result = await refundAllTournamentEntryEscrows(tournamentId);
+    if (result.ok === false) {
+      res
+        .status(400)
+        .json({ error: result.reason, summary: result.summary ?? null });
+      return;
+    }
+    res.json(result.summary);
+  } catch (err) {
+    console.error("[EconomyRecovery] refund-fanout crashed:", err);
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/**
+ * Phase 11 TASK 4: refund a locked tournament entry escrow.
+ */
+app.post("/internal/economy/tournament-entry/refund", async (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    res.status(401).json({ error: "Unauthorized." });
+    return;
+  }
+  const body = req.body as { userId?: string; tournamentId?: string };
+  const userId = body.userId?.trim();
+  const tournamentId = body.tournamentId?.trim();
+  if (!userId || !tournamentId) {
+    res.status(400).json({ error: "userId and tournamentId required." });
+    return;
+  }
+
+  try {
+    const result = await refundTournamentEntryForPlayer({
+      userId,
+      tournamentId,
+    });
+    if (result.ok === false) {
+      res.status(400).json({ error: result.reason });
+      return;
+    }
+    res.status(200).json({
+      ok: true,
+      skipped: result.skipped ?? false,
+    });
+  } catch (err) {
+    console.error("[Economy] tournament-entry/refund crashed:", err);
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
 app.post("/internal/tournament-rooms", (req, res) => {
     if (!isAuthorizedInternalRequest(req)) {
       res.status(401).json({ error: "Unauthorized." });
@@ -142,6 +422,14 @@ app.post("/internal/tournament-rooms", (req, res) => {
       allowedPlayerIds?: string[];
       notifyPlayerIds?: string[];
       maxRounds?: number;
+      /**
+       * Sprint 1 TASK 5: when `notify === false`, the realtime server
+       * only creates/returns the room code WITHOUT emitting
+       * `tournament:matchReady`. The web caller then persists `room_code`
+       * to Supabase and follows up with /notify after persistence
+       * succeeds. Defaults to `true` for backwards compatibility.
+       */
+      notify?: boolean;
     };
 
     const tournamentId =
@@ -164,6 +452,7 @@ app.post("/internal/tournament-rooms", (req, res) => {
       typeof body.maxRounds === "number" && body.maxRounds > 0
         ? body.maxRounds
         : 3;
+    const shouldNotify = body.notify !== false;
 
     if (!tournamentId || !tournamentMatchId) {
       res.status(400).json({
@@ -185,13 +474,13 @@ app.post("/internal/tournament-rooms", (req, res) => {
       });
 
       console.log(
-        `[tournament-registry] tournament:matchReady tournamentId=${tournamentId} matchId=${tournamentMatchId} roomCode=${roomCode} existing=${existing} players=${notifyPlayerIds.length}`
+        `[TournamentRoom] notified tournamentId=${tournamentId} matchId=${tournamentMatchId} roomCode=${roomCode} existing=${existing} players=${notifyPlayerIds.length}`
       );
     };
 
     const existingCode = tournamentMatchRooms.get(tournamentMatchId);
     if (existingCode && rooms.has(existingCode)) {
-      notifyPlayers(existingCode, true);
+      if (shouldNotify) notifyPlayers(existingCode, true);
       res.json({ roomCode: existingCode, existing: true });
       return;
     }
@@ -211,7 +500,13 @@ app.post("/internal/tournament-rooms", (req, res) => {
 
       tournamentMatchRooms.set(tournamentMatchId, code);
 
-      notifyPlayers(code, false);
+      console.log(
+        `[TournamentRoom] created tournamentId=${tournamentId} matchId=${tournamentMatchId} roomCode=${code}`
+      );
+
+      if (shouldNotify) {
+        notifyPlayers(code, false);
+      }
       res.json({ roomCode: code, existing: false });
     } catch (error) {
       console.error("POST /internal/tournament-rooms failed:", error);
@@ -224,6 +519,72 @@ app.post("/internal/tournament-rooms", (req, res) => {
     }
   }
 );
+
+/**
+ * Sprint 1 TASK 5: dedicated notify endpoint. Used by the web caller AFTER
+ * `room_code` has been persisted to Supabase, so clients never receive a
+ * `tournament:matchReady` event for a room whose code isn't yet stored.
+ */
+app.post("/internal/tournament-rooms/notify", (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    res.status(401).json({ error: "Unauthorized." });
+    return;
+  }
+
+  const body = req.body as {
+    tournamentId?: string;
+    tournamentMatchId?: string;
+    roomCode?: string;
+    notifyPlayerIds?: string[];
+  };
+
+  const tournamentId =
+    typeof body.tournamentId === "string" ? body.tournamentId.trim() : "";
+  const tournamentMatchId =
+    typeof body.tournamentMatchId === "string"
+      ? body.tournamentMatchId.trim()
+      : "";
+  const roomCode =
+    typeof body.roomCode === "string" ? body.roomCode.trim() : "";
+  const notifyPlayerIds = Array.isArray(body.notifyPlayerIds)
+    ? body.notifyPlayerIds
+        .filter(
+          (id): id is string => typeof id === "string" && id.trim().length > 0
+        )
+        .map((id) => id.trim())
+    : [];
+
+  if (!tournamentId || !tournamentMatchId || !roomCode) {
+    res.status(400).json({
+      error:
+        "tournamentId, tournamentMatchId, and roomCode are required.",
+    });
+    return;
+  }
+
+  if (!rooms.has(roomCode)) {
+    console.warn(
+      `[TournamentRoom] notify skipped: room missing roomCode=${roomCode} matchId=${tournamentMatchId}`
+    );
+    res.status(404).json({ error: "Realtime room missing." });
+    return;
+  }
+
+  if (notifyPlayerIds.length > 0) {
+    emitTournamentMatchReady(io, {
+      tournamentId,
+      tournamentMatchId,
+      roomCode,
+      playerIds: notifyPlayerIds,
+    });
+
+    console.log(
+      `[TournamentRoom] notified after persistence tournamentId=${tournamentId} matchId=${tournamentMatchId} roomCode=${roomCode} players=${notifyPlayerIds.length}`
+    );
+  }
+
+  res.json({ ok: true });
+});
 
 app.get("/health", (_req, res) => {
   const realtimeRegistry = getRealtimeRegistryStats();
@@ -257,7 +618,7 @@ function buildPlayerNames(room: Room) {
 function emitRoomUpdate(roomCode: string, room: Room) {
   ensureAuthoritativeRoomRoles(room);
 
-  io.to(roomCode).emit("room:update", {
+  const payload = {
     roomCode,
     players: room.players.map((player) => player.playerId),
     playerNames: buildPlayerNames(room),
@@ -266,7 +627,10 @@ function emitRoomUpdate(roomCode: string, room: Room) {
     roles: room.roles,
     kickerPlayerId: getPlayerByRole(room, "KICKER") ?? null,
     keeperPlayerId: getPlayerByRole(room, "KEEPER") ?? null,
-  });
+  };
+  io.to(roomCode).emit("room:update", payload);
+  mirrorToSpectators(room, "room:update", payload);
+  touchRoomActivity(room);
 }
 
 function isTournamentRoom(room: Room): boolean {
@@ -292,7 +656,7 @@ function emitMatchState(roomCode: string, room: Room) {
   const kickerPlayerId = getPlayerByRole(room, "KICKER") ?? null;
   const keeperPlayerId = getPlayerByRole(room, "KEEPER") ?? null;
 
-  io.to(roomCode).emit("match:update", {
+  const payload = {
     roomCode,
     roles: room.roles,
     kickerPlayerId,
@@ -309,7 +673,11 @@ function emitMatchState(roomCode: string, room: Room) {
     matchInstance: room.matchInstance ?? 1,
     matchType: room.matchType,
     tournamentId: isTournamentRoom(room) ? room.tournamentId : undefined,
-  });
+  };
+  io.to(roomCode).emit("match:update", payload);
+  // Scoreboard / round / status are safe for spectators (no pick state).
+  mirrorToSpectators(room, "match:update", payload);
+  touchRoomActivity(room);
 }
 
 async function resolveActivePenalty444SeasonId(): Promise<string | null> {
@@ -331,9 +699,28 @@ async function resolveActivePenalty444SeasonId(): Promise<string | null> {
   return data?.[0]?.id ?? null;
 }
 
+/**
+ * Sprint 1 TASK 7: bracket advancement is strictly idempotent.
+ *
+ * Guards in order:
+ *   - `room.bracketAdvanced` short-circuits in-process duplicates.
+ *   - Load slot; if `winner_entry_id` is already set:
+ *       * same winner → log "duplicate skipped" and bail.
+ *       * different winner → log "winner conflict" and bail without
+ *         overwriting (this would otherwise corrupt the bracket).
+ *   - The slot UPDATE uses `.is("winner_entry_id", null)` so the
+ *     transition completed→completed never silently overwrites.
+ *   - Parent feeder UPDATE uses `.is(<feeder>, null)` for the same
+ *     guard.
+ */
 async function advanceTournamentFromRoom(room: Room) {
   if (room.matchType !== "tournament") return;
-  if (room.bracketAdvanced) return;
+  if (room.bracketAdvanced) {
+    console.log(
+      `[TournamentAdvance] duplicate skipped (in-memory flag) roomCode=${room.code} matchId=${room.tournamentMatchId ?? "—"}`
+    );
+    return;
+  }
 
   if (!room.tournamentMatchId || !room.tournamentId) {
     console.warn("[tournament advance] missing tournament ids on room", {
@@ -453,11 +840,22 @@ async function advanceTournamentFromRoom(room: Room) {
   const winnerEntryId = winnerEntry.id;
 
   if (slot.winner_entry_id && slot.winner_entry_id !== winnerEntryId) {
-    console.warn("[tournament advance] slot already has a different winner", {
-      tournamentMatchId: slot.id,
-      existingWinnerEntryId: slot.winner_entry_id,
-      winnerEntryId,
-    });
+    console.error(
+      "[TournamentAdvance] winner conflict — slot already has a different winner; refusing to overwrite",
+      {
+        tournamentMatchId: slot.id,
+        existingWinnerEntryId: slot.winner_entry_id,
+        winnerEntryId,
+      }
+    );
+    room.bracketAdvanced = true;
+    return;
+  }
+
+  if (slot.winner_entry_id && slot.winner_entry_id === winnerEntryId) {
+    console.log(
+      `[TournamentAdvance] duplicate skipped (slot already won by same entry) tournamentMatchId=${slot.id}`
+    );
     room.bracketAdvanced = true;
     return;
   }
@@ -487,7 +885,7 @@ async function advanceTournamentFromRoom(room: Room) {
 
     if (completedRow) {
       nextMatchId = completedRow.next_match_id;
-      console.log("[tournament advance] slot completed", {
+      console.log("[TournamentAdvance] applied", {
         tournamentMatchId: slot.id,
         winnerEntryId,
         roomCode: room.code,
@@ -545,6 +943,17 @@ async function advanceTournamentFromRoom(room: Room) {
       winnerUserId,
     });
     room.bracketAdvanced = true;
+
+    // Phase 11 TASK 5: foundation-only economy settlement when a
+    // tournament completes. No-op when economy off or no entry fee
+    // escrows exist. The underlying helper inserts a settlement_events
+    // row and emits an audit event but does NOT distribute prize money
+    // (waiting on Phase 12 prize distribution work).
+    try {
+      await settleTournamentEconomyForTournament(room.tournamentId);
+    } catch (error) {
+      console.error("[Settlement] tournament economy settle crashed:", error);
+    }
     return;
   }
 
@@ -661,16 +1070,44 @@ async function advanceTournamentFromRoom(room: Room) {
   room.bracketAdvanced = true;
 }
 
-async function saveMatchResult(room: Room) {
+/**
+ * Sprint 1 TASK 3: save match result with strict idempotency.
+ *
+ * Layers of defense (any one of which is sufficient to prevent a double
+ * application of RP / advancement):
+ *   1. In-memory: `room.resultSaved` flips before we await the DB call.
+ *   2. DB: insert keyed on (room_code, match_instance). When the DB-level
+ *      unique constraint is in place (see docs/hardening-sprint-1-checklist.md)
+ *      a duplicate insert returns a unique-violation error which we
+ *      detect by Postgres code "23505" and treat as a benign duplicate.
+ *      Even without the constraint we still rely on (1).
+ *   3. RP: `applyPlayerProgressionFromMatch` itself short-circuits when
+ *      `room.progressionApplied` is already true.
+ *
+ * Returns `true` only when the result was newly persisted (used by
+ * `endMatch` to gate stake settlement to a "result first" ordering —
+ * Sprint 1 TASK 9).
+ */
+async function saveMatchResult(room: Room): Promise<boolean> {
   if (!supabase) {
     console.warn("Supabase backend client is not configured. Match not saved.");
-    return;
+    return false;
   }
 
-  if (room.resultSaved) return;
+  if (room.resultSaved) {
+    console.log(
+      `[Settlement] duplicate result skipped (in-memory flag) roomCode=${room.code} instanceId=${room.matchInstanceId}`
+    );
+    return false;
+  }
 
   const outcome = resolveMatchOutcome(room);
-  if (!outcome) return;
+  if (!outcome) return false;
+
+  // Flip BEFORE the await to close the race window where a concurrent
+  // caller (e.g. endMatch racing against a stale resolveRound timer)
+  // could enter this function in parallel.
+  room.resultSaved = true;
 
   const {
     firstPlayer,
@@ -713,13 +1150,30 @@ async function saveMatchResult(room: Room) {
 
   const { error } = await supabase.from("match_results").insert(payload);
 
-  if (error) {
+  // Unique-violation Postgres code: treat as a benign duplicate. Other
+  // failures invalidate the in-memory flag so a future retry can succeed.
+  const isUniqueViolation =
+    error?.code === "23505" ||
+    (typeof error?.message === "string" &&
+      error.message.toLowerCase().includes("duplicate"));
+
+  if (error && !isUniqueViolation) {
     console.error("Failed to save match result:", error.message);
-    return;
+    room.resultSaved = false;
+    return false;
   }
 
-  room.resultSaved = true;
-  console.log(`Saved match result for room ${room.code}`);
+  if (isUniqueViolation) {
+    console.log(
+      `[Settlement] duplicate result skipped (db unique) roomCode=${room.code} instanceId=${room.matchInstanceId}`
+    );
+    // Don't run RP / advancement again — another writer already won.
+    return false;
+  }
+
+  console.log(
+    `[Settlement] result insert created roomCode=${room.code} instanceId=${room.matchInstanceId}`
+  );
 
   try {
     await advanceTournamentFromRoom(room);
@@ -730,11 +1184,15 @@ async function saveMatchResult(room: Room) {
   // Phase 6: real competitive progression. Runs after bracket advancement
   // so tournament context (final / champion) is up to date when we award
   // bonuses. Never throws into the match save path; errors are logged.
+  // Sprint 1 TASK 3: progression itself is also gated by
+  // `room.progressionApplied` so a duplicate caller bails.
   try {
     await applyPlayerProgressionFromMatch(supabase, room, outcome);
   } catch (progressionError) {
     console.error("Player progression crashed:", progressionError);
   }
+
+  return true;
 }
 
 function endMatch(roomCode: string, room: Room) {
@@ -742,6 +1200,8 @@ function endMatch(roomCode: string, room: Room) {
 
   clearRoomTimer(room);
 
+  // Sprint 1 TASK 6: explicitly leave `isResolving` consistent with the
+  // ended state — the continuation timer guards against late wakes.
   room.isResolving = false;
 
   room.matchEnded = true;
@@ -766,20 +1226,65 @@ function endMatch(roomCode: string, room: Room) {
     activeMap: Array.from(playerActiveRooms.entries()),
   });
 
-  io.to(roomCode).emit("match:end", {
+  const matchEndPayload = {
     scores: room.scores,
     tournamentId: isTournamentRoom(room) ? room.tournamentId : undefined,
-  });
+  };
+  io.to(roomCode).emit("match:end", matchEndPayload);
+  // Spectators get the official result-safe payload too.
+  mirrorToSpectators(room, "match:end", matchEndPayload);
 
   emitMatchState(roomCode, room);
 
-  saveMatchResult(room).catch((error) => {
-    console.error("Match result save crashed:", error);
-  });
+  // Sprint 1 TASK 9: settlement strictly AFTER result save success.
+  //
+  // We launch a single async chain so that stake settlement only fires
+  // if `saveMatchResult` newly persisted a row. For free matches
+  // (`stakeAmount <= 0`) the stake path is a no-op anyway; the ordering
+  // is the production-ready contract we want before adding wallet logic.
+  (async () => {
+    let saved = false;
+    try {
+      saved = await saveMatchResult(room);
+    } catch (error) {
+      console.error("Match result save crashed:", error);
+    }
 
-  settleStakes(room).catch((error) => {
-    console.error("Stake settlement crashed:", error);
-  });
+    if (!saved && !room.resultSaved) {
+      console.warn(
+        `[Settlement] stake settlement skipped result save failed roomCode=${roomCode}`
+      );
+    } else if (room.settlementStarted) {
+      console.log(
+        `[Settlement] duplicate stake settlement skipped roomCode=${roomCode}`
+      );
+    } else {
+      room.settlementStarted = true;
+      console.log(
+        `[Settlement] result saved before stake settlement roomCode=${roomCode}`
+      );
+      try {
+        await settleStakes(room);
+      } catch (error) {
+        console.error("Stake settlement crashed:", error);
+      }
+
+      // Phase 11 TASK 2: economy settlement runs in parallel with the
+      // legacy stake settle. No-op when economy off / free match. We
+      // intentionally run this AFTER `settleStakes` so the legacy path
+      // is untouched and any economy failure cannot poison the legacy
+      // settlement state.
+      try {
+        await settleMatchEconomyForRoom(room);
+      } catch (error) {
+        console.error("[Settlement] economy settle crashed:", error);
+      }
+    }
+
+    // Sprint 1 TASK 4: schedule the room for delayed deletion so memory
+    // doesn't leak. Cancellable if a rematch starts before the timer.
+    scheduleRoomCleanup(io, roomCode, "match-ended");
+  })();
 }
 
 async function abortMatchEarly(
@@ -807,18 +1312,32 @@ async function abortMatchEarly(
 
   await refundBothStakes(room);
 
-  io.to(roomCode).emit("match:aborted", {
+  // Phase 11 TASK 3: parallel economy refund for every locked match
+  // escrow. No-op when economy off, stake=0, or no escrows exist.
+  try {
+    await refundAllMatchEscrows(room);
+  } catch (error) {
+    console.error("[Refund] economy refund crashed:", error);
+  }
+
+  const abortPayload = {
     roomCode,
     abortedBy: abortedByPlayerId,
     matchInstance: room.matchInstance ?? 1,
     reason: "early_cancel",
-  });
+  };
+  io.to(roomCode).emit("match:aborted", abortPayload);
+  mirrorToSpectators(room, "match:aborted", abortPayload);
 
   emitMatchState(roomCode, room);
   emitRoomUpdate(roomCode, room);
+
+  // Sprint 1 TASK 4: aborted rooms also get scheduled for cleanup.
+  scheduleRoomCleanup(io, roomCode, "match-aborted");
 }
 
 const resolveRoundSeqByRoom = new Map<string, number>();
+bindResolveSeqMap(resolveRoundSeqByRoom);
 
 function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
   if (room.matchEnded) return;
@@ -831,6 +1350,7 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
 
   room.isResolving = true;
   clearPickTimer(room);
+  touchRoomActivity(room);
 
   const resolveSeq = (resolveRoundSeqByRoom.get(roomCode) ?? 0) + 1;
   resolveRoundSeqByRoom.set(roomCode, resolveSeq);
@@ -869,7 +1389,7 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
     }
   }
 
-  io.to(roomCode).emit("match:result", {
+  const matchResultPayload = {
     roomCode,
     round: resolvingRound,
     kickerPlayerId,
@@ -878,7 +1398,11 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
     keeperPick: keeperPick || null,
     result,
     statusMessage,
-  });
+  };
+  io.to(roomCode).emit("match:result", matchResultPayload);
+  // Spectator-safe: this fires AFTER picks have been revealed via the
+  // server-authoritative resolve. Pre-reveal picks are never emitted.
+  mirrorToSpectators(room, "match:result", matchResultPayload);
 
   if (room.resolveContinuationTimeout) {
     clearTimeout(room.resolveContinuationTimeout);
@@ -895,102 +1419,118 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
 
     const r = rooms.get(roomCode);
     if (!r) {
-      room.isResolving = false;
+      // Room is gone. Nothing to mutate.
       return;
     }
 
+    // Sprint 1 TASK 6: bail without mutating isResolving on stale
+    // continuations. The matching authoritative continuation will set
+    // state for the active sequence.
     if (resolveRoundSeqByRoom.get(roomCode) !== resolveSeq) {
       console.log(
-        `[resolveRound] skip stale continuation room=${roomCode} round=${r.round} seq=${resolveSeq}`
+        `[Resolve] stale continuation skipped roomCode=${roomCode} round=${r.round} seq=${resolveSeq}`
       );
-      r.isResolving = false;
       return;
     }
 
     if (r.matchEnded) {
-      r.isResolving = false;
+      // Match already ended (likely via forfeit / disconnect). Leave the
+      // ended room state stable — do NOT reset isResolving on an ended
+      // room (that would invite "late continuation rearms timer" bugs).
+      console.log(
+        `[Resolve] ended room no reset roomCode=${roomCode} seq=${resolveSeq}`
+      );
       return;
     }
 
-    try {
-      const totalNormalTurns = r.maxRounds * 2;
-      const isFinalNormalTurn =
-        r.phase === "NORMAL" && r.round >= totalNormalTurns;
+    // From here on we're committed to either ending the match or arming
+    // the next round. Explicit state transitions only — no blanket
+    // `r.isResolving = false` in a finally.
+    const totalNormalTurns = r.maxRounds * 2;
+    const isFinalNormalTurn =
+      r.phase === "NORMAL" && r.round >= totalNormalTurns;
 
-      const playerIds = r.players.map((player) => player.playerId);
-      const firstPlayerId = playerIds[0];
-      const secondPlayerId = playerIds[1];
+    const playerIds = r.players.map((player) => player.playerId);
+    const firstPlayerId = playerIds[0];
+    const secondPlayerId = playerIds[1];
 
-      const firstScore = firstPlayerId ? r.scores[firstPlayerId] || 0 : 0;
-      const secondScore = secondPlayerId ? r.scores[secondPlayerId] || 0 : 0;
+    const firstScore = firstPlayerId ? r.scores[firstPlayerId] || 0 : 0;
+    const secondScore = secondPlayerId ? r.scores[secondPlayerId] || 0 : 0;
 
-      const kicksTakenByFirst = Math.ceil(r.round / 2);
-      const kicksTakenBySecond = Math.floor(r.round / 2);
+    const kicksTakenByFirst = Math.ceil(r.round / 2);
+    const kicksTakenBySecond = Math.floor(r.round / 2);
 
-      const remainingFirst = r.maxRounds - kicksTakenByFirst;
-      const remainingSecond = r.maxRounds - kicksTakenBySecond;
+    const remainingFirst = r.maxRounds - kicksTakenByFirst;
+    const remainingSecond = r.maxRounds - kicksTakenBySecond;
 
-      const firstAlreadyWon =
-        r.phase === "NORMAL" && firstScore > secondScore + remainingSecond;
+    const firstAlreadyWon =
+      r.phase === "NORMAL" && firstScore > secondScore + remainingSecond;
 
-      const secondAlreadyWon =
-        r.phase === "NORMAL" && secondScore > firstScore + remainingFirst;
+    const secondAlreadyWon =
+      r.phase === "NORMAL" && secondScore > firstScore + remainingFirst;
 
-      if (firstAlreadyWon || secondAlreadyWon) {
-        endMatch(roomCode, r);
-        return;
-      }
-
-      if (isFinalNormalTurn) {
-        if (shouldEnterSuddenDeath(r)) {
-          r.phase = "SUDDEN_DEATH";
-          r.suddenDeathRound = 1;
-          r.picks = {};
-          r.round += 1;
-          swapRoles(r);
-
-          io.to(roomCode).emit("match:status", {
-            roomCode,
-            message: "Match tied. Sudden Death begins.",
-            timeoutSeconds: 10,
-            phase: r.phase,
-            suddenDeathRound: r.suddenDeathRound,
-          });
-
-          emitRoomUpdate(roomCode, r);
-          emitMatchState(roomCode, r);
-          startRoundTimer(roomCode, r);
-          return;
-        }
-
-        endMatch(roomCode, r);
-        return;
-      }
-
-      if (r.phase === "SUDDEN_DEATH" && shouldEndSuddenDeath(r)) {
-        endMatch(roomCode, r);
-        return;
-      }
-
-      if (r.phase === "SUDDEN_DEATH") {
-        const suddenTurnsPlayed = r.round - totalNormalTurns;
-
-        if (suddenTurnsPlayed > 0 && suddenTurnsPlayed % 2 === 0) {
-          r.suddenDeathRound += 1;
-        }
-      }
-
-      swapRoles(r);
-
-      r.picks = {};
-      r.round += 1;
-
-      emitRoomUpdate(roomCode, r);
-      emitMatchState(roomCode, r);
-      startRoundTimer(roomCode, r);
-    } finally {
-      r.isResolving = false;
+    if (firstAlreadyWon || secondAlreadyWon) {
+      // endMatch sets matchEnded; do not flip isResolving here.
+      endMatch(roomCode, r);
+      return;
     }
+
+    if (isFinalNormalTurn) {
+      if (shouldEnterSuddenDeath(r)) {
+        r.phase = "SUDDEN_DEATH";
+        r.suddenDeathRound = 1;
+        r.picks = {};
+        r.round += 1;
+        swapRoles(r);
+
+        io.to(roomCode).emit("match:status", {
+          roomCode,
+          message: "Match tied. Sudden Death begins.",
+          timeoutSeconds: 10,
+          phase: r.phase,
+          suddenDeathRound: r.suddenDeathRound,
+        });
+
+        emitRoomUpdate(roomCode, r);
+        emitMatchState(roomCode, r);
+        // Next round is officially starting → clear resolving just before.
+        r.isResolving = false;
+        console.log(
+          `[Resolve] next round armed roomCode=${roomCode} round=${r.round} phase=${r.phase}`
+        );
+        startRoundTimer(roomCode, r);
+        return;
+      }
+
+      endMatch(roomCode, r);
+      return;
+    }
+
+    if (r.phase === "SUDDEN_DEATH" && shouldEndSuddenDeath(r)) {
+      endMatch(roomCode, r);
+      return;
+    }
+
+    if (r.phase === "SUDDEN_DEATH") {
+      const suddenTurnsPlayed = r.round - totalNormalTurns;
+
+      if (suddenTurnsPlayed > 0 && suddenTurnsPlayed % 2 === 0) {
+        r.suddenDeathRound += 1;
+      }
+    }
+
+    swapRoles(r);
+
+    r.picks = {};
+    r.round += 1;
+
+    emitRoomUpdate(roomCode, r);
+    emitMatchState(roomCode, r);
+    r.isResolving = false;
+    console.log(
+      `[Resolve] next round armed roomCode=${roomCode} round=${r.round} phase=${r.phase}`
+    );
+    startRoundTimer(roomCode, r);
   }, continuationPauseMs);
 }
 
@@ -1062,6 +1602,24 @@ io.on("connection", (socket) => {
     `Socket connected: ${socket.id}. Connected sockets: ${io.engine.clientsCount}`
   );
 
+  // Sprint 2 TASK 2: best-effort Supabase JWT verification on connect.
+  // Non-blocking — gameplay handlers still work for anonymous clients
+  // until the client migration finishes (see docs/socket-auth-plan.md).
+  void verifySocketJwt(socket).then((result) => {
+    if (result.ok === true) {
+      console.log(
+        `[Security] jwt verified socketId=${socket.id} userId=${result.userId}`
+      );
+    } else {
+      const reason = result.reason;
+      if (reason !== "no_token" && reason !== "no_backend") {
+        console.warn(
+          `[Security] jwt verify failed socketId=${socket.id} reason=${reason}`
+        );
+      }
+    }
+  });
+
   socket.emit("connected", {
     socketId: socket.id,
   });
@@ -1073,6 +1631,9 @@ io.on("connection", (socket) => {
   registerRoomSocketHandlers(socket);
   registerMatchActionHandlers(socket);
   registerRematchHandlers(socket);
+  // Sprint 1 TASK 1: spectator handlers live on the SAME socket but
+  // only ever touch the spectator channel and `room.spectatorSocketIds`.
+  registerSpectatorHandlers(socket);
 
   socket.on("room:leave", ({ roomCode }: { roomCode?: string }) => {
     const code = normalizeRoomCode(roomCode ?? "");
@@ -1149,6 +1710,9 @@ io.on("connection", (socket) => {
     console.log(
       `[tournament-registry] disconnect cleanup socketId=${socket.id}`
     );
+
+    // Sprint 1 TASK 1: drop any spectator memberships this socket held.
+    pruneSpectatorOnDisconnect(socket.id);
 
     removeRankedQueueEntryBySocketId(socket.id);
 
@@ -1234,6 +1798,100 @@ io.on("connection", (socket) => {
     }
   });
 });
+
+// Sprint 1 TASK 8: start the stale-room sweep. Runs every 60s and
+// removes empty / idle / dangling rooms based on `lastActivityAt`.
+startStaleRoomSweeper(io);
+
+/**
+ * Phase 12 TASK 9 — Tournament room mapping rehydration.
+ *
+ * `tournamentMatchRooms` is in-memory; on a hot restart the realtime
+ * server forgot which `tournament_match_id → room_code` mappings were
+ * already issued. The next `POST /internal/tournament-rooms` call
+ * minted a NEW room code, leaving the persisted `tournament_matches.room_code`
+ * out of sync.
+ *
+ * This boot-time pass rebuilds the map from the durable source of
+ * truth: `tournament_matches.room_code`. It is a NO-OP when no rows
+ * match. We don't reconstruct the in-memory `Room` object — that's a
+ * heavier lift; if a tournament match was actively mid-game the player
+ * must rejoin via the lobby flow. Documented in
+ * `docs/economy-operations.md`.
+ */
+async function rehydrateTournamentRoomsMap(): Promise<void> {
+  if (!supabase) return;
+  try {
+    const { data, error } = await supabase
+      .from("tournament_matches")
+      .select("id, room_code, status, winner_entry_id")
+      .not("room_code", "is", null)
+      .is("winner_entry_id", null)
+      .in("status", ["pending", "in_progress", "ready"]);
+
+    if (error) {
+      console.warn(
+        "[TournamentRoom] rehydration query failed:",
+        error.message
+      );
+      return;
+    }
+    let restored = 0;
+    for (const row of data ?? []) {
+      const matchId = row.id as string;
+      const roomCode = row.room_code as string | null;
+      if (!roomCode) continue;
+      tournamentMatchRooms.set(matchId, roomCode);
+      restored += 1;
+    }
+    console.log(
+      `[TournamentRoom] rehydrated ${restored} tournament_match→room_code mappings`
+    );
+  } catch (err) {
+    console.warn("[TournamentRoom] rehydration crashed:", err);
+  }
+}
+void rehydrateTournamentRoomsMap();
+
+// Phase 12 TASK 10: hard launch blocker check. We REFUSE to start the
+// server when real-money is enabled without JWT enforcement. Any other
+// blocker is logged loudly but does not abort startup (real money is
+// the only fatal mismatch).
+function economyLaunchBlockers(): string[] {
+  const blockers: string[] = [];
+  const realMoney = process.env.ECONOMY_REAL_MONEY_ENABLED === "true";
+  const jwtEnforce = process.env.SOCKET_JWT_ENFORCE === "true";
+  const economyEnabled = process.env.ECONOMY_ENABLED === "true";
+
+  if (realMoney && !jwtEnforce) {
+    blockers.push(
+      "ECONOMY_REAL_MONEY_ENABLED=true but SOCKET_JWT_ENFORCE!=true"
+    );
+  }
+  if (realMoney && !economyEnabled) {
+    blockers.push(
+      "ECONOMY_REAL_MONEY_ENABLED=true but ECONOMY_ENABLED!=true"
+    );
+  }
+  return blockers;
+}
+
+const launchBlockers = economyLaunchBlockers();
+if (launchBlockers.length > 0) {
+  const realMoney = process.env.ECONOMY_REAL_MONEY_ENABLED === "true";
+  if (realMoney) {
+    console.error(
+      "[Economy] FATAL: real money is enabled with launch blockers:",
+      launchBlockers
+    );
+    // Fail-closed: refuse to bind the port. Real money MUST NOT start
+    // unless every blocker is cleared.
+    process.exit(1);
+  }
+  for (const blocker of launchBlockers) {
+    console.warn(`[Economy] launch blocker (non-fatal): ${blocker}`);
+  }
+}
 
 server.listen(4000, () => {
   console.log("Server running on http://localhost:4000");

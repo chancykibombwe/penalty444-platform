@@ -8,6 +8,10 @@ import type {
   Room,
   RoomPlayer,
 } from "../types/room";
+import {
+  lockMatchEscrowForPlayer,
+  refundMatchEscrowForPlayer,
+} from "../economy";
 
 type CreateRoomWithPlayersFn = (
   players: RoomPlayer[],
@@ -164,7 +168,7 @@ export function registerPublicOfferHandlers(socket: Socket) {
           });
         }
 
-        const { code } = deps.createRoomWithPlayers(
+        const { code, room } = deps.createRoomWithPlayers(
           [
             {
               playerId,
@@ -176,6 +180,29 @@ export function registerPublicOfferHandlers(socket: Socket) {
           "public",
           safeStakeLabel
         );
+
+        // Phase 11 TASK 1: parallel economy escrow lock for the host.
+        // No-op when ECONOMY_ENABLED=false or stake=0. Failures roll
+        // back the legacy lock and tear down the room so the user is
+        // never charged on either side.
+        const economyHostLock = await lockMatchEscrowForPlayer(
+          room,
+          playerId
+        );
+        if (economyHostLock.ok === false) {
+          await deps.unlockStake(playerId, stakeAmount);
+          clearRoomTimer(room);
+          rooms.delete(code);
+          deps.clearPlayerActiveRoom(playerId);
+          socket.emit("publicOffers:error", {
+            message: "Failed to lock arena escrow. Please try again.",
+          });
+          console.warn(
+            `[Economy] host escrow lock failed → rolled back roomCode=${code} ` +
+              `playerId=${playerId} reason=${economyHostLock.reason}`
+          );
+          return;
+        }
 
         const offer: PublicMatchOffer = {
           offerId: generateOfferId(),
@@ -300,6 +327,26 @@ export function registerPublicOfferHandlers(socket: Socket) {
           return;
         }
 
+        // Phase 11 TASK 1: parallel economy escrow lock for the guest.
+        // If the lock fails we unwind the legacy lock so the player is
+        // not charged. The host's escrow stays locked until they either
+        // get matched with another guest or cancel.
+        const economyGuestLock = await lockMatchEscrowForPlayer(
+          room,
+          playerId
+        );
+        if (economyGuestLock.ok === false) {
+          await deps.unlockStake(playerId, offer.stakeAmount);
+          socket.emit("publicOffers:error", {
+            message: "Failed to lock arena escrow. Please try again.",
+          });
+          console.warn(
+            `[Economy] guest escrow lock failed → reverted legacy lock ` +
+              `roomCode=${offer.roomCode} playerId=${playerId} reason=${economyGuestLock.reason}`
+          );
+          return;
+        }
+
         if (offer.stakeAmount > 0) {
           socket.emit("wallet:update", {
             reason: "stake_locked",
@@ -379,6 +426,12 @@ export function registerPublicOfferHandlers(socket: Socket) {
       publicOffers.delete(offerId);
 
       await deps.unlockStake(playerId, offer.stakeAmount);
+
+      // Phase 11 TASK 3: parallel economy refund for the host. Safe
+      // even when no economy escrow exists (no_escrow → benign skip).
+      if (waitingRoom) {
+        await refundMatchEscrowForPlayer(waitingRoom, playerId);
+      }
 
       if (offer.stakeAmount > 0) {
         socket.emit("wallet:update", {

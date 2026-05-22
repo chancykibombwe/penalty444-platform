@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { supabase } from "../../lib/supabase/client";
 import {
   EMPTY_COUNTS,
   fetchPlatformLiveCounts,
   type PlatformLiveCounts,
 } from "../../lib/live/activity";
+import { useVisibleInterval } from "../../lib/polling/useVisibleInterval";
 import LivePulseBadge from "./LivePulseBadge";
 
 /**
@@ -92,27 +93,15 @@ const TONE_VALUE: Record<Tile["tone"], string> = {
 
 export default function PlatformLiveStatus({ refreshMs = 30_000 }: Props) {
   const [counts, setCounts] = useState<PlatformLiveCounts | null>(null);
-  const mountedRef = useRef(true);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    let cancelled = false;
-
-    async function load() {
+  useVisibleInterval(
+    async (signal) => {
       const next = await fetchPlatformLiveCounts(supabase);
-      if (cancelled || !mountedRef.current) return;
+      if (signal.aborted) return;
       setCounts(next);
-    }
-
-    void load();
-    const interval = window.setInterval(load, refreshMs);
-
-    return () => {
-      cancelled = true;
-      mountedRef.current = false;
-      window.clearInterval(interval);
-    };
-  }, [refreshMs]);
+    },
+    { intervalMs: refreshMs }
+  );
 
   const data = counts ?? EMPTY_COUNTS;
   const isLoading = counts === null;

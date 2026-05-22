@@ -360,12 +360,24 @@ async function applyProgressForPlayer(
 /**
  * Apply competitive progression for both players after a saved match.
  * Safe to call after match_results insert; failures are logged, never thrown.
+ *
+ * Sprint 1 TASK 3: idempotent on the room object — flips
+ * `room.progressionApplied` so a duplicate save path can never apply RP
+ * twice for the same match instance.
  */
 export async function applyPlayerProgressionFromMatch(
   admin: SupabaseClient,
   room: Room,
   outcome: ResolvedMatchOutcome
 ): Promise<void> {
+  if (room.progressionApplied) {
+    console.log(
+      `[Progression] skipped duplicate roomCode=${room.code} instanceId=${room.matchInstanceId}`
+    );
+    return;
+  }
+  room.progressionApplied = true;
+
   const winnerId = outcome.winner?.playerId ?? null;
 
   // Champion flag may lag bracket completion — resolve after a short delay
@@ -404,4 +416,8 @@ export async function applyPlayerProgressionFromMatch(
       console.error("[progression] player update crashed:", player.id, err);
     }
   }
+
+  console.log(
+    `[Progression] applied roomCode=${room.code} instanceId=${room.matchInstanceId} matchType=${room.matchType}`
+  );
 }

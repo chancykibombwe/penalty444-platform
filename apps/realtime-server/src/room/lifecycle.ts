@@ -1,8 +1,17 @@
+import { randomUUID } from "crypto";
 import type { Server } from "socket.io";
 import { playerActiveRooms, rooms } from "../state/stores";
 import type { MatchType, Room, RoomPlayer } from "../types/room";
 import { getStakeAmount } from "../wallet/stakes";
 import { generateRoomCode, normalizeRoomCode } from "./codes";
+
+/**
+ * Hardening Sprint 1 — TASK 3: stable per-match-instance id. Recomputed
+ * on rematch (`resetRoomForRematch` bumps it explicitly).
+ */
+export function generateMatchInstanceId(): string {
+  return randomUUID();
+}
 
 export function getTrackedActiveRoom(playerId?: string) {
   if (!playerId) return null;
@@ -90,10 +99,12 @@ export function createRoomWithPlayers(
   const firstPlayer = players[0];
   const secondPlayer = players[1];
   const stakeAmount = getStakeAmount(stakeLabel);
+  const now = Date.now();
 
   const room: Room = {
     code,
     matchInstance: 1,
+    matchInstanceId: generateMatchInstanceId(),
     players,
     roles: {},
     picks: {},
@@ -108,8 +119,13 @@ export function createRoomWithPlayers(
     stakeLabel,
     stakeAmount,
     stakeSettled: false,
+    settlementStarted: false,
     resultSaved: false,
+    progressionApplied: false,
     isResolving: false,
+    createdAt: now,
+    lastActivityAt: now,
+    spectatorSocketIds: new Set<string>(),
   };
 
   if (firstPlayer) {
@@ -192,10 +208,12 @@ export function createTournamentRoom({
   const code = generateRoomCode();
   const firstPlayer = players[0];
   const secondPlayer = players[1];
+  const now = Date.now();
 
   const room: Room = {
     code,
     matchInstance: 1,
+    matchInstanceId: generateMatchInstanceId(),
     players: [...players],
     roles: {},
     picks: {},
@@ -213,8 +231,13 @@ export function createTournamentRoom({
     stakeLabel: "Free",
     stakeAmount: 0,
     stakeSettled: false,
+    settlementStarted: false,
     resultSaved: false,
+    progressionApplied: false,
     isResolving: false,
+    createdAt: now,
+    lastActivityAt: now,
+    spectatorSocketIds: new Set<string>(),
   };
 
   if (firstPlayer) {

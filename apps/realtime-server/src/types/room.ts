@@ -14,6 +14,13 @@ export type Room = {
   code: string;
   /** Increments when a rematch starts in the same room; pairs with room_code for saved rows. */
   matchInstance: number;
+  /**
+   * Hardening (Sprint 1, TASK 3): stable per-match-instance id used for
+   * idempotency keys. Generated when a match starts; rotated when a rematch
+   * resets the room. Lets cleanup, settlement, and progression compare the
+   * exact instance they were scheduled against the currently active one.
+   */
+  matchInstanceId: string;
   players: RoomPlayer[];
   roles: Record<string, Role>;
   picks: Partial<Record<Role, Lane>>;
@@ -34,7 +41,11 @@ export type Room = {
   stakeLabel: string;
   stakeAmount: number;
   stakeSettled: boolean;
+  /** Sprint 1 TASK 3: flips when settlement begins to block duplicate runs. */
+  settlementStarted?: boolean;
   resultSaved: boolean;
+  /** Sprint 1 TASK 3: flips once player progression has been applied. */
+  progressionApplied?: boolean;
   /** Set after tournament bracket row is advanced (idempotency). */
   bracketAdvanced?: boolean;
   timeout?: NodeJS.Timeout;
@@ -43,6 +54,14 @@ export type Room = {
   disconnectedPlayerId?: string;
   disconnectedAt?: number;
   disconnectForfeitTimeout?: NodeJS.Timeout;
+  /** Sprint 1 TASK 8: room creation timestamp (ms). */
+  createdAt: number;
+  /** Sprint 1 TASK 8: last meaningful activity (ms) — joins, picks, results. */
+  lastActivityAt: number;
+  /** Sprint 1 TASK 4: scheduled deletion handle. */
+  cleanupTimeout?: NodeJS.Timeout;
+  /** Sprint 1 TASK 1: spectator socket ids attached to `${code}:spectators`. */
+  spectatorSocketIds: Set<string>;
 };
 
 export type PublicMatchOffer = {

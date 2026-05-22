@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { supabase } from "../../lib/supabase/client";
 import {
   fetchPlatformActivity,
   type ActivityEvent,
   type ActivityEventTone,
 } from "../../lib/live/activity";
+import { useVisibleInterval } from "../../lib/polling/useVisibleInterval";
 import LivePulseBadge from "./LivePulseBadge";
 
 /**
@@ -59,30 +60,18 @@ export default function GlobalActivityFeed({
 }: Props) {
   const [events, setEvents] = useState<ActivityEvent[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const mountedRef = useRef(true);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    let cancelled = false;
-
-    async function load(initial: boolean) {
-      if (!initial) setRefreshing(true);
+  useVisibleInterval(
+    async (signal) => {
+      const isInitial = events === null;
+      if (!isInitial) setRefreshing(true);
       const next = await fetchPlatformActivity(supabase, limit);
-      if (cancelled || !mountedRef.current) return;
+      if (signal.aborted) return;
       setEvents(next);
-      if (!initial) setRefreshing(false);
-    }
-
-    void load(true);
-
-    const interval = window.setInterval(() => void load(false), refreshMs);
-
-    return () => {
-      cancelled = true;
-      mountedRef.current = false;
-      window.clearInterval(interval);
-    };
-  }, [limit, refreshMs]);
+      if (!isInitial) setRefreshing(false);
+    },
+    { intervalMs: refreshMs, deps: [limit] }
+  );
 
   const isLoading = events === null;
   const items = events ?? [];

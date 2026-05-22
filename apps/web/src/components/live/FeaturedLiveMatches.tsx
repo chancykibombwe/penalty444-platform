@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import {
   fetchFeaturedLiveMatches,
   type FeaturedLiveMatch,
 } from "../../lib/live/activity";
+import { useVisibleInterval } from "../../lib/polling/useVisibleInterval";
 import { supabase } from "../../lib/supabase/client";
 import FeaturedLiveMatchCard from "./FeaturedLiveMatchCard";
 import LivePulseBadge from "./LivePulseBadge";
@@ -32,27 +33,15 @@ export default function FeaturedLiveMatches({
   limit = 4,
 }: Props) {
   const [items, setItems] = useState<FeaturedLiveMatch[] | null>(null);
-  const mountedRef = useRef(true);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    let cancelled = false;
-
-    async function load() {
+  useVisibleInterval(
+    async (signal) => {
       const next = await fetchFeaturedLiveMatches(supabase, limit);
-      if (cancelled || !mountedRef.current) return;
+      if (signal.aborted) return;
       setItems(next);
-    }
-
-    void load();
-    const interval = window.setInterval(load, refreshMs);
-
-    return () => {
-      cancelled = true;
-      mountedRef.current = false;
-      window.clearInterval(interval);
-    };
-  }, [refreshMs, limit]);
+    },
+    { intervalMs: refreshMs, deps: [limit] }
+  );
 
   const isLoading = items === null;
   const list = items ?? [];

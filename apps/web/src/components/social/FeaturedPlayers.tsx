@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { supabase } from "../../lib/supabase/client";
 import {
   fetchFeaturedPlayers,
   type FeaturedPlayer,
 } from "../../lib/social/featured";
+import { useVisibleInterval } from "../../lib/polling/useVisibleInterval";
 import LivePulseBadge from "../live/LivePulseBadge";
 import RankBadge from "../player/RankBadge";
 import { ViewProfileButton, ChallengePlayerButton } from "./SocialActions";
@@ -40,27 +41,15 @@ export default function FeaturedPlayers({
   limit = 4,
 }: Props) {
   const [items, setItems] = useState<FeaturedPlayer[] | null>(null);
-  const mountedRef = useRef(true);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    let cancelled = false;
-
-    async function load() {
+  useVisibleInterval(
+    async (signal) => {
       const next = await fetchFeaturedPlayers(supabase, limit);
-      if (cancelled || !mountedRef.current) return;
+      if (signal.aborted) return;
       setItems(next);
-    }
-
-    void load();
-    const interval = window.setInterval(load, refreshMs);
-
-    return () => {
-      cancelled = true;
-      mountedRef.current = false;
-      window.clearInterval(interval);
-    };
-  }, [refreshMs, limit]);
+    },
+    { intervalMs: refreshMs, deps: [limit] }
+  );
 
   const isLoading = items === null;
   const list = items ?? [];

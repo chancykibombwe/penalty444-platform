@@ -1,7 +1,9 @@
 import type { Server, Socket } from "socket.io";
 import { clearRoomTimer } from "../gameplay/timers";
 import { normalizeRoomCode } from "../room/codes";
-import { setPlayerActiveRoom } from "../room/lifecycle";
+import { generateMatchInstanceId, setPlayerActiveRoom } from "../room/lifecycle";
+import { cancelScheduledCleanup } from "../room/cleanup";
+import { resolvePlayerForSocket } from "../security/identity";
 import { rooms } from "../state/stores";
 import type { Room } from "../types/room";
 
@@ -36,10 +38,17 @@ function resetRoomForRematch(roomCode: string, room: Room) {
   }
 
   clearRoomTimer(room);
+  // A rematch revives a previously-ended room. Cancel any pending
+  // cleanup so we don't lose the new instance to a stale timer.
+  cancelScheduledCleanup(room);
 
   room.isResolving = false;
 
   room.matchInstance = (room.matchInstance ?? 1) + 1;
+  // Sprint 1 TASK 3: rotate the instance id so idempotency keys for the
+  // previous match never collide with this one (settlement, progression,
+  // and cleanup all key off this).
+  room.matchInstanceId = generateMatchInstanceId();
 
   room.picks = {};
   room.round = 1;
@@ -49,11 +58,15 @@ function resetRoomForRematch(roomCode: string, room: Room) {
   room.matchStartedAt = undefined;
   room.rematchVotes = [];
   room.resultSaved = false;
+  room.settlementStarted = false;
+  room.progressionApplied = false;
+  room.bracketAdvanced = undefined;
   room.stakeSettled = room.stakeAmount > 0;
   room.scores = {};
   room.disconnectedPlayerId = undefined;
   room.disconnectedAt = undefined;
   room.disconnectForfeitTimeout = undefined;
+  room.lastActivityAt = Date.now();
 
   const first = room.players[0];
   const second = room.players[1];
@@ -108,6 +121,14 @@ export function registerRematchHandlers(socket: Socket) {
         return;
       }
 
+      const identity = resolvePlayerForSocket(
+        room,
+        socket,
+        playerId,
+        "match:rematch"
+      );
+      if (!identity.ok) return;
+
       if (!room.rematchVotes.includes(playerId)) {
         room.rematchVotes.push(playerId);
       }
@@ -146,6 +167,14 @@ export function registerRematchHandlers(socket: Socket) {
         });
         return;
       }
+
+      const identityDecline = resolvePlayerForSocket(
+        room,
+        socket,
+        playerId,
+        "match:rematch:decline"
+      );
+      if (!identityDecline.ok) return;
 
       room.rematchVotes = [];
 

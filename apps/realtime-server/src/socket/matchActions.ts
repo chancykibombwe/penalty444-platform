@@ -3,6 +3,8 @@ import { EARLY_CANCEL_MS } from "../config";
 import { ensureAuthoritativeRoomRoles } from "../gameplay/resolveShot";
 import { clearPickTimer } from "../gameplay/timers";
 import { normalizeRoomCode } from "../room/codes";
+import { touchRoomActivity } from "../room/cleanup";
+import { resolvePlayerForSocket } from "../security/identity";
 import { rooms } from "../state/stores";
 import type { Lane, Room } from "../types/room";
 
@@ -67,6 +69,15 @@ export function registerMatchActionHandlers(socket: Socket) {
       if (room.isResolving) return;
       if (room.disconnectedPlayerId === playerId) return;
 
+      // Sprint 1 TASK 2: socket must own the player it claims to be.
+      const identity = resolvePlayerForSocket(
+        room,
+        socket,
+        playerId,
+        "match:pick"
+      );
+      if (!identity.ok) return;
+
       ensureAuthoritativeRoomRoles(room);
 
       const role = room.roles[playerId];
@@ -75,6 +86,7 @@ export function registerMatchActionHandlers(socket: Socket) {
       if (room.picks[role]) return;
 
       room.picks[role] = lane;
+      touchRoomActivity(room);
 
       deps.io.to(code).emit("match:status", {
         roomCode: code,
@@ -169,11 +181,13 @@ export function registerMatchActionHandlers(socket: Socket) {
         return;
       }
 
-      const playerInRoom = room.players.some(
-        (player) => player.playerId === playerId
+      const identity = resolvePlayerForSocket(
+        room,
+        socket,
+        playerId,
+        "match:abortEarly"
       );
-
-      if (!playerInRoom) {
+      if (!identity.ok) {
         socket.emit("error:message", {
           message: "You are not in this match.",
         });
@@ -247,11 +261,13 @@ export function registerMatchActionHandlers(socket: Socket) {
         return;
       }
 
-      const playerInRoom = room.players.some(
-        (player) => player.playerId === playerId
+      const identity = resolvePlayerForSocket(
+        room,
+        socket,
+        playerId,
+        "match:forfeit"
       );
-
-      if (!playerInRoom) {
+      if (!identity.ok) {
         socket.emit("error:message", {
           message: "You are not in this match.",
         });

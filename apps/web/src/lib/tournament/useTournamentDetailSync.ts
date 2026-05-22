@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TournamentMatchRow } from "../../components/tournament/TournamentBracketPanel";
 import type { TournamentEntryRow } from "../../components/tournament/TournamentListPanel";
+import { useVisibleInterval } from "../polling/useVisibleInterval";
 import {
   fetchTournamentDetail,
   type TournamentDetailFetchResult,
@@ -115,46 +116,22 @@ export function useTournamentDetailSync(tournamentId: string) {
     };
   }, [tournamentId, applyFetchResult]);
 
-  useEffect(() => {
-    if (!shouldPollTournamentDetail(tournament, matches.length)) {
-      return;
+  // Sprint 2 TASK 6: visibility-aware polling for tournament detail. The
+  // hook itself pauses on hidden tabs, runs an immediate tick on resume,
+  // and stops entirely once the tournament reaches a terminal state.
+  const pollingPaused = !shouldPollTournamentDetail(tournament, matches.length);
+
+  useVisibleInterval(
+    () => {
+      scheduleSilentReload();
+    },
+    {
+      intervalMs: POLL_INTERVAL_MS,
+      paused: pollingPaused,
+      runImmediately: false,
+      deps: [scheduleSilentReload, pollingPaused],
     }
-
-    const tick = () => {
-      if (document.visibilityState !== "visible") {
-        return;
-      }
-      scheduleSilentReload();
-    };
-
-    const intervalId = window.setInterval(tick, POLL_INTERVAL_MS);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [tournament, matches.length, scheduleSilentReload]);
-
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== "visible") {
-        return;
-      }
-
-      void loadSilent();
-
-      if (!shouldPollTournamentDetail(tournament, matches.length)) {
-        return;
-      }
-
-      scheduleSilentReload();
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [tournament, matches.length, loadSilent, scheduleSilentReload]);
+  );
 
   return {
     tournament,
