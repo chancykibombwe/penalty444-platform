@@ -14,43 +14,33 @@ the operator to confirm.
 ### Security
 
 - [ ] `SOCKET_JWT_ENFORCE=true` in production env. (Server fails closed
-      without it, per Phase 12 TASK 10.) **Sprint 4 verified every
-      sensitive socket handler is enforce-ready** — flipping the env
-      flag turns the existing soft warnings into hard rejects.
+      without it, per Phase 12 TASK 10.) Roll out per the staged plan
+      in `docs/socket-auth-plan.md` § Phase 2.
 - [ ] Every socket event handler that mutates state checks
       `socket.data.userId === claimedPlayerId` and rejects on mismatch.
-      See `docs/socket-auth-plan.md` Phase 2 and `docs/socket-security.md`.
-- [ ] No client write to `wallets`, `wallet_ledger_entries`,
-      `escrow_locks`, `settlement_events`, `audit_events`,
-      `match_results`, `player_stats`, `season_player_stats`, or
-      `tournament_matches`. Verified by Sprint 3 RLS migration; the
-      browser only mutates these via authenticated server routes.
+- [ ] `player:register` and `tournament:subscribe` reject anonymous
+      sockets in enforce mode (Sprint 5 TASK 7).
 - [ ] All `/internal/*` endpoints require `x-realtime-internal-secret`.
-      Audit: `rg "requireInternalSecret|isAuthorizedInternalRequest" apps/realtime-server`.
-      As of Sprint 4 this is a single shared helper in
-      `apps/realtime-server/src/security/internalSecret.ts`.
-- [ ] All web `/api/*` routes that mutate state authenticate the caller
-      (Bearer Supabase access token, `CRON_SECRET`, or
-      `REALTIME_INTERNAL_SECRET`).
-- [ ] Realtime action validation complete (Sprint 4 TASK 4-5):
-      * `match:pick` rejects spectator sockets, stale `matchInstance`,
-        and replay via `clientEventId`.
-      * `match:forfeit` / `match:abortEarly` / `match:rematch*` go
-        through `resolvePlayerForSocket`.
-      * `publicOffer:create|join|cancel` and `room:create|join` perform
-        the soft JWT cross-check (hard reject when enforce mode is on).
-- [ ] Rate limiting active on every sensitive socket event. See
-      `apps/realtime-server/src/security/rateLimit.ts`. Production
-      thresholds reviewed.
-- [ ] Replay-guard wired for any handler accepting `clientEventId`.
-      See `apps/realtime-server/src/security/replayGuard.ts`.
-- [ ] Service-role boundary clean: `rg 'SUPABASE_SERVICE_ROLE_KEY' apps/web/src`
-      yields only `lib/supabase/admin.ts`. No service-role usage in
-      client components.
-- [ ] CSP / CORS hardened on the realtime server (today it allows
-      `origin: *`). Add an explicit allow-list before real money.
-- [ ] Local self-audit script run clean:
-      `node scripts/check-security-posture.mjs`.
+      Audit: `rg "isAuthorizedInternalRequest" apps/realtime-server`.
+- [ ] No browser-facing route writes to `wallets`,
+      `wallet_ledger_entries`, `escrow_locks`, `settlement_events`, or
+      `audit_events`. RLS verified per `docs/rls-audit-checklist.md`.
+- [ ] **Realtime CORS is allow-listed (Sprint 5 TASK 3).**
+      Production `ALLOWED_ORIGINS` env contains every legitimate
+      browser origin. Empty `ALLOWED_ORIGINS` in production is a
+      startup-fatal condition.
+- [ ] **Web security headers shipped (Sprint 5 TASK 5).** Verify with
+      `curl -I https://<host>/` — `X-Frame-Options`, `X-Content-Type-Options`,
+      `Referrer-Policy`, `Permissions-Policy`, and (in prod)
+      `Strict-Transport-Security` are all present.
+- [ ] CSP rolled out per `docs/security/runtime-security.md` § 3.
+      Soft blocker — does not gate real money but should land before
+      public launch.
+- [ ] Dependency audit clean to the baseline documented in
+      `docs/security/npm-audit-report.md`. No new high-severity
+      vulnerabilities outstanding.
+- [ ] Env validation passes at boot (Sprint 5 TASK 8): every fatal
+      env in production is `present`.
 
 ### Economy correctness
 
