@@ -65,6 +65,22 @@ the operator to confirm.
 
 ### Operations
 
+- [ ] Production database backup plan in place (Pro plan daily backups +
+      off-site copy). Free Supabase plan is NOT sufficient.
+- [ ] Staging Supabase project exists and mirrors production schema.
+- [ ] Branch protection enabled on `master`: required PR review,
+      required status checks (`tsc` for both apps), no force pushes.
+- [ ] Dependency vulnerability review: `npm audit --omit=dev` passes
+      on both `apps/web` and `apps/realtime-server`. Any unfixable
+      criticals documented and accepted.
+- [ ] Legacy wallet schema reconciled: the legacy `public.wallets` table
+      with `(balance, locked_balance, total_winnings)` columns has been
+      either renamed, dropped, or migrated into the Phase 10 schema
+      (`available_balance_minor`, `locked_balance_minor`). Tracked by
+      the Phase 10 migration push being clean (no `column does not
+      exist` errors).
+- [ ] Reconciliation scheduler active (cron / interval calling
+      `POST /internal/economy/reconcile`).
 - [ ] Pager / on-call channel routed for `severity=critical` audit
       events (`settlement.manual_review_required`,
       `escrow.manual_review_required`, `wallet.balance_drift_detected`).

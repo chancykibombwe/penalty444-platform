@@ -5,6 +5,11 @@ import { clearPickTimer } from "../gameplay/timers";
 import { normalizeRoomCode } from "../room/codes";
 import { touchRoomActivity } from "../room/cleanup";
 import { resolvePlayerForSocket } from "../security/identity";
+import { allowSocketAction } from "../security/rateLimit";
+import {
+  hasSeenEvent,
+  markEventSeen,
+} from "../security/replayGuard";
 import { rooms } from "../state/stores";
 import type { Lane, Room } from "../types/room";
 
@@ -56,11 +61,32 @@ export function registerMatchActionHandlers(socket: Socket) {
       roomCode,
       lane,
       playerId,
+      matchInstance,
+      clientEventId,
     }: {
       roomCode: string;
       lane: Lane;
       playerId: string;
+      /**
+       * Sprint 4 TASK 5: optional. When present, server compares against
+       * `room.matchInstance` and rejects stale picks (e.g. a stray emit
+       * from a previous match landing on a fresh rematch).
+       */
+      matchInstance?: number;
+      /**
+       * Sprint 4 TASK 6: optional client-supplied dedupe id. When the
+       * same id arrives twice for the same (room, socket) we silently
+       * drop the duplicate.
+       */
+      clientEventId?: string;
     }) => {
+      // Sprint 4 TASK 13: rate-limit before any state work.
+      if (
+        !allowSocketAction(socket.id, "match:pick", { roomCode, playerId })
+      ) {
+        return;
+      }
+
       const code = normalizeRoomCode(roomCode);
       const room = rooms.get(code);
 
@@ -68,6 +94,33 @@ export function registerMatchActionHandlers(socket: Socket) {
       if (room.matchEnded) return;
       if (room.isResolving) return;
       if (room.disconnectedPlayerId === playerId) return;
+
+      // Sprint 4 TASK 5: stale matchInstance rejection. Only enforced
+      // when the client opts in by sending it.
+      if (
+        typeof matchInstance === "number" &&
+        Number.isFinite(matchInstance) &&
+        room.matchInstance !== matchInstance
+      ) {
+        console.warn(
+          `[Security] match:pick stale matchInstance roomCode=${code} ` +
+            `playerId=${playerId} expected=${room.matchInstance} got=${matchInstance}`
+        );
+        return;
+      }
+
+      // Sprint 4 TASK 6: replay-guard for clients that supply an id.
+      if (
+        typeof clientEventId === "string" &&
+        clientEventId.length > 0 &&
+        hasSeenEvent(code, socket.id, clientEventId)
+      ) {
+        console.warn(
+          `[Security] replay rejected action=match:pick socketId=${socket.id} ` +
+            `roomCode=${code} clientEventId=${clientEventId}`
+        );
+        return;
+      }
 
       // Sprint 1 TASK 2: socket must own the player it claims to be.
       const identity = resolvePlayerForSocket(
@@ -84,6 +137,10 @@ export function registerMatchActionHandlers(socket: Socket) {
 
       if (!role) return;
       if (room.picks[role]) return;
+
+      if (typeof clientEventId === "string" && clientEventId.length > 0) {
+        markEventSeen(code, socket.id, clientEventId);
+      }
 
       room.picks[role] = lane;
       touchRoomActivity(room);
@@ -123,6 +180,15 @@ export function registerMatchActionHandlers(socket: Socket) {
       roomCode: string;
       playerId: string;
     }) => {
+      if (
+        !allowSocketAction(socket.id, "match:abortEarly", {
+          roomCode,
+          playerId,
+        })
+      ) {
+        return;
+      }
+
       const code = normalizeRoomCode(roomCode);
       const room = rooms.get(code);
 
@@ -214,6 +280,12 @@ export function registerMatchActionHandlers(socket: Socket) {
       roomCode: string;
       playerId: string;
     }) => {
+      if (
+        !allowSocketAction(socket.id, "match:forfeit", { roomCode, playerId })
+      ) {
+        return;
+      }
+
       const code = normalizeRoomCode(roomCode);
       const room = rooms.get(code);
 

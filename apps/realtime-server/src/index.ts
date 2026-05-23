@@ -64,7 +64,10 @@ import {
   pruneSpectatorOnDisconnect,
   registerSpectatorHandlers,
 } from "./socket/spectator";
-import { verifySocketJwt } from "./security/jwt";
+import { bindSocketJwtVerification } from "./security/jwt";
+import { isAuthorizedInternalRequest } from "./security/internalSecret";
+import { pruneRateLimitForSocket } from "./security/rateLimit";
+import { pruneSocketEventHistory } from "./security/replayGuard";
 import {
   corsOriginValidator,
   describeOriginPolicy,
@@ -165,18 +168,9 @@ const io = new Server(server, {
 bindStakesSocketServer(io);
 bindSpectatorServer(io);
 
-function isAuthorizedInternalRequest(req: express.Request): boolean {
-  if (!realtimeInternalSecret) {
-    return false;
-  }
-
-  const headerSecret = req.headers["x-realtime-internal-secret"];
-  if (typeof headerSecret !== "string" || headerSecret.length === 0) {
-    return false;
-  }
-
-  return headerSecret === realtimeInternalSecret;
-}
+// Sprint 4 TASK 10: the local `isAuthorizedInternalRequest` was lifted into
+// `security/internalSecret.ts`. We import the same function above so every
+// existing call site keeps working unchanged.
 
 /**
  * Phase 11 TASK 6: dev-only test wallet seeder.
@@ -1623,10 +1617,12 @@ io.on("connection", (socket) => {
     `Socket connected: ${socket.id}. Connected sockets: ${io.engine.clientsCount}`
   );
 
-  // Sprint 2 TASK 2: best-effort Supabase JWT verification on connect.
-  // Non-blocking — gameplay handlers still work for anonymous clients
-  // until the client migration finishes (see docs/socket-auth-plan.md).
-  void verifySocketJwt(socket).then((result) => {
+  // Sprint 2 TASK 2 + Sprint 4 TASK 3: best-effort Supabase JWT
+  // verification on connect. We retain the handle on `socket.data.authPromise`
+  // so async handlers can await freshness when needed. The synchronous
+  // fields `socket.data.authenticated` / `authError` are populated by
+  // `verifySocketJwt` before resolution.
+  void bindSocketJwtVerification(socket).then((result) => {
     if (result.ok === true) {
       console.log(
         `[Security] jwt verified socketId=${socket.id} userId=${result.userId}`
@@ -1778,6 +1774,12 @@ io.on("connection", (socket) => {
 
     // Sprint 1 TASK 1: drop any spectator memberships this socket held.
     pruneSpectatorOnDisconnect(socket.id);
+
+    // Sprint 4 TASK 6 + TASK 13: drop replay-guard and rate-limit state
+    // bound to this socket so memory doesn't accumulate over long
+    // server uptimes.
+    pruneSocketEventHistory(socket.id);
+    pruneRateLimitForSocket(socket.id);
 
     removeRankedQueueEntryBySocketId(socket.id);
 
@@ -1988,6 +1990,22 @@ if (launchBlockers.length > 0) {
   for (const blocker of launchBlockers) {
     console.warn(`[Economy] launch blocker (non-fatal): ${blocker}`);
   }
+}
+
+// Sprint 4 TASK 3: even when real money is OFF, warn loudly when the
+// economy is enabled without socket JWT enforcement. This is not fatal
+// (test mode is allowed to run with anonymous sockets) but operators
+// must SEE the gap so they don't leave it on accidentally before
+// flipping the real-money flag.
+if (
+  process.env.ECONOMY_ENABLED === "true" &&
+  process.env.SOCKET_JWT_ENFORCE !== "true" &&
+  process.env.ECONOMY_REAL_MONEY_ENABLED !== "true"
+) {
+  console.warn(
+    "[Security] ECONOMY_ENABLED=true with SOCKET_JWT_ENFORCE!=true. " +
+      "This is acceptable for test mode but MUST be true before real money."
+  );
 }
 
 server.listen(4000, () => {
