@@ -14,17 +14,43 @@ the operator to confirm.
 ### Security
 
 - [ ] `SOCKET_JWT_ENFORCE=true` in production env. (Server fails closed
-      without it, per Phase 12 TASK 10.)
+      without it, per Phase 12 TASK 10.) **Sprint 4 verified every
+      sensitive socket handler is enforce-ready** — flipping the env
+      flag turns the existing soft warnings into hard rejects.
 - [ ] Every socket event handler that mutates state checks
       `socket.data.userId === claimedPlayerId` and rejects on mismatch.
-      See `docs/socket-auth-plan.md` Phase 2.
+      See `docs/socket-auth-plan.md` Phase 2 and `docs/socket-security.md`.
+- [ ] No client write to `wallets`, `wallet_ledger_entries`,
+      `escrow_locks`, `settlement_events`, `audit_events`,
+      `match_results`, `player_stats`, `season_player_stats`, or
+      `tournament_matches`. Verified by Sprint 3 RLS migration; the
+      browser only mutates these via authenticated server routes.
 - [ ] All `/internal/*` endpoints require `x-realtime-internal-secret`.
-      Audit: `rg "isAuthorizedInternalRequest" apps/realtime-server`.
-- [ ] No browser-facing route writes to `wallets`,
-      `wallet_ledger_entries`, `escrow_locks`, `settlement_events`, or
-      `audit_events`. RLS verified per `docs/rls-audit-checklist.md`.
+      Audit: `rg "requireInternalSecret|isAuthorizedInternalRequest" apps/realtime-server`.
+      As of Sprint 4 this is a single shared helper in
+      `apps/realtime-server/src/security/internalSecret.ts`.
+- [ ] All web `/api/*` routes that mutate state authenticate the caller
+      (Bearer Supabase access token, `CRON_SECRET`, or
+      `REALTIME_INTERNAL_SECRET`).
+- [ ] Realtime action validation complete (Sprint 4 TASK 4-5):
+      * `match:pick` rejects spectator sockets, stale `matchInstance`,
+        and replay via `clientEventId`.
+      * `match:forfeit` / `match:abortEarly` / `match:rematch*` go
+        through `resolvePlayerForSocket`.
+      * `publicOffer:create|join|cancel` and `room:create|join` perform
+        the soft JWT cross-check (hard reject when enforce mode is on).
+- [ ] Rate limiting active on every sensitive socket event. See
+      `apps/realtime-server/src/security/rateLimit.ts`. Production
+      thresholds reviewed.
+- [ ] Replay-guard wired for any handler accepting `clientEventId`.
+      See `apps/realtime-server/src/security/replayGuard.ts`.
+- [ ] Service-role boundary clean: `rg 'SUPABASE_SERVICE_ROLE_KEY' apps/web/src`
+      yields only `lib/supabase/admin.ts`. No service-role usage in
+      client components.
 - [ ] CSP / CORS hardened on the realtime server (today it allows
-      `origin: *`).
+      `origin: *`). Add an explicit allow-list before real money.
+- [ ] Local self-audit script run clean:
+      `node scripts/check-security-posture.mjs`.
 
 ### Economy correctness
 
@@ -49,6 +75,22 @@ the operator to confirm.
 
 ### Operations
 
+- [ ] Production database backup plan in place (Pro plan daily backups +
+      off-site copy). Free Supabase plan is NOT sufficient.
+- [ ] Staging Supabase project exists and mirrors production schema.
+- [ ] Branch protection enabled on `master`: required PR review,
+      required status checks (`tsc` for both apps), no force pushes.
+- [ ] Dependency vulnerability review: `npm audit --omit=dev` passes
+      on both `apps/web` and `apps/realtime-server`. Any unfixable
+      criticals documented and accepted.
+- [ ] Legacy wallet schema reconciled: the legacy `public.wallets` table
+      with `(balance, locked_balance, total_winnings)` columns has been
+      either renamed, dropped, or migrated into the Phase 10 schema
+      (`available_balance_minor`, `locked_balance_minor`). Tracked by
+      the Phase 10 migration push being clean (no `column does not
+      exist` errors).
+- [ ] Reconciliation scheduler active (cron / interval calling
+      `POST /internal/economy/reconcile`).
 - [ ] Pager / on-call channel routed for `severity=critical` audit
       events (`settlement.manual_review_required`,
       `escrow.manual_review_required`, `wallet.balance_drift_detected`).

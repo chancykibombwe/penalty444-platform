@@ -12,6 +12,11 @@ import {
   lockMatchEscrowForPlayer,
   refundMatchEscrowForPlayer,
 } from "../economy";
+import { allowSocketAction } from "../security/rateLimit";
+import {
+  jwtEnforcementEnabled,
+  jwtMatchesPlayer,
+} from "../security/jwt";
 
 type CreateRoomWithPlayersFn = (
   players: RoomPlayer[],
@@ -122,11 +127,39 @@ export function registerPublicOfferHandlers(socket: Socket) {
           socketId: socket.id,
         });
 
+        if (
+          !allowSocketAction(socket.id, "publicOffer:create", { playerId })
+        ) {
+          socket.emit("publicOffers:error", {
+            message: "Too many offer attempts. Please wait a moment.",
+          });
+          return;
+        }
+
         if (!playerId) {
           socket.emit("publicOffers:error", {
             message: "Missing player ID.",
           });
           return;
+        }
+
+        // Sprint 4 TASK 4: soft JWT cross-check (hard reject in
+        // enforce mode) on the host playerId.
+        if (!jwtMatchesPlayer(socket, playerId)) {
+          if (jwtEnforcementEnabled()) {
+            console.warn(
+              `[Security] publicOffer:create jwt_player_mismatch socketId=${socket.id} ` +
+                `playerId=${playerId} verifiedUserId=${socket.data.userId ?? "—"}`
+            );
+            socket.emit("publicOffers:error", {
+              message: "Authentication mismatch. Please sign in again.",
+            });
+            return;
+          }
+          console.warn(
+            `[Security] publicOffer:create jwt_player_mismatch (soft) socketId=${socket.id} ` +
+              `playerId=${playerId} verifiedUserId=${socket.data.userId ?? "—"}`
+          );
         }
 
         for (const offer of publicOffers.values()) {
@@ -253,6 +286,33 @@ export function registerPublicOfferHandlers(socket: Socket) {
           username,
           socketId: socket.id,
         });
+
+        if (
+          !allowSocketAction(socket.id, "publicOffer:join", { playerId })
+        ) {
+          socket.emit("publicOffers:error", {
+            message: "Too many join attempts. Please wait a moment.",
+          });
+          return;
+        }
+
+        // Sprint 4 TASK 4: soft JWT cross-check on the joining player.
+        if (!jwtMatchesPlayer(socket, playerId)) {
+          if (jwtEnforcementEnabled()) {
+            console.warn(
+              `[Security] publicOffer:join jwt_player_mismatch socketId=${socket.id} ` +
+                `playerId=${playerId} verifiedUserId=${socket.data.userId ?? "—"}`
+            );
+            socket.emit("publicOffers:error", {
+              message: "Authentication mismatch. Please sign in again.",
+            });
+            return;
+          }
+          console.warn(
+            `[Security] publicOffer:join jwt_player_mismatch (soft) socketId=${socket.id} ` +
+              `playerId=${playerId} verifiedUserId=${socket.data.userId ?? "—"}`
+          );
+        }
 
         const offer = publicOffers.get(offerId);
 
@@ -402,6 +462,12 @@ export function registerPublicOfferHandlers(socket: Socket) {
       offerId: string;
       playerId: string;
     }) => {
+      if (
+        !allowSocketAction(socket.id, "publicOffer:cancel", { playerId })
+      ) {
+        return;
+      }
+
       const offer = publicOffers.get(offerId);
 
       if (!offer) return;
@@ -411,6 +477,21 @@ export function registerPublicOfferHandlers(socket: Socket) {
           message: "Only the host can cancel this offer.",
         });
         return;
+      }
+
+      // Sprint 4 TASK 4: soft JWT cross-check on cancel — also blocks
+      // a stranger trying to cancel via the host's playerId.
+      if (!jwtMatchesPlayer(socket, playerId)) {
+        if (jwtEnforcementEnabled()) {
+          console.warn(
+            `[Security] publicOffer:cancel jwt_player_mismatch socketId=${socket.id} ` +
+              `playerId=${playerId} verifiedUserId=${socket.data.userId ?? "—"}`
+          );
+          socket.emit("publicOffers:error", {
+            message: "Authentication mismatch.",
+          });
+          return;
+        }
       }
 
       const waitingRoom = rooms.get(offer.roomCode);

@@ -4,6 +4,7 @@ import { normalizeRoomCode } from "../room/codes";
 import { generateMatchInstanceId, setPlayerActiveRoom } from "../room/lifecycle";
 import { cancelScheduledCleanup } from "../room/cleanup";
 import { resolvePlayerForSocket } from "../security/identity";
+import { allowSocketAction } from "../security/rateLimit";
 import { rooms } from "../state/stores";
 import type { Room } from "../types/room";
 
@@ -100,6 +101,12 @@ export function registerRematchHandlers(socket: Socket) {
       roomCode: string;
       playerId: string;
     }) => {
+      if (
+        !allowSocketAction(socket.id, "match:rematch", { roomCode, playerId })
+      ) {
+        return;
+      }
+
       const code = normalizeRoomCode(roomCode);
       const room = rooms.get(code);
 
@@ -155,6 +162,15 @@ export function registerRematchHandlers(socket: Socket) {
       roomCode: string;
       playerId: string;
     }) => {
+      if (
+        !allowSocketAction(socket.id, "match:rematch:decline", {
+          roomCode,
+          playerId,
+        })
+      ) {
+        return;
+      }
+
       const code = normalizeRoomCode(roomCode);
       const room = rooms.get(code);
 

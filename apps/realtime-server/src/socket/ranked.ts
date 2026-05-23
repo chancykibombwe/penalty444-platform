@@ -1,5 +1,6 @@
 import type { Server, Socket } from "socket.io";
 import { cleanUsername } from "../room/codes";
+import { allowSocketAction } from "../security/rateLimit";
 import { rankedQueue } from "../state/stores";
 import type { MatchType, Room, RoomPlayer } from "../types/room";
 
@@ -111,6 +112,17 @@ export function registerRankedHandlers(socket: Socket) {
       playerId?: string;
       username?: string;
     }) => {
+      if (
+        !allowSocketAction(socket.id, "ranked:enqueue", {
+          playerId: typeof playerId === "string" ? playerId : undefined,
+        })
+      ) {
+        socket.emit("ranked:error", {
+          message: "Too many queue attempts. Please wait.",
+        });
+        return;
+      }
+
       const normalizedId =
         typeof playerId === "string" ? playerId.trim() : "";
       if (!normalizedId) {

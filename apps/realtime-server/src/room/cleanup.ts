@@ -27,6 +27,7 @@ import {
   tournamentMatchRooms,
 } from "../state/stores";
 import { clearRoomTimer } from "../gameplay/timers";
+import { cleanupEventHistory } from "../security/replayGuard";
 import { spectatorChannel } from "../socket/spectator";
 import type { Room } from "../types/room";
 
@@ -149,6 +150,10 @@ export function removeRoomNow(io: Server, room: Room, reason: string): void {
   }
 
   resolveSeqMapRef?.delete(roomCode);
+
+  // Sprint 4 TASK 6: drop replay-guard history bound to this room.
+  cleanupEventHistory(roomCode);
+
   rooms.delete(roomCode);
 
   console.log(
