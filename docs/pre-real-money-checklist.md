@@ -14,10 +14,12 @@ the operator to confirm.
 ### Security
 
 - [ ] `SOCKET_JWT_ENFORCE=true` in production env. (Server fails closed
-      without it, per Phase 12 TASK 10.)
+      without it, per Phase 12 TASK 10.) Roll out per the staged plan
+      in `docs/socket-auth-plan.md` § Phase 2.
 - [ ] Every socket event handler that mutates state checks
       `socket.data.userId === claimedPlayerId` and rejects on mismatch.
-      See `docs/socket-auth-plan.md` Phase 2.
+- [ ] `player:register` and `tournament:subscribe` reject anonymous
+      sockets in enforce mode (Sprint 5 TASK 7).
 - [ ] All `/internal/*` endpoints require `x-realtime-internal-secret`.
       Audit: `rg "isAuthorizedInternalRequest" apps/realtime-server`.
 - [ ] No browser-facing route writes to `wallets`,
@@ -42,6 +44,23 @@ the operator to confirm.
       `docs/github-security-checklist.md`.
 - [ ] Dependency vulnerability scan completed
       (`npm audit --omit=dev` clean on both apps, or remediated).
+      `audit_events`. RLS verified per `docs/rls-audit-checklist.md`.
+- [ ] **Realtime CORS is allow-listed (Sprint 5 TASK 3).**
+      Production `ALLOWED_ORIGINS` env contains every legitimate
+      browser origin. Empty `ALLOWED_ORIGINS` in production is a
+      startup-fatal condition.
+- [ ] **Web security headers shipped (Sprint 5 TASK 5).** Verify with
+      `curl -I https://<host>/` — `X-Frame-Options`, `X-Content-Type-Options`,
+      `Referrer-Policy`, `Permissions-Policy`, and (in prod)
+      `Strict-Transport-Security` are all present.
+- [ ] CSP rolled out per `docs/security/runtime-security.md` § 3.
+      Soft blocker — does not gate real money but should land before
+      public launch.
+- [ ] Dependency audit clean to the baseline documented in
+      `docs/security/npm-audit-report.md`. No new high-severity
+      vulnerabilities outstanding.
+- [ ] Env validation passes at boot (Sprint 5 TASK 8): every fatal
+      env in production is `present`.
 
 ### Economy correctness
 
@@ -71,6 +90,22 @@ the operator to confirm.
 - [ ] Staging Supabase project exists and mirrors production schema.
 - [ ] Payment provider compliance review (PCI / mobile-money operator
       KYC) scheduled — only required when a provider is selected.
+- [ ] Production database backup plan in place (Pro plan daily backups +
+      off-site copy). Free Supabase plan is NOT sufficient.
+- [ ] Staging Supabase project exists and mirrors production schema.
+- [ ] Branch protection enabled on `master`: required PR review,
+      required status checks (`tsc` for both apps), no force pushes.
+- [ ] Dependency vulnerability review: `npm audit --omit=dev` passes
+      on both `apps/web` and `apps/realtime-server`. Any unfixable
+      criticals documented and accepted.
+- [ ] Legacy wallet schema reconciled: the legacy `public.wallets` table
+      with `(balance, locked_balance, total_winnings)` columns has been
+      either renamed, dropped, or migrated into the Phase 10 schema
+      (`available_balance_minor`, `locked_balance_minor`). Tracked by
+      the Phase 10 migration push being clean (no `column does not
+      exist` errors).
+- [ ] Reconciliation scheduler active (cron / interval calling
+      `POST /internal/economy/reconcile`).
 - [ ] Pager / on-call channel routed for `severity=critical` audit
       events (`settlement.manual_review_required`,
       `escrow.manual_review_required`, `wallet.balance_drift_detected`).

@@ -42,10 +42,12 @@ supabase/.env
 .DS_Store
 Thumbs.db
 
-# Unity
-/Library/
-/Temp/
-/Obj/
-/Build/
-/Logs/
-/UserSettings/
+# Supabase CLI
+supabase/.temp/
+
+# Sprint 4 TASK 12: never commit real env files. The only env file
+# that may ship in the repo is a placeholder `.env.example`.
+.env
+.env.*
+!.env.example
+!**/.env.example

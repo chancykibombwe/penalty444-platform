@@ -64,7 +64,17 @@ import {
   pruneSpectatorOnDisconnect,
   registerSpectatorHandlers,
 } from "./socket/spectator";
-import { verifySocketJwt } from "./security/jwt";
+import { bindSocketJwtVerification } from "./security/jwt";
+import { isAuthorizedInternalRequest } from "./security/internalSecret";
+import { pruneRateLimitForSocket } from "./security/rateLimit";
+import { pruneSocketEventHistory } from "./security/replayGuard";
+import {
+  corsOriginValidator,
+  describeOriginPolicy,
+  isProduction,
+} from "./config/origins";
+import { validateRealtimeServerEnv } from "./config/env";
+import { maskSecret } from "./security/maskSecret";
 import {
   getEconomyMode,
   listStuckEscrows,
@@ -127,15 +137,29 @@ import type {
 
 const app = express();
 
-app.use(cors());
+// Sprint 5 TASK 3: replace permissive `cors()` defaults with the
+// allow-list driven validator. `corsOriginValidator` rejects unknown
+// origins in production and limits dev to localhost:3000/4000 (plus
+// any explicit `ALLOWED_ORIGINS` entries).
+app.use(
+  cors({
+    origin: corsOriginValidator,
+    methods: ["GET", "POST"],
+    credentials: false,
+  })
+);
 app.use(express.json());
 
 const server = http.createServer(app);
 
 const io = new Server(server, {
+  // Sprint 5 TASK 3: same allow-list as the express middleware. Socket.IO
+  // accepts a function form for `origin` and treats a thrown / falsy
+  // result as a CORS rejection.
   cors: {
-    origin: "*",
+    origin: (origin, callback) => corsOriginValidator(origin, callback),
     methods: ["GET", "POST"],
+    credentials: false,
   },
   pingTimeout: 20000,
   pingInterval: 25000,
@@ -144,18 +168,9 @@ const io = new Server(server, {
 bindStakesSocketServer(io);
 bindSpectatorServer(io);
 
-function isAuthorizedInternalRequest(req: express.Request): boolean {
-  if (!realtimeInternalSecret) {
-    return false;
-  }
-
-  const headerSecret = req.headers["x-realtime-internal-secret"];
-  if (typeof headerSecret !== "string" || headerSecret.length === 0) {
-    return false;
-  }
-
-  return headerSecret === realtimeInternalSecret;
-}
+// Sprint 4 TASK 10: the local `isAuthorizedInternalRequest` was lifted into
+// `security/internalSecret.ts`. We import the same function above so every
+// existing call site keeps working unchanged.
 
 /**
  * Phase 11 TASK 6: dev-only test wallet seeder.
@@ -1602,10 +1617,12 @@ io.on("connection", (socket) => {
     `Socket connected: ${socket.id}. Connected sockets: ${io.engine.clientsCount}`
   );
 
-  // Sprint 2 TASK 2: best-effort Supabase JWT verification on connect.
-  // Non-blocking — gameplay handlers still work for anonymous clients
-  // until the client migration finishes (see docs/socket-auth-plan.md).
-  void verifySocketJwt(socket).then((result) => {
+  // Sprint 2 TASK 2 + Sprint 4 TASK 3: best-effort Supabase JWT
+  // verification on connect. We retain the handle on `socket.data.authPromise`
+  // so async handlers can await freshness when needed. The synchronous
+  // fields `socket.data.authenticated` / `authError` are populated by
+  // `verifySocketJwt` before resolution.
+  void bindSocketJwtVerification(socket).then((result) => {
     if (result.ok === true) {
       console.log(
         `[Security] jwt verified socketId=${socket.id} userId=${result.userId}`
@@ -1666,9 +1683,37 @@ io.on("connection", (socket) => {
         return;
       }
 
-      registerPlayerSocket(playerId, socket.id);
+      const trimmed = playerId.trim();
+
+      // Sprint 5 TASK 7: pin the notification subscription to the
+      // verified Supabase user when JWT enforcement is on. In dev /
+      // soft mode we just warn so we can observe how often clients
+      // are still on the legacy unauthenticated registration path.
+      const verifiedUserId = socket.data.userId ?? null;
+      const enforce = process.env.SOCKET_JWT_ENFORCE === "true";
+      if (verifiedUserId && verifiedUserId !== trimmed) {
+        if (enforce) {
+          console.warn(
+            `[Security] player:register identity mismatch socketId=${socket.id} ` +
+              `claimed=${trimmed} verified=${verifiedUserId} — rejected`
+          );
+          return;
+        }
+        console.warn(
+          `[Security] player:register identity mismatch (soft) socketId=${socket.id} ` +
+            `claimed=${trimmed} verified=${verifiedUserId}`
+        );
+      } else if (!verifiedUserId && enforce) {
+        console.warn(
+          `[Security] player:register unauthenticated socketId=${socket.id} ` +
+            `claimed=${trimmed} — rejected`
+        );
+        return;
+      }
+
+      registerPlayerSocket(trimmed, socket.id);
       console.log(
-        `[tournament-registry] player:register playerId=${playerId.trim()} socketId=${socket.id}`
+        `[tournament-registry] player:register playerId=${trimmed} socketId=${socket.id}`
       );
     }
   );
@@ -1677,6 +1722,22 @@ io.on("connection", (socket) => {
     "tournament:subscribe",
     ({ tournamentId }: { tournamentId?: string }) => {
       if (typeof tournamentId !== "string" || tournamentId.trim().length === 0) {
+        return;
+      }
+
+      // Sprint 5 TASK 7: in enforce mode an unauthenticated socket
+      // cannot subscribe to tournament updates. The subscription
+      // surface is read-only but ties up a real socket; we'd rather
+      // not run a flood of anon connections through the registry once
+      // the platform is gated behind auth.
+      if (
+        process.env.SOCKET_JWT_ENFORCE === "true" &&
+        !socket.data.userId
+      ) {
+        console.warn(
+          `[Security] tournament:subscribe unauthenticated socketId=${socket.id} ` +
+            `tournamentId=${tournamentId.trim()} — rejected`
+        );
         return;
       }
 
@@ -1713,6 +1774,12 @@ io.on("connection", (socket) => {
 
     // Sprint 1 TASK 1: drop any spectator memberships this socket held.
     pruneSpectatorOnDisconnect(socket.id);
+
+    // Sprint 4 TASK 6 + TASK 13: drop replay-guard and rate-limit state
+    // bound to this socket so memory doesn't accumulate over long
+    // server uptimes.
+    pruneSocketEventHistory(socket.id);
+    pruneRateLimitForSocket(socket.id);
 
     removeRankedQueueEntryBySocketId(socket.id);
 
@@ -1876,6 +1943,38 @@ function economyLaunchBlockers(): string[] {
   return blockers;
 }
 
+// Sprint 5 TASK 4: log a fingerprint of the loaded internal secret so
+// operators can verify "the right secret is in this process" without
+// the value ever appearing in logs. Empty / missing secret prints
+// nothing instead of "**" so rotated/misconfigured deployments stay
+// obvious.
+if (realtimeInternalSecret) {
+  console.log(
+    `[boot] REALTIME_INTERNAL_SECRET fingerprint=${maskSecret(realtimeInternalSecret)}`
+  );
+}
+
+// Sprint 5 TASK 8: validate the env BEFORE we start the existing
+// economy launch-blocker check. The new validator covers a strict
+// superset (ALLOWED_ORIGINS in prod, presence of Supabase / internal
+// secret) and prints a redacted boot banner. Fatal validator failures
+// short-circuit the boot here.
+try {
+  validateRealtimeServerEnv();
+} catch (error) {
+  console.error(
+    "[boot] FATAL: env validation rejected startup:",
+    error instanceof Error ? error.message : error
+  );
+  if (isProduction()) {
+    process.exit(1);
+  } else {
+    console.warn(
+      "[boot] continuing in development — production env would have aborted"
+    );
+  }
+}
+
 const launchBlockers = economyLaunchBlockers();
 if (launchBlockers.length > 0) {
   const realMoney = process.env.ECONOMY_REAL_MONEY_ENABLED === "true";
@@ -1893,6 +1992,26 @@ if (launchBlockers.length > 0) {
   }
 }
 
+// Sprint 4 TASK 3: even when real money is OFF, warn loudly when the
+// economy is enabled without socket JWT enforcement. This is not fatal
+// (test mode is allowed to run with anonymous sockets) but operators
+// must SEE the gap so they don't leave it on accidentally before
+// flipping the real-money flag.
+if (
+  process.env.ECONOMY_ENABLED === "true" &&
+  process.env.SOCKET_JWT_ENFORCE !== "true" &&
+  process.env.ECONOMY_REAL_MONEY_ENABLED !== "true"
+) {
+  console.warn(
+    "[Security] ECONOMY_ENABLED=true with SOCKET_JWT_ENFORCE!=true. " +
+      "This is acceptable for test mode but MUST be true before real money."
+  );
+}
+
 server.listen(4000, () => {
-  console.log("Server running on http://localhost:4000");
+  const policy = describeOriginPolicy();
+  console.log(
+    `Server running on http://localhost:4000 — CORS mode=${policy.mode}, ` +
+      `origin entries=${policy.count}`
+  );
 });

@@ -1,5 +1,10 @@
 import type { Server, Socket } from "socket.io";
 import { cleanUsername, normalizeRoomCode } from "../room/codes";
+import {
+  jwtEnforcementEnabled,
+  jwtMatchesPlayer,
+} from "../security/jwt";
+import { allowSocketAction } from "../security/rateLimit";
 import { rooms } from "../state/stores";
 import type { MatchType, Room, RoomPlayer } from "../types/room";
 
@@ -87,6 +92,29 @@ export function registerRoomSocketHandlers(socket: Socket) {
       playerId: string;
       username?: string;
     }) => {
+      if (
+        !allowSocketAction(socket.id, "room:create", { playerId })
+      ) {
+        socket.emit("error:message", {
+          message: "Too many room-create attempts. Please wait.",
+        });
+        return;
+      }
+
+      // Sprint 4 TASK 4: soft JWT cross-check on the creator.
+      if (!jwtMatchesPlayer(socket, playerId)) {
+        if (jwtEnforcementEnabled()) {
+          console.warn(
+            `[Security] room:create jwt_player_mismatch socketId=${socket.id} ` +
+              `playerId=${playerId} verifiedUserId=${socket.data.userId ?? "—"}`
+          );
+          socket.emit("error:message", {
+            message: "Authentication mismatch. Please sign in again.",
+          });
+          return;
+        }
+      }
+
       const busyRoomCode = deps.getTrackedActiveRoom(playerId);
 
       if (busyRoomCode) {
@@ -134,6 +162,27 @@ export function registerRoomSocketHandlers(socket: Socket) {
       playerId: string;
       username?: string;
     }) => {
+      if (
+        !allowSocketAction(socket.id, "room:join", { roomCode, playerId })
+      ) {
+        return;
+      }
+
+      // Sprint 4 TASK 4: soft JWT cross-check on the joining player.
+      // Strict in enforce mode; logged-only otherwise.
+      if (!jwtMatchesPlayer(socket, playerId)) {
+        if (jwtEnforcementEnabled()) {
+          console.warn(
+            `[Security] room:join jwt_player_mismatch socketId=${socket.id} ` +
+              `playerId=${playerId} verifiedUserId=${socket.data.userId ?? "—"}`
+          );
+          socket.emit("error:message", {
+            message: "Authentication mismatch. Please sign in again.",
+          });
+          return;
+        }
+      }
+
       const code = normalizeRoomCode(roomCode);
       const playerName = cleanUsername(username);
 

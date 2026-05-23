@@ -34,8 +34,34 @@ declare module "socket.io" {
   interface SocketData {
     userId: string | null;
     jwtVerifiedAt: number | null;
+    /**
+     * Sprint 4 TASK 3: stable boolean snapshot of the JWT verification
+     * result. Handlers should prefer `requireAuthenticatedSocket` over
+     * reading this directly because it also resolves the
+     * pending-verification race during connection handshake.
+     */
+    authenticated: boolean;
+    /**
+     * Sprint 4 TASK 3: machine-readable failure reason when
+     * `authenticated === false`. Mirrors the `reason` from
+     * `JwtVerificationResult`. Useful for ops dashboards and
+     * `[Security]` logs.
+     */
+    authError: JwtAuthError | null;
+    /**
+     * Sprint 4 TASK 3: in-flight verification promise. Async handlers
+     * that need a fresh ruling can `await socket.data.authPromise`
+     * before consulting `authenticated`. Set on connect.
+     */
+    authPromise: Promise<JwtVerificationResult> | null;
   }
 }
+
+export type JwtAuthError =
+  | "no_token"
+  | "invalid_token"
+  | "no_backend"
+  | "not_verified";
 
 export type JwtVerificationResult =
   | { ok: true; userId: string }
@@ -67,25 +93,54 @@ export async function verifySocketJwt(
 ): Promise<JwtVerificationResult> {
   socket.data.userId = socket.data.userId ?? null;
   socket.data.jwtVerifiedAt = socket.data.jwtVerifiedAt ?? null;
+  // Initialise the Sprint 4 fields on every verify call so every code
+  // path sees a defined value.
+  socket.data.authenticated = socket.data.authenticated ?? false;
+  socket.data.authError = socket.data.authError ?? "not_verified";
 
   const token = extractAccessToken(socket);
-  if (!token) return { ok: false, reason: "no_token" };
-  if (!supabase) return { ok: false, reason: "no_backend" };
+  if (!token) {
+    socket.data.authenticated = false;
+    socket.data.authError = "no_token";
+    return { ok: false, reason: "no_token" };
+  }
+  if (!supabase) {
+    socket.data.authenticated = false;
+    socket.data.authError = "no_backend";
+    return { ok: false, reason: "no_backend" };
+  }
 
   try {
     const { data, error } = await supabase.auth.getUser(token);
     if (error || !data?.user?.id) {
+      socket.data.authenticated = false;
+      socket.data.authError = "invalid_token";
       return { ok: false, reason: "invalid_token" };
     }
     socket.data.userId = data.user.id;
     socket.data.jwtVerifiedAt = Date.now();
+    socket.data.authenticated = true;
+    socket.data.authError = null;
     return { ok: true, userId: data.user.id };
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
       console.warn("[Security] jwt verify crashed:", err);
     }
+    socket.data.authenticated = false;
+    socket.data.authError = "invalid_token";
     return { ok: false, reason: "invalid_token" };
   }
+}
+
+/**
+ * Sprint 4 TASK 3: capture the verification handle on `socket.data` so
+ * async handlers can await freshness. `verifySocketJwt` already mutates
+ * `socket.data.authenticated` / `authError` synchronously before returning.
+ */
+export function bindSocketJwtVerification(socket: Socket): Promise<JwtVerificationResult> {
+  const promise = verifySocketJwt(socket);
+  socket.data.authPromise = promise;
+  return promise;
 }
 
 /**
