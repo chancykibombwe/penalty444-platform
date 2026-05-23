@@ -14,17 +14,33 @@ the operator to confirm.
 ### Security
 
 - [ ] `SOCKET_JWT_ENFORCE=true` in production env. (Server fails closed
-      without it, per Phase 12 TASK 10.)
+      without it, per Phase 12 TASK 10.) Roll out per the staged plan
+      in `docs/socket-auth-plan.md` § Phase 2.
 - [ ] Every socket event handler that mutates state checks
       `socket.data.userId === claimedPlayerId` and rejects on mismatch.
-      See `docs/socket-auth-plan.md` Phase 2.
+- [ ] `player:register` and `tournament:subscribe` reject anonymous
+      sockets in enforce mode (Sprint 5 TASK 7).
 - [ ] All `/internal/*` endpoints require `x-realtime-internal-secret`.
       Audit: `rg "isAuthorizedInternalRequest" apps/realtime-server`.
 - [ ] No browser-facing route writes to `wallets`,
       `wallet_ledger_entries`, `escrow_locks`, `settlement_events`, or
       `audit_events`. RLS verified per `docs/rls-audit-checklist.md`.
-- [ ] CSP / CORS hardened on the realtime server (today it allows
-      `origin: *`).
+- [ ] **Realtime CORS is allow-listed (Sprint 5 TASK 3).**
+      Production `ALLOWED_ORIGINS` env contains every legitimate
+      browser origin. Empty `ALLOWED_ORIGINS` in production is a
+      startup-fatal condition.
+- [ ] **Web security headers shipped (Sprint 5 TASK 5).** Verify with
+      `curl -I https://<host>/` — `X-Frame-Options`, `X-Content-Type-Options`,
+      `Referrer-Policy`, `Permissions-Policy`, and (in prod)
+      `Strict-Transport-Security` are all present.
+- [ ] CSP rolled out per `docs/security/runtime-security.md` § 3.
+      Soft blocker — does not gate real money but should land before
+      public launch.
+- [ ] Dependency audit clean to the baseline documented in
+      `docs/security/npm-audit-report.md`. No new high-severity
+      vulnerabilities outstanding.
+- [ ] Env validation passes at boot (Sprint 5 TASK 8): every fatal
+      env in production is `present`.
 
 ### Economy correctness
 
