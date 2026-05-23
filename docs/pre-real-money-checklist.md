@@ -24,6 +24,26 @@ the operator to confirm.
       Audit: `rg "isAuthorizedInternalRequest" apps/realtime-server`.
 - [ ] No browser-facing route writes to `wallets`,
       `wallet_ledger_entries`, `escrow_locks`, `settlement_events`, or
+      `audit_events`. RLS verified per `docs/database-security.md`.
+- [ ] Hardening Sprint 3 RLS migration
+      (`20260523080000_rls_security_hardening.sql`) applied in
+      production AND in staging.
+- [ ] No sensitive table is unrestricted. Section 1 of
+      `docs/database-security.md` returns zero rows with `rowsecurity =
+      false`.
+- [ ] Service-role key not exposed. `rg SERVICE_ROLE apps/web/src` only
+      hits `lib/supabase/admin.ts` and server-only API routes.
+- [ ] `apps/realtime-server/.env` previously committed to git is
+      `git rm --cached`'d AND the leaked service-role key + internal
+      secret are rotated in Supabase Studio.
+- [ ] CSP / CORS hardened on the realtime server (today it allows
+      `origin: *`).
+- [ ] GitHub branch protection on `master` (required reviewers + status
+      checks). See `docs/github-security-checklist.md`.
+- [ ] Dependabot security alerts enabled. See
+      `docs/github-security-checklist.md`.
+- [ ] Dependency vulnerability scan completed
+      (`npm audit --omit=dev` clean on both apps, or remediated).
       `audit_events`. RLS verified per `docs/rls-audit-checklist.md`.
 - [ ] **Realtime CORS is allow-listed (Sprint 5 TASK 3).**
       Production `ALLOWED_ORIGINS` env contains every legitimate
@@ -65,6 +85,11 @@ the operator to confirm.
 
 ### Operations
 
+- [ ] Production backup plan in place (Supabase Pro daily backups +
+      off-site copy). See `docs/supabase-security-checklist.md`.
+- [ ] Staging Supabase project exists and mirrors production schema.
+- [ ] Payment provider compliance review (PCI / mobile-money operator
+      KYC) scheduled — only required when a provider is selected.
 - [ ] Production database backup plan in place (Pro plan daily backups +
       off-site copy). Free Supabase plan is NOT sufficient.
 - [ ] Staging Supabase project exists and mirrors production schema.
