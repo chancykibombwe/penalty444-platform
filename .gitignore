@@ -1,3 +1,47 @@
+# =============================================================================
+# Hardening Sprint 3 — repo security
+#
+# NEVER commit real secrets. .env files of any kind are blocked except for the
+# tracked `.env.example` placeholders. If a secret is committed by mistake:
+#   1. Rotate it immediately in the upstream provider (Supabase, Stripe, ...).
+#   2. Run `git rm --cached <file>` and force-rotate everywhere the leak landed.
+#   3. Document the incident.
+# =============================================================================
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Node / Next
+node_modules/
+.next/
+.vercel/
+dist/
+out/
+coverage/
+
+# Logs / debug output
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.cache/
+
+# Editors / IDE
+.vscode/
+.idea/
+
+# Supabase CLI scratch
+supabase/.temp/
+supabase/.branches/
+supabase/.env
+
+# OS
+.DS_Store
+Thumbs.db
+
 # Unity
 /Library/
 /Temp/
@@ -5,14 +49,3 @@
 /Build/
 /Logs/
 /UserSettings/
-
-# Node
-node_modules/
-.next/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Supabase CLI
-supabase/.temp/
