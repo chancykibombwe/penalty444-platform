@@ -52,7 +52,7 @@ checks rungs 1-7 (and rung 8 in enforce mode). The combined
 | `room:create` | rung 8 (soft / strict by enforce flag) | — | `room:create` 6/30s | Creator only. Active-room reuse is blocked. |
 | `room:join` | rung 5-8 for existing player; rung 8 for new joiner | — | `room:join` 30/30s | Tournament rooms additionally require `allowedPlayerIds`. |
 | `room:leave` | none (just `socket.leave`) | — | — | Cosmetic — does not mutate room state. |
-| `match:pick` | full ladder via `resolvePlayerForSocket` | optional via `clientEventId` | `match:pick` 6/10s | matchInstance check rejects stale picks. |
+| `match:pick` | full ladder via `resolvePlayerForSocket` | `clientEventId` (optional) + Hotfix Sprint synth `synth:${matchInstance}:${round}:${role}` | `match:pick` 6/10s | matchInstance check rejects stale picks. **Hotfix Sprint:** payload + `lane` value runtime-validated via `isValidLane()` BEFORE state mutation; rejects non-strings, lowercase, and unknown values. |
 | `match:forfeit` | full ladder | — | `match:forfeit` 4/10s | Blocked during early-cancel window for casual rooms. |
 | `match:abortEarly` | full ladder | — | `match:abortEarly` 4/10s | Tournament rooms refuse this event. |
 | `match:rematch` | full ladder | — | `match:rematch` 4/10s | Tournament rooms refuse. Stake>0 refused (legacy stakes path). |
@@ -181,10 +181,62 @@ ALSO requires the internal secret.
   sending a wrong id (it just stops receiving the notification it
   wanted).
 
+## Gameplay payload validation (Hotfix Sprint)
+
+The Sprint 6 audit surfaced a critical exploit on `match:pick`: the
+realtime server accepted ANY value for `lane` and assigned it
+straight into `room.picks[role]`. Because `resolveShot()` only checks
+lane equality, a malicious kicker could emit
+`lane: "GUARANTEED_GOAL"` and force a GOAL on every round (the
+keeper's legitimate `"LEFT" | "CENTER" | "RIGHT"` could never match
+that string).
+
+The Hotfix Sprint added:
+
+1. **`apps/realtime-server/src/security/validation.ts`** — a single
+   `isValidLane()` type guard with `VALID_LANES = ["LEFT", "CENTER",
+   "RIGHT"]`. Rejects non-strings, lowercase, whitespace, aliases,
+   arrays, and objects.
+2. **`match:pick` handler hardening** (`socket/matchActions.ts`):
+   * Top-level payload-shape check (object + non-array) before
+     destructuring.
+   * `isValidLane(payload.lane)` runs BEFORE any room state is
+     touched. Failure → `[Security] invalid lane rejected` log line
+     with `socketId`, `roomCode`, `typeofLane`, and a 32-char
+     `summarizeForLog()` truncation of the value (never the raw
+     attacker payload).
+   * `roomCode` / `playerId` shape checks moved next to the lane
+     check so a malformed payload can't reach the room store.
+   * `matchInstance` non-numeric values are now rejected (previously
+     coerced to "skip").
+3. **Replay-spam guard upgrade** (Hotfix TASK 5): when the client
+   does NOT supply a `clientEventId`, the server synthesises
+   `synth:${matchInstance}:${round}:${role}` and tracks it in the
+   same replay-guard map. Same socket replay-spamming a round of a
+   given match instance is dropped silently. The `synth:` namespace
+   is intentionally distinct from any client-issuable id so the two
+   never collide.
+4. **Client-side defence-in-depth** (`matchPresentation.ts` exports
+   `isValidLane`; `MatchRoomPanel.pick()` short-circuits invalid
+   lanes locally). The server is still the authoritative validator —
+   the client check just stops doomed emits before they hit the
+   wire.
+5. **Type boundary tightened**: removed the `lane: Lane` destructure
+   on the wire. The handler now reads `payload: unknown`, narrows
+   via runtime guards, and only then assigns to typed locals. No
+   `as Lane` casts in the codebase (verified by `rg "as Lane"`).
+
 ## Operational signals to monitor
 
 Grep production logs for these prefixes:
 
+* `[Security] invalid lane rejected` — Hotfix Sprint exploit
+  attempt. Any volume after deploy is hostile traffic; correlate
+  with `socketId` / `roomCode` and consider a temporary IP block.
+* `[Security] replay rejected (synth)` — Hotfix Sprint synthetic
+  replay-guard rejection. Low volume is normal (rapid double-click
+  before optimistic UI catches up). High volume from one socket is
+  abuse.
 * `[Security] rejected spoofed action` — identity ladder rejection. A
   spike indicates either a hostile client or a bug in the legitimate
   client.

@@ -19,6 +19,22 @@ export type RevealStage = "IDLE" | "LOCKED" | "REVEALING" | "REVEALED";
 export const LANES: Lane[] = ["LEFT", "CENTER", "RIGHT"];
 
 /**
+ * Hotfix Sprint TASK 4: client-side defence-in-depth runtime check.
+ *
+ * The realtime server is the authoritative validator (see
+ * `apps/realtime-server/src/security/validation.ts`); this client
+ * helper exists so we can fail FAST in the UI rather than emit a
+ * doomed `match:pick` and surface the rejection as a confusing UX
+ * stall. Server is still the source of truth — bypassing this check
+ * client-side gains nothing because the server rejects the same
+ * invalid lane.
+ */
+export function isValidLane(value: unknown): value is Lane {
+  if (typeof value !== "string") return false;
+  return (LANES as readonly string[]).includes(value);
+}
+
+/**
  * Presentation accent. We default to a cyan/blue stadium theme and switch
  * to gold for tournament context. Final matches use a richer gold variant.
  */

@@ -10,8 +10,9 @@ import {
   hasSeenEvent,
   markEventSeen,
 } from "../security/replayGuard";
+import { isValidLane, summarizeForLog } from "../security/validation";
 import { rooms } from "../state/stores";
-import type { Lane, Room } from "../types/room";
+import type { Room } from "../types/room";
 
 type ResolveRoundFn = (
   roomCode: string,
@@ -57,35 +58,55 @@ export function registerMatchActionHandlers(socket: Socket) {
 
   socket.on(
     "match:pick",
-    ({
-      roomCode,
-      lane,
-      playerId,
-      matchInstance,
-      clientEventId,
-    }: {
-      roomCode: string;
-      lane: Lane;
-      playerId: string;
-      /**
-       * Sprint 4 TASK 5: optional. When present, server compares against
-       * `room.matchInstance` and rejects stale picks (e.g. a stray emit
-       * from a previous match landing on a fresh rematch).
-       */
-      matchInstance?: number;
-      /**
-       * Sprint 4 TASK 6: optional client-supplied dedupe id. When the
-       * same id arrives twice for the same (room, socket) we silently
-       * drop the duplicate.
-       */
-      clientEventId?: string;
-    }) => {
-      // Sprint 4 TASK 13: rate-limit before any state work.
-      if (
-        !allowSocketAction(socket.id, "match:pick", { roomCode, playerId })
-      ) {
+    (payload: unknown) => {
+      // Defensive payload shape check. Anything that isn't a plain
+      // object is dropped immediately — the previous handler used
+      // destructuring, which would silently produce `undefined`s
+      // and feed garbage into validators below.
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
         return;
       }
+      const { roomCode, lane, playerId, matchInstance, clientEventId } =
+        payload as {
+          roomCode?: unknown;
+          lane?: unknown;
+          playerId?: unknown;
+          matchInstance?: unknown;
+          clientEventId?: unknown;
+        };
+
+      // Sprint 4 TASK 13: rate-limit before any state work. We coerce
+      // the wire roomCode/playerId to a safe shape only for the rate
+      // limit context; the real validation comes after.
+      const rateContext = {
+        roomCode: typeof roomCode === "string" ? roomCode : undefined,
+        playerId: typeof playerId === "string" ? playerId : undefined,
+      };
+      if (!allowSocketAction(socket.id, "match:pick", rateContext)) {
+        return;
+      }
+
+      // Hotfix Sprint TASK 1+2: runtime lane validation.
+      //
+      // BEFORE this guard a malicious kicker could emit
+      //   lane: "GUARANTEED_GOAL"
+      // and force every round to GOAL because resolveShot() only
+      // tests lane equality. The guard runs BEFORE any room state is
+      // mutated and BEFORE we touch picks, so even a hostile flood
+      // can never corrupt `room.picks`.
+      if (!isValidLane(lane)) {
+        console.warn(
+          `[Security] invalid lane rejected action=match:pick socketId=${socket.id} ` +
+            `roomCode=${rateContext.roomCode ?? "—"} typeofLane=${typeof lane} ` +
+            `value=${summarizeForLog(lane)}`
+        );
+        return;
+      }
+      // From here on `lane` is narrowed to `Lane` by the type guard.
+
+      // playerId / roomCode shape — required for everything downstream.
+      if (typeof playerId !== "string" || playerId.trim().length === 0) return;
+      if (typeof roomCode !== "string" || roomCode.trim().length === 0) return;
 
       const code = normalizeRoomCode(roomCode);
       const room = rooms.get(code);
@@ -97,19 +118,34 @@ export function registerMatchActionHandlers(socket: Socket) {
 
       // Sprint 4 TASK 5: stale matchInstance rejection. Only enforced
       // when the client opts in by sending it.
-      if (
-        typeof matchInstance === "number" &&
-        Number.isFinite(matchInstance) &&
-        room.matchInstance !== matchInstance
-      ) {
-        console.warn(
-          `[Security] match:pick stale matchInstance roomCode=${code} ` +
-            `playerId=${playerId} expected=${room.matchInstance} got=${matchInstance}`
-        );
-        return;
+      if (matchInstance !== undefined) {
+        if (typeof matchInstance !== "number" || !Number.isFinite(matchInstance)) {
+          // Hotfix Sprint TASK 1: a non-numeric matchInstance is a
+          // malformed payload — drop rather than ignore so debugging
+          // is easier.
+          return;
+        }
+        if (room.matchInstance !== matchInstance) {
+          console.warn(
+            `[Security] match:pick stale matchInstance roomCode=${code} ` +
+              `playerId=${playerId} expected=${room.matchInstance} got=${matchInstance}`
+          );
+          return;
+        }
       }
 
-      // Sprint 4 TASK 6: replay-guard for clients that supply an id.
+      // Hotfix Sprint TASK 5: replay guard.
+      //
+      // Sprint 4 only deduped when the client volunteered a
+      // `clientEventId`. We now ALSO synthesize a deterministic
+      // dedupe key from `(matchInstance, round, role-derived-later)`
+      // so the same socket can't replay-spam the same round of the
+      // same instance even when no client id was sent.
+      //
+      // The role isn't known until `ensureAuthoritativeRoomRoles` /
+      // `room.roles[playerId]`, so we compute the synthetic id below
+      // after we have the role. The CLIENT-supplied id (if present)
+      // is checked here so we can short-circuit faster.
       if (
         typeof clientEventId === "string" &&
         clientEventId.length > 0 &&
@@ -117,7 +153,7 @@ export function registerMatchActionHandlers(socket: Socket) {
       ) {
         console.warn(
           `[Security] replay rejected action=match:pick socketId=${socket.id} ` +
-            `roomCode=${code} clientEventId=${clientEventId}`
+            `roomCode=${code} clientEventId=${summarizeForLog(clientEventId)}`
         );
         return;
       }
@@ -138,10 +174,31 @@ export function registerMatchActionHandlers(socket: Socket) {
       if (!role) return;
       if (room.picks[role]) return;
 
-      if (typeof clientEventId === "string" && clientEventId.length > 0) {
-        markEventSeen(code, socket.id, clientEventId);
+      // Hotfix Sprint TASK 5: synthesize a server-side dedupe key
+      // when the client didn't send one. Format is intentionally
+      // distinct from any client-issuable id so the two namespaces
+      // never collide.
+      const syntheticEventId = `synth:${room.matchInstance}:${room.round}:${role}`;
+      if (
+        (!clientEventId || typeof clientEventId !== "string") &&
+        hasSeenEvent(code, socket.id, syntheticEventId)
+      ) {
+        console.warn(
+          `[Security] replay rejected (synth) action=match:pick socketId=${socket.id} ` +
+            `roomCode=${code} round=${room.round} role=${role}`
+        );
+        return;
       }
 
+      if (typeof clientEventId === "string" && clientEventId.length > 0) {
+        markEventSeen(code, socket.id, clientEventId);
+      } else {
+        markEventSeen(code, socket.id, syntheticEventId);
+      }
+
+      // Safe assignment — `lane` is now narrowed to `Lane` by
+      // `isValidLane()` and the role/round guards above guarantee
+      // `room.picks[role]` is unset.
       room.picks[role] = lane;
       touchRoomActivity(room);
 
