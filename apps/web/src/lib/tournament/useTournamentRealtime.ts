@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getSocket } from "../socket/client";
+import { supabase } from "../supabase/client";
 
 export type TournamentMatchReadyPayload = {
   tournamentId: string;
@@ -150,7 +151,41 @@ export function useTournamentRealtime({
 
     const socket = getSocket();
 
-    const registerAndSubscribe = () => {
+    let cancelled = false;
+
+    /**
+     * Sprint 6 — TASK 4 + TASK 5: verify the Supabase session before
+     * we emit identity-bearing events. In enforce mode the realtime
+     * server REJECTS:
+     *   - `player:register` whose payload `playerId` does not match
+     *     `socket.data.userId` (the verified Supabase user id).
+     *   - `tournament:subscribe` from sockets without a verified user.
+     *
+     * Holding the emit until we've confirmed a live session avoids
+     * spurious rejection logs and keeps anonymous viewers safely
+     * silent (they still receive any public broadcasts the server
+     * decides to send).
+     */
+    const registerAndSubscribe = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (cancelled) return;
+
+      const sessionUserId = session?.user?.id ?? null;
+
+      // Mismatch or anonymous viewer — do NOT emit authenticated
+      // events. Tournament UI can still render publicly available
+      // bracket data via REST.
+      if (!sessionUserId || sessionUserId !== trimmedPlayerId) {
+        if (process.env.NODE_ENV !== "production") {
+          console.info(
+            "[socket-auth] skipping player:register / tournament:subscribe — no matching session"
+          );
+        }
+        return;
+      }
+
       socket.emit("player:register", { playerId: trimmedPlayerId });
 
       if (trimmedTournamentId) {
@@ -161,7 +196,10 @@ export function useTournamentRealtime({
     };
 
     const unsubscribeTournament = () => {
-      if (trimmedTournamentId) {
+      if (trimmedTournamentId && socket.connected) {
+        // Best-effort unsubscribe — the server tolerates duplicate /
+        // unknown unsubscribe calls. We do not gate this on auth: if
+        // the socket reached the server it can clean its room map.
         socket.emit("tournament:unsubscribe", {
           tournamentId: trimmedTournamentId,
         });
@@ -205,14 +243,23 @@ export function useTournamentRealtime({
     };
 
     if (socket.connected) {
-      registerAndSubscribe();
+      void registerAndSubscribe();
     }
 
-    socket.on("connect", registerAndSubscribe);
+    const onConnect = () => {
+      void registerAndSubscribe();
+    };
+
+    socket.on("connect", onConnect);
     socket.on("tournament:matchReady", onMatchReady);
 
+    // TOKEN_REFRESHED / SIGNED_IN inside `lib/socket/client.ts` already
+    // bounces the socket (disconnect → connect), which fires `connect`
+    // and re-triggers the gated `registerAndSubscribe` path above.
+
     return () => {
-      socket.off("connect", registerAndSubscribe);
+      cancelled = true;
+      socket.off("connect", onConnect);
       socket.off("tournament:matchReady", onMatchReady);
       unsubscribeTournament();
       clearAutoRouteTimeout();
