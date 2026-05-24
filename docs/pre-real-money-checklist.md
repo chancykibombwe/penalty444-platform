@@ -20,6 +20,13 @@ the operator to confirm.
       `socket.data.userId === claimedPlayerId` and rejects on mismatch.
 - [ ] `player:register` and `tournament:subscribe` reject anonymous
       sockets in enforce mode (Sprint 5 TASK 7).
+- [ ] **Hotfix Sprint — runtime gameplay payload validation
+      complete.** Every socket event that lands a value in
+      `room.picks` runs `isValidLane()` from
+      `apps/realtime-server/src/security/validation.ts` BEFORE state
+      mutation. Verified: `[Security] invalid lane rejected` count is
+      zero in production for ≥ 24h after deploy and `rg "as Lane"
+      apps/` returns no hits in handler code paths.
 - [ ] All `/internal/*` endpoints require `x-realtime-internal-secret`.
       Audit: `rg "isAuthorizedInternalRequest" apps/realtime-server`.
 - [ ] No browser-facing route writes to `wallets`,

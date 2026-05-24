@@ -29,6 +29,7 @@ import {
   accentForContext,
   classifyRoundTransition,
   getPostMatchPresentation,
+  isValidLane,
   laneEmoji,
   LANES,
   MATCH_PRESENTATION_CSS,
@@ -1579,6 +1580,20 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
   function pick(lane: Lane) {
     if (!canPick || !identity) return;
+
+    // Hotfix Sprint TASK 4: client-side defence-in-depth. The server
+    // is the authoritative validator (see
+    // apps/realtime-server/src/security/validation.ts), but a fast
+    // client check avoids emitting a doomed pick that would silently
+    // be dropped server-side and stall the round timer UX. Any
+    // legitimate UI path can only call `pick()` from the LANES list,
+    // so this guard fires only on bug or tampered build.
+    if (!isValidLane(lane)) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[match:pick] refused invalid lane locally", { lane });
+      }
+      return;
+    }
 
     const socket = getSocket();
 
