@@ -16,6 +16,16 @@ the operator to confirm.
 - [ ] `SOCKET_JWT_ENFORCE=true` in production env. (Server fails closed
       without it, per Phase 12 TASK 10.) Roll out per the staged plan
       in `docs/socket-auth-plan.md` § Phase 2.
+- [ ] **Sprint 6 — frontend always attaches the Supabase access token
+      to the socket handshake** via `apps/web/src/lib/socket/client.ts`.
+      Verify in dev console: `[socket-auth] token attached` appears on
+      every authenticated page load.
+- [ ] **Sprint 6 — `SOCKET_JWT_ENFORCE=true` tested in staging** for
+      the full Sprint 6 regression checklist (`docs/socket-auth-plan.md`
+      § "Sprint 6 staging flip checklist").
+- [ ] **Zero JWT mismatch logs for ≥ 7 days** on production with
+      enforcement off. `rg "jwt_player_mismatch (soft)"` on the log
+      aggregator should return zero hits across the window.
 - [ ] Every socket event handler that mutates state checks
       `socket.data.userId === claimedPlayerId` and rejects on mismatch.
 - [ ] `player:register` and `tournament:subscribe` reject anonymous

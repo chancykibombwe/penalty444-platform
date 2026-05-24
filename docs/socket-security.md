@@ -65,8 +65,8 @@ checks rungs 1-7 (and rung 8 in enforce mode). The combined
 | `ranked:cancel` | playerId-on-queue + socketId match | — | — | Self-only via socket equality. |
 | `spectator:join` | reverse: rung 4 — must NOT be in `room.players` | — | — | Adds socket id to `room.spectatorSocketIds`, joins `${code}:spectators` channel. |
 | `spectator:leave` | none | — | — | Idempotent. |
-| `tournament:subscribe` / `tournament:unsubscribe` | none beyond payload validation | — | — | Subscription is a notification subscription only — no state mutations follow. |
-| `player:register` | none beyond payload validation | — | — | Registers playerId → socketId mapping for tournament-ready notifications. |
+| `tournament:subscribe` / `tournament:unsubscribe` | rung 7 in enforce mode (Sprint 5 TASK 7): `socket.data.userId` must be present. Sprint 6: web client also gates on Supabase session before emit. | — | — | Subscription is a notification subscription only — no state mutations follow. |
+| `player:register` | rung 7 in enforce mode (Sprint 5 TASK 7): `socket.data.userId === payload.playerId`. Sprint 6: web client only emits when `getSession()` matches. | — | — | Registers playerId → socketId mapping for tournament-ready notifications. |
 
 ## Spectator isolation contract
 
@@ -176,10 +176,12 @@ ALSO requires the internal secret.
   abuse path that the active-room guard doesn't already cover. Tracked
   as future work in `docs/pre-real-money-checklist.md`.
 * `tournament:subscribe` and `player:register` are notification-only and
-  do not mutate any persistent state. They intentionally do not perform
-  identity checks because a malicious client only hurts itself by
-  sending a wrong id (it just stops receiving the notification it
-  wanted).
+  do not mutate any persistent state. Pre-Sprint 5 they accepted any
+  payload because a malicious client only hurts itself by sending a
+  wrong id. Sprint 5 added enforce-mode rejection so the metric
+  `[Security] unauthenticated action blocked` is meaningful for those
+  events too. Sprint 6 makes the web client itself gate the emit on
+  `supabase.auth.getSession()`, which keeps anonymous tabs silent.
 
 ## Operational signals to monitor
 

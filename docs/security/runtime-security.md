@@ -134,18 +134,36 @@ Tracked in `docs/pre-real-money-checklist.md` § Soft blockers.
 ## 4. JWT enforcement rollout
 
 The realtime server has had soft-mode JWT verification since Sprint 2.
-This sprint formalises the staged rollout:
+Sprint 5 formalised the staged rollout. **Sprint 6 closes the
+"web client must always attach the token" precondition for stage 2.**
 
 | Stage | Env | Behaviour |
 | --- | --- | --- |
 | 1 | `SOCKET_JWT_ENFORCE=false` (today) | Verification runs; mismatches log `[Security] jwt_player_mismatch (soft)`. Anonymous sockets keep working. |
-| 2 | `SOCKET_JWT_ENFORCE=true` in **staging** | Sensitive handlers reject anonymous sockets. Manual QA: casual / private / tournament / spectator / wallet panel. |
+| 2 | `SOCKET_JWT_ENFORCE=true` in **staging** | Sensitive handlers reject anonymous sockets. Manual QA: casual / private / tournament / spectator / wallet panel. **Pre-condition: Sprint 6 client deployed.** |
 | 3 | `SOCKET_JWT_ENFORCE=true` in **production** | Same as stage 2 but on real users. Watch `[Security] unauthenticated action blocked` for 48h. |
 | 4 | `ECONOMY_REAL_MONEY_ENABLED=true` only after stage 3 settles | The realtime server already fails closed if real money is on without enforcement (`economyLaunchBlockers`). |
 
-A web client must always attach the Supabase access token to its
-Socket.IO `auth.accessToken` before stage 2 ships. The implementation
-plan lives in `docs/socket-auth-plan.md`.
+The web client always attaches the Supabase access token to its
+Socket.IO `auth.accessToken` callback as of Sprint 6. The
+implementation lives in `apps/web/src/lib/socket/client.ts`; the
+rollout details and regression checklist live in
+`docs/socket-auth-plan.md`. Specifically:
+
+* `getSocket()` is the single entry point used by every component
+  that touches the realtime server.
+* socket.io's dynamic `auth: (cb) => cb({ accessToken })` form
+  re-runs on every `connect`, so token refreshes propagate without
+  a manual API.
+* `bindAuthListenerOnce()` subscribes to Supabase
+  `onAuthStateChange` and:
+  * disconnects the socket on `SIGNED_OUT`,
+  * bounces the socket on `SIGNED_IN` / `TOKEN_REFRESHED`.
+* `useTournamentRealtime` only emits `player:register` /
+  `tournament:subscribe` when `supabase.auth.getSession()` returns a
+  user matching the page's `playerId`, so anonymous viewers don't
+  trigger `[Security] unauthenticated action blocked` once stage 2
+  ships.
 
 ## 5. Internal endpoint posture
 
@@ -246,5 +264,7 @@ than silently serving traffic.
   preview URLs to `ALLOWED_ORIGINS` per environment variable today; a
   future sprint can hook this to Vercel's deployment webhook.
 * **`SOCKET_JWT_ENFORCE` still defaults to false** — by design (rollout
-  stage 1). Stage 2 needs the web client to always send the token,
-  tracked in `docs/socket-auth-plan.md`.
+  stage 1). Sprint 6 made the web client always attach the token, so
+  stage 2 is unblocked from the client side. Stage 2 still requires
+  the staging operator to flip the env var and run the regression
+  checklist; tracked in `docs/socket-auth-plan.md`.

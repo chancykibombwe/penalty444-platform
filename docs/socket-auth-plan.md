@@ -1,9 +1,9 @@
 # Socket Auth / JWT Plan
 
-> Hardening Sprint 2 — TASK 2 companion document.
-> Owner: realtime-server team.
+> Hardening Sprint 2 + Sprint 6 — TASK 2 / Phase 2 companion document.
+> Owner: realtime-server team + web platform team.
 
-## Where we are today (after Sprint 2)
+## Where we are today (after Sprint 6)
 
 * Realtime server accepts `socket.handshake.auth.accessToken`.
 * `apps/realtime-server/src/security/jwt.ts` verifies the token via the
@@ -17,19 +17,79 @@
     but still allow the action.
   * The check is **strict** only when `process.env.SOCKET_JWT_ENFORCE === "true"`.
 * Web client now sends the Supabase session access token in the socket
-  handshake via `apps/web/src/lib/socket/client.ts`.
+  handshake via `apps/web/src/lib/socket/client.ts` using socket.io's
+  dynamic `auth: (cb) => cb({ accessToken })` callback. The callback
+  re-runs on every `connect` / `reconnect`, so the FRESHEST token is
+  always attached to every handshake.
+* `apps/web/src/lib/socket/client.ts` binds **one** Supabase
+  `onAuthStateChange` listener per browser tab (`bindAuthListenerOnce`):
+  * `SIGNED_OUT`     → `socket.disconnect()`. Existing
+                       `RequireAuth.tsx` also calls
+                       `disconnectSocket()` defensively.
+  * `SIGNED_IN`      → `socket.disconnect().connect()` so the dynamic
+                       auth callback re-runs and the new user's token
+                       lands on the server.
+  * `TOKEN_REFRESHED`→ same disconnect → connect bounce.
+* Identity-bearing emits in `useTournamentRealtime` are gated on
+  `supabase.auth.getSession()` matching the `playerId` prop. Anonymous
+  viewers no longer emit `player:register` / `tournament:subscribe`,
+  which silences the `[Security] unauthenticated action blocked` log
+  for browsers that have logged out mid-session.
+* Diagnostics are dev-only and prefixed `[socket-auth]`. They never
+  print the token, the refresh token, or any Supabase secret.
 
 The system is **non-breaking**: anonymous sockets (no token) and clients
-running an older bundle still connect and play.
+running an older bundle still connect and play. With
+`SOCKET_JWT_ENFORCE=false` (the current default) the server only logs
+soft warnings; with `SOCKET_JWT_ENFORCE=true` (staging next) the server
+rejects mismatches as documented in § Phase 2.
+
+## Frontend token attachment flow (Sprint 6)
+
+```
+┌────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│ Supabase auth  │    │ lib/socket/client│    │ realtime server │
+└──────┬─────────┘    └────────┬─────────┘    └────────┬────────┘
+       │ getSession()           │                       │
+       │ <───────────────────── │  (auth callback)      │
+       │                        │ ────── connect ─────► │
+       │                        │   auth.accessToken    │
+       │                        │                       │ verifySocketJwt
+       │                        │ ◄──── connect_ack ─── │ socket.data.userId set
+       │                        │                       │
+       │ TOKEN_REFRESHED        │                       │
+       │ ─────────────────────► │                       │
+       │                        │ disconnect()→connect()│
+       │                        │ ────── connect ─────► │
+       │                        │   (new token)         │ verifySocketJwt re-runs
+       │                        │                       │
+       │ SIGNED_OUT             │                       │
+       │ ─────────────────────► │ disconnect()          │
+       │                        │ ────── close ───────► │
+```
+
+Key invariants:
+
+* The auth callback always reads from `supabase.auth.getSession()`. We
+  never cache the token in module state.
+* `disconnect().connect()` is the standard re-auth gesture — the
+  socket.io v4 dynamic `auth` callback re-runs on the next handshake.
+* When `getSession()` returns no session, the callback sends an empty
+  `accessToken`. The server treats this as `no_token` and (in enforce
+  mode) refuses to register the socket as a player.
 
 ## What's still gap
 
 | Gap | Risk | Action |
 | --- | ---- | ------ |
 | `playerId` is still trusted from the wire when no JWT | Spoofing if a roommate steals socketId+playerId | Phase 2 below |
-| `SOCKET_JWT_ENFORCE` is `false` in all envs | Sprint 2 chose observability first | Flip after rollout monitoring |
-| No refresh-token plumbing on the socket | Long-lived sockets keep stale userId after refresh | Schedule re-auth on `match:start` |
+| `SOCKET_JWT_ENFORCE` is `false` in all envs | Sprint 2 chose observability first | Flip after Sprint 6 rollout monitoring |
 | Tournaments still rely on `room.allowedPlayerIds` | Server-side allowlist already mitigates impersonation | Keep; layer JWT on top |
+
+> Sprint 6 closed the "no refresh-token plumbing on the socket" gap:
+> `TOKEN_REFRESHED` is observed in `lib/socket/client.ts` and triggers
+> a `disconnect().connect()` so the new token lands on the server
+> within ~50 ms of issuance.
 
 ## Phase 2 — enforcement rollout (Sprint 5 staged plan)
 
@@ -57,6 +117,42 @@ Stage 2/3 regression checklist:
 * `account/page.tsx` wallet panel still loads.
 * `tournament-registry` still routes `tournament:matchReady`
   notifications.
+* Login → socket connects → `[socket-auth] token attached` appears in
+  dev console (and only `[Security] jwt verified` in server logs).
+* Refresh page → session restored → socket reconnects with token
+  (no `[Security] jwt_player_mismatch` in server logs).
+* Logout → `disconnect` event fires → socket stays disconnected until
+  the next user signs in. Anonymous flows (e.g. spectator watch) still
+  work after logout.
+* Trigger a token refresh (e.g. via Supabase debug console
+  `auth.refreshSession()`) → socket bounces and reconnects within ~1s.
+
+### Sprint 6 staging flip checklist (`SOCKET_JWT_ENFORCE=true` in staging)
+
+Before flipping the staging env var:
+
+* [ ] Stage 1 monitoring shows zero `[Security] jwt_player_mismatch (soft)`
+      lines for 24h on staging.
+* [ ] Web bundle deployed to staging includes the Sprint 6 socket
+      client (`apps/web/src/lib/socket/client.ts` with the
+      `bindAuthListenerOnce` block).
+* [ ] All staging Supabase users have either signed in fresh or had
+      their browser tabs reloaded since the new bundle deployed.
+
+After flipping:
+
+* [ ] Tail realtime server logs for 30 min. Expect:
+  * `[Security] jwt verified` lines on every authenticated socket.
+  * Zero `[Security] player:register identity mismatch` lines.
+  * Anonymous socket attempts to register a player are logged once
+    each as `[Security] player:register unauthenticated`.
+* [ ] Run the regression checklist above on staging.
+* [ ] `tournament-registry tournament:subscribe` lines still appear
+      for authenticated users joining tournament pages.
+
+Roll-back: set `SOCKET_JWT_ENFORCE=false` in staging env, restart the
+realtime server. Soft-mode resumes immediately; no client redeploy
+needed.
 
 After stage 3:
 
