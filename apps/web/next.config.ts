@@ -1,4 +1,8 @@
 import type { NextConfig } from "next";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const webAppRoot = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Hardening Sprint 5 — TASK 5: production security headers.
@@ -54,6 +58,11 @@ const PRODUCTION_HEADERS = [
 ];
 
 const nextConfig: NextConfig = {
+  // Monorepo has lockfiles at repo root and apps/web — pin Turbopack to
+  // this app so `next dev` does not infer the wrong workspace root.
+  turbopack: {
+    root: webAppRoot,
+  },
   async headers() {
     const isProd = process.env.NODE_ENV === "production";
     const headers = isProd ? PRODUCTION_HEADERS : COMMON_HEADERS;
