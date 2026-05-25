@@ -671,6 +671,16 @@ function emitMatchState(roomCode: string, room: Room) {
   const kickerPlayerId = getPlayerByRole(room, "KICKER") ?? null;
   const keeperPlayerId = getPlayerByRole(room, "KEEPER") ?? null;
 
+  // Reconnect/refresh safety: broadcast which roles have already locked a
+  // pick this round (booleans only — no lane data). This lets a rejoining
+  // client know an opponent has already locked without ever exposing the
+  // opponent's chosen lane. Picks themselves remain server-private until
+  // resolveRound emits match:result.
+  const picksLocked = {
+    KICKER: Boolean(room.picks.KICKER),
+    KEEPER: Boolean(room.picks.KEEPER),
+  };
+
   const payload = {
     roomCode,
     roles: room.roles,
@@ -688,6 +698,8 @@ function emitMatchState(roomCode: string, room: Room) {
     matchInstance: room.matchInstance ?? 1,
     matchType: room.matchType,
     tournamentId: isTournamentRoom(room) ? room.tournamentId : undefined,
+    picksLocked,
+    isResolving: Boolean(room.isResolving),
   };
   io.to(roomCode).emit("match:update", payload);
   // Scoreboard / round / status are safe for spectators (no pick state).

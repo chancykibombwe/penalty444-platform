@@ -242,6 +242,35 @@ export function registerRoomSocketHandlers(socket: Socket) {
 
         deps.emitRoomUpdate(code, room);
         deps.emitMatchState(code, room);
+
+        // Reconnect/refresh fix: send a per-socket authoritative snapshot
+        // so the rejoining client knows whether THEY have already locked a
+        // pick this round, and whether the opponent has locked (boolean
+        // only). Without this, a refresh between picks lets the UI re-enable
+        // pick buttons even though the server still holds the previous
+        // pick, leaving the player stuck after the next click is silently
+        // dropped by match:pick's "already picked" guard.
+        //
+        // Lane data is only sent to the player who owns it. Opponent picks
+        // are NEVER leaked here — only the boolean `opponentHasLocked`.
+        const myRole = room.roles[playerId];
+        const opponentRole =
+          myRole === "KICKER" ? "KEEPER" : myRole === "KEEPER" ? "KICKER" : null;
+        const rejoinPayload = {
+          roomCode: code,
+          myRole: myRole ?? null,
+          myPick: myRole ? (room.picks[myRole] ?? null) : null,
+          opponentHasLocked: opponentRole
+            ? Boolean(room.picks[opponentRole])
+            : false,
+          round: room.round,
+          phase: room.phase,
+          suddenDeathRound: room.suddenDeathRound,
+          matchInstance: room.matchInstance ?? 1,
+          matchEnded: Boolean(room.matchEnded),
+          isResolving: Boolean(room.isResolving),
+        };
+        socket.emit("match:rejoinState", rejoinPayload);
         return;
       }
 

@@ -202,6 +202,14 @@ export function registerMatchActionHandlers(socket: Socket) {
       room.picks[role] = lane;
       touchRoomActivity(room);
 
+      // Reconnect/refresh diagnostic. Logs only the booleans, never the
+      // lane the opponent picked — keeps spectator/opponent secrecy intact.
+      console.log(
+        `[match:pick] accepted roomCode=${code} socketId=${socket.id} playerId=${playerId} ` +
+          `role=${role} round=${room.round} phase=${room.phase} ` +
+          `kickerLocked=${Boolean(room.picks.KICKER)} keeperLocked=${Boolean(room.picks.KEEPER)}`
+      );
+
       deps.io.to(code).emit("match:status", {
         roomCode: code,
         message: `${

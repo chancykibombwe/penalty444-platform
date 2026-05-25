@@ -50,8 +50,13 @@ export type PresentationAccent = "cyan" | "gold" | "gold-final";
  *   → REVEALING (3–2–1 tension window)  ← MATCH_TENSION_*_MS
  *   → REVEALED (result on screen)
  *   → next match:update is held         ← MATCH_REVEAL_HOLD_*_MS (tournament only)
+ *
+ * NOTE: 3-second casual tension window. Previously casual matches revealed
+ * the result instantly when both picks were already on the wire, which
+ * felt jarring during live two-player testing. Server pacing is unchanged
+ * (RESULT_REVEAL_PAUSE_MS still drives next-round arming on the server).
  */
-export const MATCH_TENSION_CASUAL_MS = 900;
+export const MATCH_TENSION_CASUAL_MS = 3000;
 export const MATCH_TENSION_TOURNAMENT_MS = 1500;
 export const MATCH_REVEAL_HOLD_TOURNAMENT_MS = 4_000;
 export const MATCH_STAGING_SECONDS_TOURNAMENT = 5;
