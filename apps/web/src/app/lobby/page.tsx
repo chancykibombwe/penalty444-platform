@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import RequireAuth from "../../components/auth/RequireAuth";
 import PublicMatchOffersPanel from "../../components/lobby/PublicMatchOffersPanel";
@@ -7,7 +8,7 @@ import RankedMatchmakingPanel from "../../components/lobby/RankedMatchmakingPane
 import CreateRoomPanel from "../../components/lobby/CreateRoomPanel";
 import JoinRoomPanel from "../../components/lobby/JoinRoomPanel";
 
-export default function LobbyPage() {
+function LobbyPageContent() {
   const searchParams = useSearchParams();
   const challengeUserId = searchParams.get("challengeUserId")?.trim() ?? "";
   const challengeUsername = searchParams.get("challengeUsername")?.trim() ?? "";
@@ -51,5 +52,22 @@ export default function LobbyPage() {
         </div>
       </section>
     </RequireAuth>
+  );
+}
+
+export default function LobbyPage() {
+  return (
+    <Suspense
+      fallback={
+        <section className="space-y-8">
+          <div>
+            <h1 className="text-3xl font-bold text-white">Match Hub</h1>
+            <p className="mt-2 text-zinc-400">Loading match hub…</p>
+          </div>
+        </section>
+      }
+    >
+      <LobbyPageContent />
+    </Suspense>
   );
 }

@@ -1,4 +1,7 @@
 {
+  "name": "penalty444-platform",
+  "private": true,
+  "description": "Monorepo root (Supabase CLI). Next.js app lives in apps/web — set Vercel Root Directory to apps/web.",
   "devDependencies": {
     "supabase": "^2.98.2"
   }
