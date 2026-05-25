@@ -90,6 +90,24 @@ type MatchUpdatePayload = {
   matchInstance?: number;
   matchType?: MatchType;
   tournamentId?: string;
+  // Booleans-only lock map. Lane data is never broadcast here. Used by the
+  // client to render "Opponent locked" / "Both players locked" status after
+  // a refresh without exposing the opponent's chosen lane.
+  picksLocked?: { KICKER?: boolean; KEEPER?: boolean };
+  isResolving?: boolean;
+};
+
+type MatchRejoinStatePayload = {
+  roomCode?: string;
+  myRole?: Role | null;
+  myPick?: Lane | null;
+  opponentHasLocked?: boolean;
+  round?: number;
+  phase?: MatchPhase;
+  suddenDeathRound?: number;
+  matchInstance?: number;
+  matchEnded?: boolean;
+  isResolving?: boolean;
 };
 
 type MatchEndPayload = {
@@ -978,14 +996,17 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       const bothLocked = Boolean(
         authoritative.kickerPick && authoritative.keeperPick
       );
-      // Tournament matches always linger in REVEALING long enough to fit the
-      // "PICK LOCKED → 3-2-1 → REVEAL" cinematic. Casual matches keep the
-      // brief sync flash so quick rounds don't feel sluggish.
+      // Hotfix Sprint (production-match-reconnect-and-reveal-polish):
+      // casual matches previously revealed instantly when both picks were
+      // already on the wire (revealDelayMs = 0). That made the GOAL/SAVE/
+      // DRAW pop in too fast and disoriented live testers. We now always
+      // linger in REVEALING for the configured casual tension window so
+      // both clients see a stable "Both players locked → Revealing..."
+      // transition before the result paints. Tournament pacing is
+      // unchanged — it already used the longer cinematic.
       const revealDelayMs = tournamentContextRef.current.isTournament
         ? TOURNAMENT_MATCH_RESULT_REVEAL_MS
-        : bothLocked
-          ? 0
-          : MATCH_RESULT_REVEAL_MS;
+        : MATCH_RESULT_REVEAL_MS;
 
       if (revealDelayMs <= 0) {
         matchResultRevealArmedRef.current = false;
@@ -996,7 +1017,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setPendingResult(authoritative);
       setRevealStage("REVEALING");
       revealingStartedAtRef.current = Date.now();
-      setStatus("Both players locked. Revealing result...");
+      const lockedLabel = bothLocked
+        ? "Both players locked. Revealing..."
+        : "Locked. Revealing result...";
+      setStatus(lockedLabel);
       matchResultRevealArmedRef.current = true;
 
       matchResultRevealTimeoutRef.current = window.setTimeout(() => {
@@ -1112,6 +1136,82 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setStatus("Rematch started");
     }
 
+    function onMatchRejoinState(data: MatchRejoinStatePayload) {
+      if (!isSocketEventForRoom(data, normalizedRoomCode)) {
+        return;
+      }
+
+      // Server-authoritative snapshot delivered right after rejoin. Reaches
+      // us AFTER the broadcast match:update, so the normal "round advanced"
+      // reset has already wiped local state. We now overlay the real per-
+      // player truth on top:
+      //   - my own pick (so the UI shows "Pick locked" + selected lane)
+      //   - whether the opponent has locked (boolean only — no leakage)
+      //   - whether the server is mid-resolution
+      // This is what unblocks the "I refreshed and now can't click"
+      // scenario: without this, hasSubmittedPick stays false and the next
+      // click is silently dropped server-side by the "already picked"
+      // guard in match:pick.
+      const myRole = data.myRole ?? null;
+      const myPickFromServer = data.myPick ?? null;
+      const opponentLocked = Boolean(data.opponentHasLocked);
+      const serverResolving = Boolean(data.isResolving);
+
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[match:rejoinState] applying", {
+          roomCode: data.roomCode ?? normalizedRoomCode,
+          playerId: identity?.playerId,
+          socketId: socket.id,
+          myRole,
+          myPick: myPickFromServer,
+          opponentLocked,
+          round: data.round,
+          phase: data.phase,
+          isResolving: serverResolving,
+          matchEnded: data.matchEnded,
+        });
+      }
+
+      if (data.matchEnded) {
+        return;
+      }
+
+      if (typeof data.round === "number") {
+        lastPickRoundRef.current = data.round;
+      }
+
+      if (myPickFromServer) {
+        setMyPick(myPickFromServer);
+        setHasSubmittedPick(true);
+        resolvingPickRoundRef.current =
+          data.round ?? lastPickRoundRef.current ?? null;
+
+        if (serverResolving || opponentLocked) {
+          setStatus("Both players locked. Revealing...");
+          setOpponentStatus("Opponent locked their choice");
+          setRevealStage("REVEALING");
+          revealingStartedAtRef.current = Date.now();
+        } else {
+          setStatus(
+            `You locked ${myPickFromServer}. Waiting for opponent...`
+          );
+          setOpponentStatus("Opponent is thinking...");
+          setRevealStage("LOCKED");
+        }
+      } else {
+        setMyPick(null);
+        setHasSubmittedPick(false);
+        resolvingPickRoundRef.current = null;
+        if (opponentLocked) {
+          setStatus("Opponent locked. Make your pick.");
+          setOpponentStatus("Opponent locked their choice");
+        } else {
+          setOpponentStatus("");
+        }
+        setRevealStage("IDLE");
+      }
+    }
+
     function onErrorMessage(payload: { message: string }) {
       setLeaveMatchBusy(false);
       setStatus(payload.message);
@@ -1146,6 +1246,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     socket.on("disconnect", onDisconnect);
     socket.on("room:update", onRoomUpdate);
     socket.on("match:update", onMatchUpdate);
+    socket.on("match:rejoinState", onMatchRejoinState);
     socket.on("match:status", onMatchStatus);
     socket.on("match:result", onMatchResult);
     socket.on("match:end", onMatchEnd);
@@ -1170,6 +1271,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       socket.off("disconnect", onDisconnect);
       socket.off("room:update", onRoomUpdate);
       socket.off("match:update", onMatchUpdate);
+      socket.off("match:rejoinState", onMatchRejoinState);
       socket.off("match:status", onMatchStatus);
       socket.off("match:result", onMatchResult);
       socket.off("match:end", onMatchEnd);
@@ -1603,6 +1705,21 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
     clickSound.currentTime = 0;
     void clickSound.play().catch(() => {});
+
+    if (process.env.NODE_ENV !== "production") {
+      const myRole = identity ? roles[identity.playerId] ?? null : null;
+      console.info("[match:pick] emit", {
+        roomCode: normalizedRoomCode,
+        playerId: identity.playerId,
+        socketId: socket.id,
+        role: myRole,
+        round,
+        phase,
+        lane,
+        hasPicked: hasSubmittedPick,
+        canPick,
+      });
+    }
 
     socket.emit("match:pick", {
       roomCode: normalizedRoomCode,
