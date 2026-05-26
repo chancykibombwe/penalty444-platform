@@ -22,6 +22,9 @@ import MatchAtmosphereLayer from "./MatchAtmosphereLayer";
 import MatchStagingScreen from "./MatchStagingScreen";
 import MatchResultOverlay from "./MatchResultOverlay";
 import MatchScoreboard from "./MatchScoreboard";
+import MatchWaitingOverlay, {
+  type MatchWaitingPhase,
+} from "./MatchWaitingOverlay";
 import RoundTransition, {
   type RoundTransitionKind,
 } from "./RoundTransition";
@@ -38,6 +41,8 @@ import {
   MATCH_STAGING_SECONDS_TOURNAMENT,
   MATCH_TENSION_CASUAL_MS,
   MATCH_TENSION_TOURNAMENT_MS,
+  MATCH_WAITING_COUNTDOWN_SECONDS,
+  MATCH_WAITING_OPPONENT_JOINED_MS,
   pickResultFlavorMessage,
   RESULT_OVERLAY_VISIBLE_MS,
   resultBackgroundClass as resultStyle,
@@ -384,6 +389,30 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
    * status text. Opponent + system messages still flow through unchanged.
    */
   const myDisplayNameRef = useRef<string>("");
+  /**
+   * Casual/private match pre-gameplay cinematic state.
+   *
+   *   "idle"             — overlay hidden; normal match UI fully interactive
+   *   "waiting"          — creator alone in room; show room code + share
+   *   "opponent-joined"  — brief "Opponent joined" beat (~700ms)
+   *   "countdown"        — 3 → 2 → 1 then dismisses
+   *
+   * Tournament rooms NEVER enter any of these states — `MatchStagingScreen`
+   * already handles their bracket-aware intro.
+   */
+  const [waitingState, setWaitingState] = useState<
+    "idle" | MatchWaitingPhase
+  >("idle");
+  const [waitingCountdown, setWaitingCountdown] = useState<number | null>(null);
+  /**
+   * Has the start cinematic already played for this match instance? Set
+   * to true when the countdown completes; reset on rematch so the next
+   * casual match in the same room replays it. Without this guard, the
+   * derive-state effect would re-trigger the cinematic on every re-render
+   * while playerCount stays at 2 and the match is still "fresh" (round 1,
+   * no scores, no picks).
+   */
+  const startCinematicCompletedRef = useRef(false);
   /**
    * "Dramatic hold" timestamp. After `applyRevealedResult` runs, this is
    * set to `now + CASUAL_REVEAL_HOLD_MS` (or the tournament variant). While
@@ -1425,6 +1454,130 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     }
   }, [hasSubmittedPick, tournamentStagingCountdown]);
 
+  /**
+   * Casual/private waiting-room state machine (Effect 1 of 3).
+   *
+   * Derives `waitingState` purely from server-driven values. No timers
+   * here — effects 2 and 3 own the cinematic timing. Tournament rooms
+   * are short-circuited so this never collides with `MatchStagingScreen`.
+   *
+   * "Fresh match" means: round 1, no result, no opponent reveal pending,
+   * no submitted pick, and all scores still zero. This is the precise
+   * condition under which the pre-pick cinematic should be allowed to
+   * run — anything else is mid-game state and must not blur the UI.
+   *
+   * The `startCinematicCompletedRef` guard prevents the effect from
+   * re-triggering the cinematic on every re-render while playerCount
+   * stays at 2.
+   */
+  /* eslint-disable react-hooks/set-state-in-effect -- derive waitingState from server-driven inputs */
+  useEffect(() => {
+    if (isTournamentMatch) {
+      if (waitingState !== "idle") setWaitingState("idle");
+      if (waitingCountdown !== null) setWaitingCountdown(null);
+      return;
+    }
+    if (matchEnded || matchAborted) {
+      if (waitingState !== "idle") setWaitingState("idle");
+      if (waitingCountdown !== null) setWaitingCountdown(null);
+      return;
+    }
+
+    const allScoresZero = Object.values(scores).every((s) => !s);
+    const isFreshMatch =
+      round <= 1 &&
+      !result &&
+      !pendingResult &&
+      !hasSubmittedPick &&
+      allScoresZero;
+
+    if (playerCount < 2) {
+      if (isFreshMatch) {
+        if (waitingState !== "waiting") setWaitingState("waiting");
+        if (waitingCountdown !== null) setWaitingCountdown(null);
+      } else {
+        if (waitingState !== "idle") setWaitingState("idle");
+        if (waitingCountdown !== null) setWaitingCountdown(null);
+      }
+      return;
+    }
+
+    // playerCount === 2 from here on.
+    if (!isFreshMatch) {
+      if (waitingState !== "idle") setWaitingState("idle");
+      if (waitingCountdown !== null) setWaitingCountdown(null);
+      return;
+    }
+    if (startCinematicCompletedRef.current) {
+      if (waitingState !== "idle") setWaitingState("idle");
+      if (waitingCountdown !== null) setWaitingCountdown(null);
+      return;
+    }
+    // Fresh match + both players present + cinematic not yet played:
+    // transition the state machine forward, but only from a "pre-cinematic"
+    // state. Once we're in "opponent-joined" or "countdown" we leave the
+    // dedicated timer effects to drive the rest of the sequence.
+    if (waitingState === "idle" || waitingState === "waiting") {
+      setWaitingState("opponent-joined");
+    }
+  }, [
+    playerCount,
+    matchEnded,
+    matchAborted,
+    isTournamentMatch,
+    round,
+    result,
+    pendingResult,
+    hasSubmittedPick,
+    scores,
+    waitingState,
+    waitingCountdown,
+  ]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  /**
+   * Cinematic effect 2 of 3 — "Opponent joined" beat.
+   *
+   * Holds the "Opponent joined" headline for MATCH_WAITING_OPPONENT_JOINED_MS,
+   * then hands off to the countdown stage. If `waitingState` changes for any
+   * other reason (e.g. opponent disconnects and playerCount drops back to 1),
+   * the timeout is cleared so we don't briefly flash the countdown.
+   */
+  useEffect(() => {
+    if (waitingState !== "opponent-joined") return;
+    const beatTimer = window.setTimeout(() => {
+      setWaitingState("countdown");
+      setWaitingCountdown(MATCH_WAITING_COUNTDOWN_SECONDS);
+    }, MATCH_WAITING_OPPONENT_JOINED_MS);
+    return () => window.clearTimeout(beatTimer);
+  }, [waitingState]);
+
+  /**
+   * Cinematic effect 3 of 3 — 3 → 2 → 1 ticker.
+   *
+   * Ticks `waitingCountdown` down by 1 every second. When it reaches 0 we
+   * mark the cinematic completed (so effect 1 doesn't re-arm it) and
+   * dismiss the overlay. The early-return for `null` covers the brief
+   * render between entering "countdown" and the seed value being set in
+   * the same tick — defensive, should never actually fire.
+   */
+  /* eslint-disable react-hooks/set-state-in-effect -- terminate cinematic when count reaches zero */
+  useEffect(() => {
+    if (waitingState !== "countdown") return;
+    if (waitingCountdown === null) return;
+    if (waitingCountdown <= 0) {
+      startCinematicCompletedRef.current = true;
+      setWaitingState("idle");
+      setWaitingCountdown(null);
+      return;
+    }
+    const tickTimer = window.setTimeout(() => {
+      setWaitingCountdown((prev) => (prev === null ? null : prev - 1));
+    }, 1000);
+    return () => window.clearTimeout(tickTimer);
+  }, [waitingState, waitingCountdown]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   useEffect(() => {
     if (
       matchEnded ||
@@ -1686,6 +1839,11 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     !hasSubmittedPick &&
     revealStage !== "REVEALING" &&
     revealStage !== "REVEALED" &&
+    // Hard gate during the casual pre-pick cinematic. The overlay also
+    // covers the lane buttons visually, but disabling `canPick` adds a
+    // second layer of defense so a stray click can't lock a pick during
+    // the 3 → 2 → 1 sequence.
+    waitingState === "idle" &&
     !!identity;
 
   const matchEndOutcome = useMemo(() => {
@@ -1720,7 +1878,12 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       playerCount >= 2 &&
       !!identity &&
       matchStartedAt !== null &&
-      earlyCancelDeadlineAt !== null
+      earlyCancelDeadlineAt !== null &&
+      // Suppress Forfeit / Cancel-match while the pre-pick cinematic is on
+      // screen. The overlay covers them visually anyway, but hiding them at
+      // the source keeps the DOM clean and prevents focus rings or tab
+      // navigation from reaching disabled controls behind the overlay.
+      waitingState === "idle"
     );
   }, [
     matchEnded,
@@ -1730,6 +1893,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     identity,
     matchStartedAt,
     earlyCancelDeadlineAt,
+    waitingState,
   ]);
 
   const isEarlyCancelWindow = useMemo(() => {
@@ -1932,6 +2096,22 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       <MatchResultOverlay
         visible={resultBurstResult !== null}
         result={resultBurstResult}
+      />
+      <MatchWaitingOverlay
+        visible={waitingState !== "idle"}
+        phase={waitingState === "idle" ? "waiting" : waitingState}
+        roomCode={normalizedRoomCode}
+        countdownSeconds={waitingCountdown}
+        accent={presentationAccent}
+        myName={myName !== "You" ? myName : undefined}
+        opponentName={
+          waitingState === "waiting" || opponentName === "Opponent"
+            ? undefined
+            : opponentName
+        }
+        onCancel={
+          waitingState === "waiting" ? () => router.replace("/lobby") : undefined
+        }
       />
       <div
         className={`relative z-10 main-container mx-auto max-w-6xl space-y-6 px-3 py-5 text-white sm:space-y-8 sm:px-4 sm:py-8 md:space-y-10 md:px-6 md:py-10 ${

@@ -72,6 +72,25 @@ export const MATCH_STAGING_SECONDS_TOURNAMENT = 5;
 export const ROUND_TRANSITION_VISIBLE_MS = 1_400;
 export const RESULT_OVERLAY_VISIBLE_MS = 700;
 
+/**
+ * Casual/private match waiting-room pacing. Tournament rooms have their
+ * own `MatchStagingScreen` and ignore these constants.
+ *
+ * Flow when the creator is alone in a fresh room:
+ *   playerCount < 2          → "waiting" overlay with room code + copy/share
+ *
+ * When the opponent joins (playerCount transitions 1 → 2, fresh match):
+ *   "opponent-joined" beat   ← MATCH_WAITING_OPPONENT_JOINED_MS
+ *   "countdown" 3 → 2 → 1    ← MATCH_WAITING_COUNTDOWN_SECONDS
+ *   overlay dismissed
+ *
+ * The server starts its 10s pick timer the instant both players are
+ * present. The cinematic overlaps the first few seconds of that 10s
+ * window so the player still has ~6s of pick time after the cinematic.
+ */
+export const MATCH_WAITING_OPPONENT_JOINED_MS = 700;
+export const MATCH_WAITING_COUNTDOWN_SECONDS = 3;
+
 const GOAL_MESSAGES = [
   "Clinical finish.",
   "Keeper went the wrong way.",
@@ -195,6 +214,12 @@ export const MATCH_PRESENTATION_CSS = `
 @keyframes p444PickLockedPulse{0%,100%{opacity:0.85;transform:scale(1)}50%{opacity:1;transform:scale(1.04)}}
 @keyframes p444KickerBadgePulse{0%,100%{box-shadow:0 0 0 0 rgba(56,189,248,0.0)}50%{box-shadow:0 0 0 6px rgba(56,189,248,0.18)}}
 @keyframes p444AtmosphereSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+@keyframes p444WaitingFadeIn{0%{opacity:0}100%{opacity:1}}
+@keyframes p444WaitingCardIn{0%{opacity:0;transform:translateY(8px) scale(0.98)}60%{opacity:1;transform:translateY(0) scale(1.005)}100%{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes p444WaitingPulseRing{0%,100%{opacity:0.55;transform:scale(1)}50%{opacity:1;transform:scale(1.06)}}
+@keyframes p444WaitingCodeShimmer{0%,100%{box-shadow:0 0 24px rgba(56,189,248,0.18),inset 0 0 18px rgba(56,189,248,0.08)}50%{box-shadow:0 0 36px rgba(56,189,248,0.32),inset 0 0 24px rgba(56,189,248,0.16)}}
+@keyframes p444CountdownDigit{0%{opacity:0;transform:scale(0.55)}28%{opacity:1;transform:scale(1.12)}72%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(0.92)}}
+@keyframes p444OpponentJoinedIn{0%{opacity:0;transform:translateY(-6px) scale(0.96)}40%{opacity:1;transform:translateY(0) scale(1.02)}100%{opacity:1;transform:translateY(0) scale(1)}}
 
 .p444-staging-overlay{animation:p444StagingBackdrop 0.22s ease-out forwards}
 .p444-staging-card{animation:p444StagingCard 0.4s cubic-bezier(0.22,1,0.36,1) forwards}
@@ -224,6 +249,12 @@ export const MATCH_PRESENTATION_CSS = `
 .match-waiting-dot:nth-child(3){animation-delay:0.36s}
 .match-lane-ready{transition:transform 180ms ease,box-shadow 180ms ease,background-color 180ms ease,border-color 180ms ease,color 180ms ease}
 .p444-atmosphere-orb{animation:p444AtmosphereSpin 60s linear infinite}
+.p444-waiting-backdrop{animation:p444WaitingFadeIn 0.28s ease-out forwards}
+.p444-waiting-card{animation:p444WaitingCardIn 0.42s cubic-bezier(0.22,1,0.36,1) forwards}
+.p444-waiting-ring{animation:p444WaitingPulseRing 2s ease-in-out infinite}
+.p444-waiting-code{animation:p444WaitingCodeShimmer 2.6s ease-in-out infinite}
+.p444-countdown-digit{animation:p444CountdownDigit 1s ease-out forwards}
+.p444-opponent-joined{animation:p444OpponentJoinedIn 0.5s cubic-bezier(0.22,1,0.36,1) forwards}
 `;
 
 /**
