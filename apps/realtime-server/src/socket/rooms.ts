@@ -32,6 +32,7 @@ type RoomSocketHandlerDeps = {
   emitMatchState: (roomCode: string, room: Room) => void;
   startRoundTimer: (roomCode: string, room: Room) => void;
   evaluateMatchStart: (roomCode: string, room: Room) => void;
+  recordTournamentPresence: (room: Room, playerId: string) => void;
 };
 
 let roomSocketDeps: RoomSocketHandlerDeps | null = null;
@@ -346,6 +347,7 @@ export function registerRoomSocketHandlers(socket: Socket) {
           `[Presence] player:present playerId=${playerId} roomCode=${code}`
         );
 
+        void getDeps().recordTournamentPresence(room, playerId);
         evaluateMatchStart(code, room);
       } catch (err) {
         console.error("player:present crashed:", err);

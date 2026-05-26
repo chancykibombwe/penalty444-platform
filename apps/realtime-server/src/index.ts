@@ -59,6 +59,7 @@ import {
   touchRoomActivity,
 } from "./room/cleanup";
 import { bindReadinessDeps, evaluateMatchStart } from "./room/readiness";
+import { recordTournamentPresenceIfNeeded } from "./room/tournamentPresence";
 import {
   bindSpectatorServer,
   mirrorToSpectators,
@@ -1615,6 +1616,7 @@ bindRoomSocketHandlers({
   emitMatchState,
   startRoundTimer,
   evaluateMatchStart,
+  recordTournamentPresence: recordTournamentPresenceIfNeeded,
 });
 
 bindMatchActionHandlers({
