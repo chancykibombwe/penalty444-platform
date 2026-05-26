@@ -49,15 +49,24 @@ export type PresentationAccent = "cyan" | "gold" | "gold-final";
  *   → match:result arrives
  *   → REVEALING (3–2–1 tension window)  ← MATCH_TENSION_*_MS
  *   → REVEALED (result on screen)
- *   → next match:update is held         ← MATCH_REVEAL_HOLD_*_MS (tournament only)
+ *   → next match:update is held         ← MATCH_REVEAL_HOLD_*_MS (both modes)
  *
- * NOTE: 3-second casual tension window. Previously casual matches revealed
- * the result instantly when both picks were already on the wire, which
- * felt jarring during live two-player testing. Server pacing is unchanged
- * (RESULT_REVEAL_PAUSE_MS still drives next-round arming on the server).
+ * The hold lets the REVEALED stage actually paint before the server's
+ * next-round `match:update` arrives. Without it, casual REVEALED lasted
+ * only the network round-trip because client tension (3000ms) and the
+ * server's `RESULT_REVEAL_PAUSE_MS` (3000ms) completed on the same frame,
+ * so the GOAL/SAVE/DRAW headline was barely visible. Tournament has
+ * always had a longer hold for cinematic pacing.
  */
 export const MATCH_TENSION_CASUAL_MS = 3000;
 export const MATCH_TENSION_TOURNAMENT_MS = 1500;
+/**
+ * Minimum time the casual result stays on screen after the REVEALING
+ * tension window completes. Targets ~1.5s of stable REVEALED state
+ * before the next round resets local state. Kept conservative so the
+ * combined "both locked → next round" feel stays under ~5s end-to-end.
+ */
+export const MATCH_REVEAL_HOLD_CASUAL_MS = 1_500;
 export const MATCH_REVEAL_HOLD_TOURNAMENT_MS = 4_000;
 export const MATCH_STAGING_SECONDS_TOURNAMENT = 5;
 export const ROUND_TRANSITION_VISIBLE_MS = 1_400;
