@@ -339,6 +339,38 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   // tournament context lets the staging UI render immediately.
   const [playerCount, setPlayerCount] = useState(1);
   const [timer, setTimer] = useState<number | null>(null);
+
+  // Phase 6C — readiness authority pre-start states.
+  //
+  // These three are mutually exclusive at any given moment:
+  //
+  //   • waitingForReturnDeadline !== null  → 2 players but opponent
+  //     is absent; show "Waiting for opponent to return" overlay,
+  //     gate canPick and the leave-controls.
+  //   • stagingStartsAt !== null           → both players present;
+  //     show 3-2-1 cinematic countdown over a dimmed match canvas.
+  //   • cancelledMessage !== null          → server emitted
+  //     `match:cancelled`; show terminal banner then redirect.
+  //
+  // None of these unlock the lane buttons — `canPick` is gated on
+  // all of them being null (i.e. the round timer must have actually
+  // started server-side).
+  const [
+    waitingForReturnDeadline,
+    setWaitingForReturnDeadline,
+  ] = useState<number | null>(null);
+  const [absentOpponentName, setAbsentOpponentName] = useState<string | null>(
+    null
+  );
+  const [returnSecondsRemaining, setReturnSecondsRemaining] = useState<
+    number | null
+  >(null);
+  const [stagingStartsAt, setStagingStartsAt] = useState<number | null>(null);
+  const [stagingDurationMs, setStagingDurationMs] = useState<number>(3700);
+  const [stagingSecondsRemaining, setStagingSecondsRemaining] = useState<
+    number | null
+  >(null);
+  const [cancelledMessage, setCancelledMessage] = useState<string | null>(null);
   const [disconnectCountdown, setDisconnectCountdown] = useState<number | null>(
     null
   );
@@ -554,6 +586,16 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         roomCode: normalizedRoomCode,
         playerId: currentIdentity.playerId,
         username: currentIdentity.username || "",
+      });
+      // Phase 6C — explicit match-page presence signal. The server's
+      // readiness authority uses ONLY this (and `player:leave`) to
+      // decide whether the round timer is allowed to start. Emitting
+      // immediately after `room:join` keeps the two signals tightly
+      // coupled — the order doesn't matter on the server side because
+      // both call `evaluateMatchStart`.
+      socket.emit("player:present", {
+        roomCode: normalizedRoomCode,
+        playerId: currentIdentity.playerId,
       });
     }
 
@@ -1278,6 +1320,70 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       }, 2000);
     }
 
+    // Phase 6C — readiness authority emits.
+    function onMatchWaitingForOpponent(payload: {
+      roomCode?: string;
+      expiresAt?: number;
+      absentPlayerName?: string | null;
+    }) {
+      if (!isSocketEventForRoom(payload, normalizedRoomCode)) return;
+      if (typeof payload.expiresAt !== "number") return;
+      setStagingStartsAt(null);
+      setStagingSecondsRemaining(null);
+      setWaitingForReturnDeadline(payload.expiresAt);
+      setAbsentOpponentName(payload.absentPlayerName ?? null);
+      setStatus(
+        payload.absentPlayerName
+          ? `Waiting for ${payload.absentPlayerName} to return...`
+          : "Waiting for opponent to return..."
+      );
+    }
+
+    function onMatchStagingBegin(payload: {
+      roomCode?: string;
+      startsAt?: number;
+      durationMs?: number;
+    }) {
+      if (!isSocketEventForRoom(payload, normalizedRoomCode)) return;
+      if (typeof payload.startsAt !== "number") return;
+      setWaitingForReturnDeadline(null);
+      setAbsentOpponentName(null);
+      setReturnSecondsRemaining(null);
+      const duration =
+        typeof payload.durationMs === "number" && payload.durationMs > 0
+          ? payload.durationMs
+          : 3700;
+      setStagingDurationMs(duration);
+      setStagingStartsAt(payload.startsAt);
+      setStatus("Match starting...");
+    }
+
+    function onMatchCancelled(payload: {
+      roomCode?: string;
+      reason?: string;
+      message?: string;
+    }) {
+      if (!isSocketEventForRoom(payload, normalizedRoomCode)) return;
+      const message =
+        typeof payload.message === "string" && payload.message
+          ? payload.message
+          : "Match cancelled — no penalty applied.";
+      setCancelledMessage(message);
+      setWaitingForReturnDeadline(null);
+      setAbsentOpponentName(null);
+      setReturnSecondsRemaining(null);
+      setStagingStartsAt(null);
+      setStagingSecondsRemaining(null);
+      setStatus(message);
+      clearActiveMatch();
+
+      clearAbortRedirectTimeout();
+      abortRedirectTimeoutRef.current = window.setTimeout(() => {
+        abortRedirectTimeoutRef.current = null;
+        router.push("/lobby");
+      }, 2500);
+    }
+
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("room:update", onRoomUpdate);
@@ -1291,12 +1397,25 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     socket.on("match:rematch:declined", onRematchDeclined);
     socket.on("match:aborted", onMatchAborted);
     socket.on("error:message", onErrorMessage);
+    // Phase 6C — readiness authority pre-start events.
+    socket.on("match:waitingForOpponent", onMatchWaitingForOpponent);
+    socket.on("match:stagingBegin", onMatchStagingBegin);
+    socket.on("match:cancelled", onMatchCancelled);
 
     if (socket.connected) {
       onConnect();
     }
 
     return () => {
+      // Phase 6C — drop match-page presence FIRST so the server
+      // re-evaluates readiness immediately. If pre-match, this can
+      // arm the return window; if post-match, the server ignores it.
+      if (identity) {
+        socket.emit("player:leave", {
+          roomCode: normalizedRoomCode,
+          playerId: identity.playerId,
+        });
+      }
       socket.emit("room:leave", { roomCode: normalizedRoomCode });
       clearAbortRedirectTimeout();
       clearDisconnectCountdownVisual();
@@ -1316,6 +1435,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       socket.off("match:rematch:declined", onRematchDeclined);
       socket.off("match:aborted", onMatchAborted);
       socket.off("error:message", onErrorMessage);
+      socket.off("match:waitingForOpponent", onMatchWaitingForOpponent);
+      socket.off("match:stagingBegin", onMatchStagingBegin);
+      socket.off("match:cancelled", onMatchCancelled);
     };
   }, [normalizedRoomCode, identity, router]);
 
@@ -1446,6 +1568,65 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     matchStartedAt,
     earlyCancelDeadlineAt,
   ]);
+
+  // Phase 6C — return-window ticker. Counts down from
+  // `waitingForReturnDeadline` at 1Hz so the overlay can render the
+  // remaining seconds. Cleared whenever the deadline is null.
+  useEffect(() => {
+    if (waitingForReturnDeadline === null) {
+      setReturnSecondsRemaining(null);
+      return;
+    }
+
+    const tick = () => {
+      const remainingMs = waitingForReturnDeadline - Date.now();
+      const seconds = Math.max(0, Math.ceil(remainingMs / 1000));
+      setReturnSecondsRemaining(seconds);
+    };
+
+    tick();
+    const interval = window.setInterval(tick, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [waitingForReturnDeadline]);
+
+  // Phase 6C — staging-countdown ticker. The server emits a single
+  // `match:stagingBegin { startsAt, durationMs }`; both clients tick
+  // locally off the server's wall-clock to stay drift-corrected.
+  useEffect(() => {
+    if (stagingStartsAt === null) {
+      setStagingSecondsRemaining(null);
+      return;
+    }
+
+    const tick = () => {
+      const elapsed = Date.now() - stagingStartsAt;
+      const remainingMs = stagingDurationMs - elapsed;
+      if (remainingMs <= 0) {
+        setStagingSecondsRemaining(0);
+        return;
+      }
+      // 700ms "opponent joined" beat, then 3 → 2 → 1.
+      // For simplicity expose seconds-remaining-rounded-up so the
+      // overlay renders 3 / 2 / 1.
+      setStagingSecondsRemaining(Math.max(1, Math.ceil(remainingMs / 1000)));
+    };
+
+    tick();
+    const interval = window.setInterval(tick, 120);
+
+    return () => window.clearInterval(interval);
+  }, [stagingStartsAt, stagingDurationMs]);
+
+  // Phase 6C — when the actual round timer fires (server emits
+  // `match:status` with `timeoutSeconds`, which sets matchStartedAt
+  // upstream), tear down the staging overlay immediately.
+  useEffect(() => {
+    if (matchStartedAt !== null) {
+      setStagingStartsAt(null);
+      setStagingSecondsRemaining(null);
+    }
+  }, [matchStartedAt]);
 
   // Phase 4: pre-reveal tension ticker.
   // Ticks every 120ms while in REVEALING so the 3-2-1 countdown can render
@@ -1680,12 +1861,23 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const isRevealLocked =
     revealStage === "REVEALING" || revealStage === "REVEALED";
 
+  // Phase 6C — gate `canPick` on the readiness authority. Until the
+  // server actually starts the round timer (i.e. presence
+  // confirmed → staging completes), `matchStartedAt` is null AND
+  // either `stagingStartsAt` or `waitingForReturnDeadline` is set.
+  // We treat both as "round timer not running yet" and refuse picks.
+  const isPreStartGate =
+    stagingStartsAt !== null ||
+    waitingForReturnDeadline !== null ||
+    cancelledMessage !== null;
+
   const canPick =
     playerCount >= 2 &&
     !matchEnded &&
     !hasSubmittedPick &&
     revealStage !== "REVEALING" &&
     revealStage !== "REVEALED" &&
+    !isPreStartGate &&
     !!identity;
 
   const matchEndOutcome = useMemo(() => {
@@ -1720,7 +1912,11 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       playerCount >= 2 &&
       !!identity &&
       matchStartedAt !== null &&
-      earlyCancelDeadlineAt !== null
+      earlyCancelDeadlineAt !== null &&
+      // Phase 6C — hide Forfeit while the readiness authority is
+      // gating start. The match hasn't begun in any meaningful
+      // sense, so there's nothing to forfeit.
+      !isPreStartGate
     );
   }, [
     matchEnded,
@@ -1730,6 +1926,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     identity,
     matchStartedAt,
     earlyCancelDeadlineAt,
+    isPreStartGate,
   ]);
 
   const isEarlyCancelWindow = useMemo(() => {
@@ -1933,6 +2130,80 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         visible={resultBurstResult !== null}
         result={resultBurstResult}
       />
+      {/* Phase 6C — pre-start readiness overlay. Covers four states:
+            • waiting for opponent to join (1 player in room)
+            • waiting for opponent to return (2 slots, opponent absent)
+            • staging countdown (both present, 3-2-1)
+            • cancelled (room torn down by readiness authority)
+          Rendered above the match canvas with pointer-events that
+          block interaction with anything beneath. */}
+      {cancelledMessage !== null ||
+      stagingStartsAt !== null ||
+      waitingForReturnDeadline !== null ||
+      (playerCount < 2 && !matchEnded) ? (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-6 backdrop-blur-md"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="w-full max-w-md rounded-3xl border border-white/10 bg-zinc-950/85 px-6 py-7 text-center shadow-2xl">
+            {cancelledMessage !== null ? (
+              <>
+                <p className="text-xs font-black uppercase tracking-[0.32em] text-red-300/90">
+                  Match cancelled
+                </p>
+                <p className="mt-3 text-base text-zinc-100">
+                  {cancelledMessage}
+                </p>
+                <p className="mt-2 text-xs text-zinc-400">
+                  Returning to lobby...
+                </p>
+              </>
+            ) : stagingStartsAt !== null ? (
+              <>
+                <p className="text-xs font-black uppercase tracking-[0.32em] text-emerald-300/90">
+                  Both players ready
+                </p>
+                <p className="mt-3 text-sm text-zinc-300">
+                  Match starting in
+                </p>
+                <p className="mt-3 text-7xl font-black tabular-nums text-white">
+                  {stagingSecondsRemaining ?? "—"}
+                </p>
+              </>
+            ) : waitingForReturnDeadline !== null ? (
+              <>
+                <p className="text-xs font-black uppercase tracking-[0.32em] text-amber-300/90">
+                  Waiting for opponent
+                </p>
+                <p className="mt-3 text-sm text-zinc-300">
+                  {absentOpponentName
+                    ? `${absentOpponentName} stepped away. Holding until they return.`
+                    : "Holding the match until your opponent returns."}
+                </p>
+                <p className="mt-4 text-5xl font-black tabular-nums text-white">
+                  {returnSecondsRemaining ?? "—"}s
+                </p>
+                <p className="mt-3 text-[10px] uppercase tracking-[0.28em] text-zinc-500">
+                  No penalty if cancelled
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs font-black uppercase tracking-[0.32em] text-zinc-400">
+                  Waiting for opponent
+                </p>
+                <p className="mt-3 text-sm text-zinc-300">
+                  Share your room code to start the match.
+                </p>
+                <p className="mt-4 select-all text-3xl font-black tracking-[0.4em] text-white">
+                  {normalizedRoomCode}
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
       <div
         className={`relative z-10 main-container mx-auto max-w-6xl space-y-6 px-3 py-5 text-white sm:space-y-8 sm:px-4 sm:py-8 md:space-y-10 md:px-6 md:py-10 ${
           screenEffect === "GOAL"

@@ -8,6 +8,20 @@ export type RoomPlayer = {
   playerId: string;
   socketId: string;
   username: string;
+  /**
+   * Phase 6C — match-page presence.
+   *
+   * `true` only while the player has an active `MatchRoomPanel`
+   * mounted (the panel emits `player:present` on mount and
+   * `player:leave` on unmount/navigation). `false` on pre-match
+   * disconnect.
+   *
+   * Distinct from "has a live socket": a player can be on `/lobby`
+   * with a healthy socket, but `present === false`. The readiness
+   * authority (`room/readiness.ts`) uses this — and ONLY this — to
+   * decide whether the round timer is allowed to start.
+   */
+  present: boolean;
 };
 
 export type Room = {
@@ -54,6 +68,36 @@ export type Room = {
   disconnectedPlayerId?: string;
   disconnectedAt?: number;
   disconnectForfeitTimeout?: NodeJS.Timeout;
+  /**
+   * Phase 6C — pre-match return window.
+   *
+   * Set when both player slots are filled but at least one player
+   * is absent from the match page. The readiness authority arms a
+   * 10s timeout (`waitingForReturnTimeout`) and a wall-clock
+   * deadline (`waitingForReturnUntil`, ms epoch); if presence
+   * doesn't recover by then, non-tournament rooms are cancelled
+   * cleanly (no score, no forfeit). Tournament rooms ignore this
+   * cancellation path — they delegate no-show handling to
+   * tournament cleanup.
+   */
+  waitingForReturnUntil?: number;
+  waitingForReturnTimeout?: NodeJS.Timeout;
+  /**
+   * Phase 6C — server-authoritative staging countdown.
+   *
+   * After both players are confirmed present, the readiness
+   * authority emits `match:stagingBegin` and arms this timeout for
+   * `STAGING_COUNTDOWN_MS`. The actual pick timer (`startRoundTimer`)
+   * only fires when this expires. Holding the timer back during
+   * staging guarantees both clients see the cinematic 3-2-1
+   * countdown BEFORE the 10s pick window begins counting.
+   *
+   * `stagingStartsAt` is the ms-epoch the countdown began so both
+   * clients can render a drift-corrected animation against a single
+   * server timestamp.
+   */
+  stagingStartsAt?: number;
+  stagingCountdownTimeout?: NodeJS.Timeout;
   /** Sprint 1 TASK 8: room creation timestamp (ms). */
   createdAt: number;
   /** Sprint 1 TASK 8: last meaningful activity (ms) — joins, picks, results. */

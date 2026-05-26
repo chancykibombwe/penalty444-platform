@@ -1,5 +1,6 @@
 import type { Server, Socket } from "socket.io";
 import { cleanUsername, normalizeRoomCode } from "../room/codes";
+import { evaluateMatchStart } from "../room/readiness";
 import {
   jwtEnforcementEnabled,
   jwtMatchesPlayer,
@@ -132,6 +133,10 @@ export function registerRoomSocketHandlers(socket: Socket) {
             playerId,
             socketId: socket.id,
             username: playerName,
+            // Phase 6C — creator is still on /lobby at room-create
+            // time. Presence flips to true on the subsequent
+            // `player:present` from MatchRoomPanel's mount.
+            present: false,
           },
         ],
         3,
@@ -302,6 +307,10 @@ export function registerRoomSocketHandlers(socket: Socket) {
         playerId,
         socketId: socket.id,
         username: playerName,
+        // Phase 6C — accepting player has just received `room:joined`
+        // but their `MatchRoomPanel` hasn't mounted yet. Presence
+        // stays false until the client emits `player:present`.
+        present: false,
       });
 
       room.roles[playerId] = "KEEPER";
@@ -315,9 +324,110 @@ export function registerRoomSocketHandlers(socket: Socket) {
       deps.emitRoomUpdate(code, room);
       deps.emitMatchState(code, room);
 
-      if (room.players.length === 2) {
-        deps.startRoundTimer(code, room);
+      // Phase 6C — the readiness authority is the SOLE caller of
+      // `startRoundTimer`. The previous unconditional
+      // `if (players.length === 2) startRoundTimer(...)` was the
+      // root cause of the unfair "creator absent, timer started"
+      // race we're fixing here.
+      evaluateMatchStart(code, room);
+    }
+  );
+
+  // Phase 6C — explicit match-page presence events.
+  //
+  // The client's `MatchRoomPanel` emits `player:present` on mount /
+  // rejoin and `player:leave` on unmount / navigation. These are
+  // distinct from socket.io channel joins/leaves — a player can be
+  // in the channel without their match panel being mounted (e.g.
+  // they refreshed and routed back to /lobby while the socket
+  // reconnect was still in flight). The readiness authority uses
+  // ONLY the per-player `present` flag to decide whether the round
+  // timer is allowed to start.
+
+  socket.on(
+    "player:present",
+    ({
+      roomCode,
+      playerId,
+    }: {
+      roomCode?: string;
+      playerId?: string;
+    }) => {
+      if (!allowSocketAction(socket.id, "player:present", { roomCode, playerId })) {
+        return;
       }
+      if (typeof roomCode !== "string" || typeof playerId !== "string") return;
+
+      const code = normalizeRoomCode(roomCode);
+      if (!code) return;
+
+      const room = rooms.get(code);
+      if (!room) return;
+
+      // JWT cross-check — same posture as `room:join`.
+      if (!jwtMatchesPlayer(socket, playerId)) {
+        if (jwtEnforcementEnabled()) {
+          console.warn(
+            `[Security] player:present jwt_player_mismatch socketId=${socket.id} ` +
+              `playerId=${playerId} verifiedUserId=${socket.data.userId ?? "—"}`
+          );
+          return;
+        }
+      }
+
+      const player = room.players.find((p) => p.playerId === playerId);
+      if (!player) return;
+
+      // Refresh the bound socketId — the client may have reconnected
+      // with a fresh socket between `room:join` and `player:present`.
+      player.socketId = socket.id;
+      player.present = true;
+
+      console.log(
+        `[presence] player:present roomCode=${code} playerId=${playerId} ` +
+          `playerCount=${room.players.length} ` +
+          `allPresent=${room.players.every((p) => p.present)}`
+      );
+
+      evaluateMatchStart(code, room);
+    }
+  );
+
+  socket.on(
+    "player:leave",
+    ({
+      roomCode,
+      playerId,
+    }: {
+      roomCode?: string;
+      playerId?: string;
+    }) => {
+      if (!allowSocketAction(socket.id, "player:leave", { roomCode, playerId })) {
+        return;
+      }
+      if (typeof roomCode !== "string" || typeof playerId !== "string") return;
+
+      const code = normalizeRoomCode(roomCode);
+      if (!code) return;
+
+      const room = rooms.get(code);
+      if (!room) return;
+
+      const player = room.players.find((p) => p.playerId === playerId);
+      if (!player) return;
+
+      // Only drop presence when the leaving player matches this
+      // socket — protects against a stray emit from another tab.
+      if (player.socketId !== socket.id) return;
+
+      player.present = false;
+
+      console.log(
+        `[presence] player:leave roomCode=${code} playerId=${playerId} ` +
+          `playerCount=${room.players.length}`
+      );
+
+      evaluateMatchStart(code, room);
     }
   );
 }

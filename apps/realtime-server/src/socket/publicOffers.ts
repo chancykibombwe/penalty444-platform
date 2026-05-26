@@ -1,6 +1,7 @@
 import type { Server, Socket } from "socket.io";
 import { clearRoomTimer } from "../gameplay/timers";
 import { cleanUsername, generateOfferId } from "../room/codes";
+import { evaluateMatchStart } from "../room/readiness";
 import { publicOffers, rooms } from "../state/stores";
 import type {
   MatchType,
@@ -207,6 +208,9 @@ export function registerPublicOfferHandlers(socket: Socket) {
               playerId,
               socketId: socket.id,
               username: playerName,
+              // Phase 6C — host is on /lobby at offer creation time.
+              // Presence flips on the subsequent `player:present`.
+              present: false,
             },
           ],
           safeRounds,
@@ -420,6 +424,10 @@ export function registerPublicOfferHandlers(socket: Socket) {
           playerId,
           socketId: socket.id,
           username: playerName,
+          // Phase 6C — accepting player has just been notified but
+          // their `MatchRoomPanel` has not mounted yet. Presence
+          // flips true on the subsequent `player:present`.
+          present: false,
         });
 
         room.roles[playerId] = "KEEPER";
@@ -440,7 +448,10 @@ export function registerPublicOfferHandlers(socket: Socket) {
           roomCode: offer.roomCode,
         });
 
-        deps.startRoundTimer(offer.roomCode, room);
+        // Phase 6C — readiness authority gates `startRoundTimer`.
+        // Both players are still on /lobby; the timer will arm only
+        // once both `MatchRoomPanel`s emit `player:present`.
+        evaluateMatchStart(offer.roomCode, room);
 
         console.log("publicOffer:matched sent", offer.roomCode);
       } catch (error) {

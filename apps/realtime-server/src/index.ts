@@ -53,6 +53,10 @@ import {
   setPlayerActiveRoom,
 } from "./room/lifecycle";
 import {
+  bindReadinessAuthority,
+  evaluateMatchStart,
+} from "./room/readiness";
+import {
   bindResolveSeqMap,
   scheduleRoomCleanup,
   startStaleRoomSweeper,
@@ -1396,6 +1400,31 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
     `[resolveRound] room=${roomCode} matchType=${room.matchType ?? "unknown"} round=${resolvingRound} seq=${resolveSeq} fromTimeout=${fromTimeout} kickerPlayerId=${kickerPlayerId ?? "—"} keeperPlayerId=${keeperPlayerId ?? "—"} kickerPick=${kickerPick ?? "—"} keeperPick=${keeperPick ?? "—"} result=${result} rule=${kickerPick && keeperPick ? (kickerPick === keeperPick ? "same_lane_SAVE" : "different_lane_GOAL") : "partial"}`
   );
 
+  // Phase 6C — diagnostic for the "LEFT vs RIGHT shows SAVE" class
+  // of bugs. We deliberately do NOT mutate `result` here: the rule
+  // (`resolveShot`) is the single authoritative source. This log
+  // gives us forensic evidence whenever a contradictory payload is
+  // about to be emitted — if it ever fires we know the bug is on
+  // the server side, not in the client renderer.
+  if (kickerPick && keeperPick) {
+    if (kickerPick !== keeperPick && result === "SAVE") {
+      console.error(
+        `[invariant:result] DIFFERENT lanes resolved as SAVE — should be GOAL ` +
+          `roomCode=${roomCode} matchInstance=${room.matchInstance} ` +
+          `round=${resolvingRound} kickerPick=${kickerPick} keeperPick=${keeperPick} ` +
+          `result=${result}`
+      );
+    }
+    if (kickerPick === keeperPick && result === "GOAL") {
+      console.error(
+        `[invariant:result] SAME lane resolved as GOAL — should be SAVE ` +
+          `roomCode=${roomCode} matchInstance=${room.matchInstance} ` +
+          `round=${resolvingRound} kickerPick=${kickerPick} keeperPick=${keeperPick} ` +
+          `result=${result}`
+      );
+    }
+  }
+
   if (pointWinnerRole) {
     const pointWinnerId = getPlayerByRole(room, pointWinnerRole);
 
@@ -1564,6 +1593,15 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
 bindRoundTimers({
   io,
   resolveRound,
+});
+
+// Phase 6C — the readiness authority MUST be bound before
+// `bindRoomLifecycle` so that lifecycle-time `evaluateMatchStart`
+// calls (made from `createRoomWithPlayers` / `createTournamentRoom`)
+// have a non-null deps slot to resolve.
+bindReadinessAuthority({
+  io,
+  startRoundTimer,
 });
 
 bindRoomLifecycle({
@@ -1821,6 +1859,25 @@ io.on("connection", (socket) => {
       );
 
       if (!player) continue;
+
+      // Phase 6C — drop presence first, regardless of which branch
+      // below we take. The pre-start branch uses it directly via
+      // `evaluateMatchStart`; the post-start branches don't read it.
+      player.present = false;
+
+      // Phase 6C — pre-match disconnect path.
+      //
+      // If the match never actually started (no `matchStartedAt`)
+      // there is nothing to forfeit. The readiness authority will
+      // either arm the return window or wait quietly depending on
+      // the remaining presence state. The 39s reconnect-forfeit is
+      // skipped entirely — it only ever applied to mid-match.
+      if (room.matchStartedAt === undefined) {
+        emitRoomUpdate(room.code, room);
+        emitMatchState(room.code, room);
+        evaluateMatchStart(room.code, room);
+        return;
+      }
 
       // Only apply reconnect-forfeit to active 2-player matches that are not ended.
       if (room.players.length !== 2 || room.matchEnded) {
