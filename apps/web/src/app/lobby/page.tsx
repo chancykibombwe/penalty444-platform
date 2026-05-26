@@ -7,6 +7,7 @@ import PublicMatchOffersPanel from "../../components/lobby/PublicMatchOffersPane
 import RankedMatchmakingPanel from "../../components/lobby/RankedMatchmakingPanel";
 import CreateRoomPanel from "../../components/lobby/CreateRoomPanel";
 import JoinRoomPanel from "../../components/lobby/JoinRoomPanel";
+import { LobbyConnectionProvider } from "../../lib/socket/LobbyConnectionProvider";
 
 function LobbyPageContent() {
   const searchParams = useSearchParams();
@@ -17,6 +18,7 @@ function LobbyPageContent() {
 
   return (
     <RequireAuth>
+      <LobbyConnectionProvider>
       <section className="space-y-8">
         <div>
           <h1 className="text-3xl font-bold text-white">Match Hub</h1>
@@ -51,6 +53,7 @@ function LobbyPageContent() {
           <JoinRoomPanel />
         </div>
       </section>
+      </LobbyConnectionProvider>
     </RequireAuth>
   );
 }

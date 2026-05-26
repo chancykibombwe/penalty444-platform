@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSocket } from "../../lib/socket/client";
+import { useLobbyConnection } from "../../lib/socket/LobbyConnectionProvider";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
 import { clearActiveMatch, saveActiveMatch } from "../../lib/match/activeMatch";
 
@@ -34,7 +35,11 @@ export default function PublicMatchOffersPanel() {
   const [cancellingOfferId, setCancellingOfferId] = useState<string | null>(
     null
   );
-  const [connected, setConnected] = useState(false);
+
+  // Hotfix lobby-socket-bootstrap-stability: shared connection state.
+  // The lobby provider owns the connect/disconnect listeners so this
+  // panel can't desync with RankedMatchmakingPanel anymore.
+  const { connected } = useLobbyConnection();
 
   function applyAuthoritativeOffers(incomingOffers: PublicMatchOffer[]) {
     const sortedIncoming = sortOffers(incomingOffers);
@@ -81,8 +86,9 @@ export default function PublicMatchOffersPanel() {
     }
 
     function onConnect() {
+      // The provider owns `connected`; this handler exists purely to
+      // refresh the offers list as soon as we land a connection.
       console.log("Lobby socket connected:", socket.id);
-      setConnected(true);
       setStatus("");
       requestLatestOffers();
     }
@@ -94,7 +100,6 @@ export default function PublicMatchOffersPanel() {
 
     function onConnectError(error: Error) {
       console.warn("Lobby socket connect error:", error.message);
-      setConnected(false);
       setStatus("Could not connect to realtime server.");
       setCreating(false);
       setJoiningOfferId(null);
@@ -103,7 +108,6 @@ export default function PublicMatchOffersPanel() {
 
     function onDisconnect(reason: string) {
       console.warn("Lobby socket disconnected:", reason);
-      setConnected(false);
       setStatus("Disconnected from server. Trying to reconnect...");
       setCreating(false);
       setJoiningOfferId(null);
@@ -209,10 +213,14 @@ export default function PublicMatchOffersPanel() {
     socket.on("activeRoom:cleared", onActiveRoomCleared);
     socket.on("activeRoom:clear:error", onActiveRoomClearError);
 
+    // If the singleton was already healthy when we mounted (e.g. the
+    // user navigated back from /match), grab the latest offers right
+    // away. The LobbyConnectionProvider owns the connect lifecycle so
+    // we DO NOT call socket.connect() from here anymore — that was the
+    // duplicate connect path that contributed to the "Disconnected"
+    // first-load bug.
     if (socket.connected) {
       onConnect();
-    } else {
-      socket.connect();
     }
 
     return () => {

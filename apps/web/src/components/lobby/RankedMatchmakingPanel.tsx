@@ -1,38 +1,57 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSocket } from "../../lib/socket/client";
+import { useLobbyConnection } from "../../lib/socket/LobbyConnectionProvider";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
 import { saveActiveMatch } from "../../lib/match/activeMatch";
 
 export default function RankedMatchmakingPanel() {
   const router = useRouter();
 
-  const [connected, setConnected] = useState(false);
+  // Hotfix lobby-socket-bootstrap-stability: shared connection state.
+  // Previously this panel kept its own `connected` flag and waited for
+  // a connect event that another panel had to fire. Reading from the
+  // lobby provider removes the race.
+  const { connected } = useLobbyConnection();
   const [inQueue, setInQueue] = useState(false);
   const [enqueueing, setEnqueueing] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [status, setStatus] = useState("");
 
+  // Track whether we've ever observed a healthy connection — otherwise
+  // the initial `connected: false` state on first mount would briefly
+  // flash a "Disconnected" status before the socket has finished its
+  // first handshake.
+  const wasConnectedRef = useRef(false);
+
+  useEffect(() => {
+    if (connected) {
+      wasConnectedRef.current = true;
+      setStatus((prev) =>
+        prev === "Disconnected from server. Reconnect to queue again." ||
+        prev === "Could not connect to realtime server."
+          ? ""
+          : prev
+      );
+      return;
+    }
+
+    if (!wasConnectedRef.current) {
+      return;
+    }
+
+    setInQueue(false);
+    setEnqueueing(false);
+    setCancelling(false);
+    setStatus("Disconnected from server. Reconnect to queue again.");
+  }, [connected]);
+
   useEffect(() => {
     const socket = getSocket();
 
-    function onConnect() {
-      setConnected(true);
-      setStatus("");
-    }
-
-    function onDisconnect() {
-      setConnected(false);
-      setInQueue(false);
-      setEnqueueing(false);
-      setCancelling(false);
-      setStatus("Disconnected from server. Reconnect to queue again.");
-    }
-
     function onConnectError() {
-      setConnected(false);
       setInQueue(false);
       setEnqueueing(false);
       setCancelling(false);
@@ -76,21 +95,13 @@ export default function RankedMatchmakingPanel() {
       setStatus("Left ranked queue.");
     }
 
-    socket.on("connect", onConnect);
-    socket.on("disconnect", onDisconnect);
     socket.on("connect_error", onConnectError);
     socket.on("ranked:queued", onRankedQueued);
     socket.on("ranked:matched", onRankedMatched);
     socket.on("ranked:error", onRankedError);
     socket.on("ranked:cancelled", onRankedCancelled);
 
-    if (socket.connected) {
-      onConnect();
-    }
-
     return () => {
-      socket.off("connect", onConnect);
-      socket.off("disconnect", onDisconnect);
       socket.off("connect_error", onConnectError);
       socket.off("ranked:queued", onRankedQueued);
       socket.off("ranked:matched", onRankedMatched);
@@ -105,7 +116,8 @@ export default function RankedMatchmakingPanel() {
     const socket = getSocket();
 
     if (!socket.connected) {
-      socket.connect();
+      // The provider owns the connect lifecycle; just surface a status
+      // and bail. socket.io's reconnection loop will recover.
       setStatus("Connecting to server. Try again in a second.");
       return;
     }
