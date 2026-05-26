@@ -448,13 +448,17 @@ export async function fetchLiveMatchPreviews(
   try {
     // Phase 7: prefer "in_progress" first; only fall back to "ready" if there
     // aren't enough live ones, so the strip always feels active.
+    //
+    // Order on the server is `created_at desc` only — ordering by `started_at`
+    // would push `ready` rows (where started_at IS NULL) out of the candidate
+    // set before the client-side `compareBracketMatches` had a chance to
+    // surface them. We promote in_progress over ready in JS instead.
     const liveResult = await client
       .from("tournament_matches")
       .select(
         "id, tournament_id, status, round_number, next_match_id, entry_one_id, entry_two_id, room_code, started_at, created_at"
       )
       .in("status", ["in_progress", "ready"])
-      .order("started_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
       .limit(limit * 2);
 

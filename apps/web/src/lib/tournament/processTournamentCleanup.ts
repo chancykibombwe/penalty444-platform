@@ -30,9 +30,6 @@ const STALE_IN_PROGRESS_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
 const MAX_REGISTRATION_CANDIDATES_PER_TICK = 50;
 const MAX_IN_PROGRESS_CANDIDATES_PER_TICK = 25;
 
-/** tournament_matches statuses that mean "still alive in the bracket". */
-const NON_TERMINAL_MATCH_STATUSES = ["pending", "ready", "in_progress"] as const;
-
 export type TournamentCleanupSummary = {
   staleRegistrationCancelled: number;
   staleInProgressCancelled: number;
@@ -42,22 +39,6 @@ export type TournamentCleanupSummary = {
 
 function nowIso(): string {
   return new Date().toISOString();
-}
-
-type NonTerminalMatchRow = {
-  status: string | null;
-  started_at: string | null;
-  created_at: string | null;
-};
-
-/** True when a non-terminal bracket slot shows activity after cutoffMs. */
-function isMatchActiveSince(row: NonTerminalMatchRow, cutoffMs: number): boolean {
-  if (row.status === "in_progress") {
-    const ms = Date.parse(row.started_at ?? "");
-    return Number.isFinite(ms) && ms >= cutoffMs;
-  }
-  const ms = Date.parse(row.created_at ?? "");
-  return Number.isFinite(ms) && ms >= cutoffMs;
 }
 
 /**
@@ -217,24 +198,46 @@ async function cancelStaleInProgress(
         continue;
       }
 
-      // Any non-terminal match with recent activity? (no updated_at on this table.)
-      const { data: liveMatches, error: liveError } = await admin
-        .from("tournament_matches")
-        .select("id, status, started_at, created_at")
-        .eq("tournament_id", tournamentId)
-        .in("status", [...NON_TERMINAL_MATCH_STATUSES]);
+      // tournament_matches has no `updated_at`, so we run two bounded
+      // `limit(1)` probes instead of fetching the full non-terminal set:
+      //   (a) in_progress matches with started_at >= cutoffIso
+      //   (b) pending/ready matches with created_at >= cutoffIso
+      // Either hit means the bracket is alive — leave the tournament alone.
+      const [inProgressProbe, pendingReadyProbe] = await Promise.all([
+        admin
+          .from("tournament_matches")
+          .select("id")
+          .eq("tournament_id", tournamentId)
+          .eq("status", "in_progress")
+          .gte("started_at", cutoffIso)
+          .limit(1),
+        admin
+          .from("tournament_matches")
+          .select("id")
+          .eq("tournament_id", tournamentId)
+          .in("status", ["pending", "ready"])
+          .gte("created_at", cutoffIso)
+          .limit(1),
+      ]);
 
-      if (liveError) {
+      if (inProgressProbe.error) {
         summary.failed.push({
           tournamentId,
-          error: `liveMatches: ${liveError.message}`,
+          error: `liveMatches(in_progress): ${inProgressProbe.error.message}`,
+        });
+        continue;
+      }
+      if (pendingReadyProbe.error) {
+        summary.failed.push({
+          tournamentId,
+          error: `liveMatches(pending/ready): ${pendingReadyProbe.error.message}`,
         });
         continue;
       }
 
-      const hasRecentMatchActivity = (liveMatches ?? []).some((row) =>
-        isMatchActiveSince(row as NonTerminalMatchRow, cutoffMs)
-      );
+      const hasRecentMatchActivity =
+        (inProgressProbe.data?.length ?? 0) > 0 ||
+        (pendingReadyProbe.data?.length ?? 0) > 0;
 
       if (hasRecentMatchActivity) {
         // Real activity exists — leave the tournament alone.

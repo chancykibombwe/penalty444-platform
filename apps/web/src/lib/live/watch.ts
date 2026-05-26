@@ -267,6 +267,12 @@ async function buildTournamentWatchable(
       id: match.id,
       status: normaliseStatus(match.status),
       nextMatchId: match.next_match_id,
+      // `tournament_matches` does not have an `updated_at` column. The
+      // `updatedAt` field on `bracketMatch` is therefore a best-effort
+      // recency proxy: started_at for matches that have actually kicked
+      // off, falling back to created_at for ready/pending slots. We keep
+      // the field name `updatedAt` to avoid a wider consumer audit;
+      // semantics are documented here at the single source.
       updatedAt: match.started_at ?? match.created_at,
     },
     playerOne,
