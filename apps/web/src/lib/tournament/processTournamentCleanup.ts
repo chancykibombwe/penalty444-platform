@@ -12,9 +12,10 @@ import { reconcileTournamentCompletion } from "@/lib/tournament/advancement";
  *   → cancel.
  *
  * Rule B — stale `in_progress`:
- *   updated_at < now() - 2 hours
+ *   tournaments.updated_at < now() - 2 hours
  *   AND no tournament_matches with a non-terminal status (pending/ready/in_progress)
- *     have been touched within the last 2 hours
+ *     have recent activity within the last 2 hours (started_at for in_progress,
+ *     created_at for pending/ready — tournament_matches has no updated_at column)
  *   → first attempt reconcileTournamentCompletion(); if still in_progress
  *      after that, cancel.
  *
@@ -41,6 +42,22 @@ export type TournamentCleanupSummary = {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+type NonTerminalMatchRow = {
+  status: string | null;
+  started_at: string | null;
+  created_at: string | null;
+};
+
+/** True when a non-terminal bracket slot shows activity after cutoffMs. */
+function isMatchActiveSince(row: NonTerminalMatchRow, cutoffMs: number): boolean {
+  if (row.status === "in_progress") {
+    const ms = Date.parse(row.started_at ?? "");
+    return Number.isFinite(ms) && ms >= cutoffMs;
+  }
+  const ms = Date.parse(row.created_at ?? "");
+  return Number.isFinite(ms) && ms >= cutoffMs;
 }
 
 /**
@@ -200,14 +217,12 @@ async function cancelStaleInProgress(
         continue;
       }
 
-      // Are there any non-terminal matches touched in the staleness window?
+      // Any non-terminal match with recent activity? (no updated_at on this table.)
       const { data: liveMatches, error: liveError } = await admin
         .from("tournament_matches")
-        .select("id, status, updated_at")
+        .select("id, status, started_at, created_at")
         .eq("tournament_id", tournamentId)
-        .in("status", [...NON_TERMINAL_MATCH_STATUSES])
-        .gte("updated_at", cutoffIso)
-        .limit(1);
+        .in("status", [...NON_TERMINAL_MATCH_STATUSES]);
 
       if (liveError) {
         summary.failed.push({
@@ -217,7 +232,11 @@ async function cancelStaleInProgress(
         continue;
       }
 
-      if (liveMatches && liveMatches.length > 0) {
+      const hasRecentMatchActivity = (liveMatches ?? []).some((row) =>
+        isMatchActiveSince(row as NonTerminalMatchRow, cutoffMs)
+      );
+
+      if (hasRecentMatchActivity) {
         // Real activity exists — leave the tournament alone.
         continue;
       }

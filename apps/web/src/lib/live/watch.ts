@@ -101,7 +101,8 @@ type TournamentMatchRow = {
   entry_one_id: string | null;
   entry_two_id: string | null;
   room_code: string | null;
-  updated_at: string | null;
+  started_at: string | null;
+  created_at: string | null;
 };
 
 type TournamentRow = {
@@ -152,10 +153,11 @@ export async function fetchWatchableMatch(
     const bracketResult = await client
       .from("tournament_matches")
       .select(
-        "id, tournament_id, status, round_number, next_match_id, entry_one_id, entry_two_id, room_code, updated_at"
+        "id, tournament_id, status, round_number, next_match_id, entry_one_id, entry_two_id, room_code, started_at, created_at"
       )
       .eq("room_code", normalised)
-      .order("updated_at", { ascending: false })
+      .order("started_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
@@ -265,7 +267,7 @@ async function buildTournamentWatchable(
       id: match.id,
       status: normaliseStatus(match.status),
       nextMatchId: match.next_match_id,
-      updatedAt: match.updated_at,
+      updatedAt: match.started_at ?? match.created_at,
     },
     playerOne,
     playerTwo,
