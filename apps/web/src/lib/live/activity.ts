@@ -171,8 +171,30 @@ type LiveBracketMatchRow = {
   entry_one_id: string | null;
   entry_two_id: string | null;
   room_code: string | null;
-  updated_at: string | null;
+  started_at: string | null;
+  created_at: string | null;
 };
+
+/** Recency key for bracket rows (tournament_matches has no updated_at). */
+function bracketMatchRecencyMs(row: LiveBracketMatchRow): number {
+  const iso =
+    row.status === "in_progress"
+      ? row.started_at ?? row.created_at
+      : row.created_at;
+  if (!iso) return 0;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function compareBracketMatches(
+  a: LiveBracketMatchRow,
+  b: LiveBracketMatchRow
+): number {
+  const aLive = a.status === "in_progress";
+  const bLive = b.status === "in_progress";
+  if (aLive !== bLive) return aLive ? -1 : 1;
+  return bracketMatchRecencyMs(b) - bracketMatchRecencyMs(a);
+}
 
 function safeName(name: string | null | undefined, fallback = "Player"): string {
   const trimmed = (name ?? "").trim();
@@ -377,28 +399,28 @@ export async function fetchPlatformLiveCounts(
     ] = await Promise.all([
       client
         .from("tournaments")
-        .select("id", { count: "exact", head: true })
+        .select("id", { count: "estimated", head: true })
         .eq("game_id", "penalty444")
         .eq("status", "in_progress"),
       client
         .from("tournaments")
-        .select("id", { count: "exact", head: true })
+        .select("id", { count: "estimated", head: true })
         .eq("game_id", "penalty444")
         .in("status", ["registration", "check_in", "in_progress"]),
       client
         .from("player_stats")
-        .select("user_id", { count: "exact", head: true })
+        .select("user_id", { count: "estimated", head: true })
         .eq("game_id", "penalty444")
         .gt("matches", 0)
         .lt("matches", 10),
       client
         .from("player_stats")
-        .select("user_id", { count: "exact", head: true })
+        .select("user_id", { count: "estimated", head: true })
         .eq("game_id", "penalty444")
         .gte("matches", 10),
       client
         .from("tournament_matches")
-        .select("id", { count: "exact", head: true })
+        .select("id", { count: "estimated", head: true })
         .eq("status", "in_progress"),
     ]);
 
@@ -426,16 +448,23 @@ export async function fetchLiveMatchPreviews(
   try {
     // Phase 7: prefer "in_progress" first; only fall back to "ready" if there
     // aren't enough live ones, so the strip always feels active.
+    //
+    // Order on the server is `created_at desc` only — ordering by `started_at`
+    // would push `ready` rows (where started_at IS NULL) out of the candidate
+    // set before the client-side `compareBracketMatches` had a chance to
+    // surface them. We promote in_progress over ready in JS instead.
     const liveResult = await client
       .from("tournament_matches")
       .select(
-        "id, tournament_id, status, round_number, next_match_id, entry_one_id, entry_two_id, room_code, updated_at"
+        "id, tournament_id, status, round_number, next_match_id, entry_one_id, entry_two_id, room_code, started_at, created_at"
       )
       .in("status", ["in_progress", "ready"])
-      .order("updated_at", { ascending: false })
+      .order("created_at", { ascending: false })
       .limit(limit * 2);
 
-    const rows = (liveResult.data ?? []) as LiveBracketMatchRow[];
+    const rows = ((liveResult.data ?? []) as LiveBracketMatchRow[]).sort(
+      compareBracketMatches
+    );
     if (rows.length === 0) return [];
 
     const tournamentIds = Array.from(
@@ -529,12 +558,6 @@ export async function fetchLiveMatchPreviews(
         status,
         roomCode: row.room_code,
       } satisfies LiveMatchPreviewItem;
-    });
-
-    // Sort: in_progress first, then ready, then keep the underlying recency.
-    previews.sort((a, b) => {
-      if (a.status === b.status) return 0;
-      return a.status === "in_progress" ? -1 : 1;
     });
 
     return previews.slice(0, limit);
