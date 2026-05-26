@@ -33,6 +33,7 @@ import {
   laneEmoji,
   LANES,
   MATCH_PRESENTATION_CSS,
+  MATCH_REVEAL_HOLD_CASUAL_MS,
   MATCH_REVEAL_HOLD_TOURNAMENT_MS,
   MATCH_STAGING_SECONDS_TOURNAMENT,
   MATCH_TENSION_CASUAL_MS,
@@ -123,11 +124,15 @@ type MatchEndPayload = {
 const MATCH_RESULT_REVEAL_MS = MATCH_TENSION_CASUAL_MS;
 const TOURNAMENT_MATCH_RESULT_REVEAL_MS = MATCH_TENSION_TOURNAMENT_MS;
 /**
- * Minimum time the tournament result stays visible on screen before the
- * client allows the next round's `match:update` to clear it. The server still
- * resolves immediately; this is purely client-side dramatic hold so players
- * don't get yanked into the next round in <500ms.
+ * Minimum time the result stays visible on screen before the client allows
+ * the next round's `match:update` to clear it. The server still resolves
+ * on its own schedule (RESULT_REVEAL_PAUSE_MS = 3000ms); this is purely
+ * client-side dramatic hold so players don't get yanked into the next
+ * round in <500ms. Casual gets a shorter hold (~1500ms) so the combined
+ * tension+reveal window stays under ~5s end-to-end; tournament uses a
+ * longer hold for the dramatic cinematic.
  */
+const CASUAL_REVEAL_HOLD_MS = MATCH_REVEAL_HOLD_CASUAL_MS;
 const TOURNAMENT_REVEAL_HOLD_MS = MATCH_REVEAL_HOLD_TOURNAMENT_MS;
 const TOURNAMENT_POST_MATCH_REDIRECT_MS = 4500;
 
@@ -369,12 +374,25 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const revealStageRef = useRef<RevealStage>("IDLE");
   const previousScoresForPulseRef = useRef<Record<string, number>>({});
   /**
-   * Tournament-only "dramatic hold" timestamp. After `applyRevealedResult`
-   * runs in tournament mode, this is set to now + TOURNAMENT_REVEAL_HOLD_MS.
-   * While this is in the future, the next `match:update` for a different
-   * round is deferred so the result stays visible on screen.
+   * Latest canonical display name for the local player, as broadcast by the
+   * server via `room:update` / `match:update`. Mirrored into a ref so the
+   * `match:status` socket handler (whose closure does not list
+   * `playerNames` as a dep) can compare against it without becoming stale.
+   *
+   * Used solely to suppress the server's "<username> locked pick." broadcast
+   * from overwriting the local "You locked LANE. Waiting for opponent…"
+   * status text. Opponent + system messages still flow through unchanged.
    */
-  const tournamentRevealHoldUntilRef = useRef<number>(0);
+  const myDisplayNameRef = useRef<string>("");
+  /**
+   * "Dramatic hold" timestamp. After `applyRevealedResult` runs, this is
+   * set to `now + CASUAL_REVEAL_HOLD_MS` (or the tournament variant). While
+   * this is in the future, the next `match:update` for a different round
+   * is deferred so the REVEALED stage actually paints. Used in BOTH casual
+   * and tournament modes — without it casual REVEALED was clobbered by
+   * the next-round update on the same frame the timer fired.
+   */
+  const revealHoldUntilRef = useRef<number>(0);
   /** Pending deferred onMatchUpdate payload + timer (tournament hold). */
   const deferredMatchUpdatePayloadRef = useRef<MatchUpdatePayload | null>(null);
   const deferredMatchUpdateTimerRef = useRef<number | null>(null);
@@ -608,19 +626,19 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           ? true
           : previousRoundTracked !== incomingRound;
 
-      // Tournament-only dramatic hold: if we just revealed a result and the
-      // server is already pushing the next round, defer the entire update by
-      // the remaining hold time so the verdict stays on screen long enough.
+      // Dramatic hold: if we just revealed a result and the server is
+      // already pushing the next round, defer the entire update by the
+      // remaining hold time so the verdict stays on screen long enough.
+      // Applies to BOTH casual and tournament (casual hold is shorter).
       // We DO NOT touch any state here so the re-fire path is clean.
       if (
         pickRoundAdvanced &&
         !data.matchEnded &&
-        tournamentContextRef.current.isTournament &&
-        tournamentRevealHoldUntilRef.current > Date.now()
+        revealHoldUntilRef.current > Date.now()
       ) {
         const holdRemaining = Math.max(
           0,
-          tournamentRevealHoldUntilRef.current - Date.now()
+          revealHoldUntilRef.current - Date.now()
         );
         console.info(
           "[RevealTiming] deferring next-round match:update by",
@@ -642,7 +660,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           const payload = deferredMatchUpdatePayloadRef.current;
           deferredMatchUpdatePayloadRef.current = null;
           // Force the hold to expire so the re-fire isn't deferred again.
-          tournamentRevealHoldUntilRef.current = 0;
+          revealHoldUntilRef.current = 0;
           if (payload) {
             onMatchUpdate(payload);
           }
@@ -790,7 +808,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         }
         clearMatchResultRevealTimeout();
         clearDeferredMatchUpdate();
-        tournamentRevealHoldUntilRef.current = 0;
+        revealHoldUntilRef.current = 0;
         lateResultRoundRef.current = null;
         closingRevealRoundSnapshotRef.current = null;
         matchResultRevealArmedRef.current = false;
@@ -815,7 +833,24 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         return;
       }
 
-      setStatus(data.message);
+      // Bug #2 fix: the realtime server broadcasts
+      //   "<username> locked pick."
+      // to the WHOLE room on every pick. That's useful for the opponent
+      // ("Player B locked pick.") but for the local player it overwrites
+      // the carefully-set "You locked LEFT. Waiting for opponent…" text
+      // with a confusing third-person line about themselves. Suppress
+      // ONLY that exact self-referential broadcast; let every other
+      // status message (round starts, sudden death, timeouts, opponent
+      // locks, reconnect countdowns, etc.) pass through unchanged.
+      const selfName = myDisplayNameRef.current;
+      const isSelfLockBroadcast =
+        typeof data.message === "string" &&
+        selfName.length > 0 &&
+        data.message === `${selfName} locked pick.`;
+
+      if (!isSelfLockBroadcast) {
+        setStatus(data.message);
+      }
 
       const messageLower = data.message.toLowerCase();
       if (disconnectCountdownRef.current !== null) {
@@ -889,21 +924,22 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setResultFlavorMessage(pickResultFlavorMessage(authoritative.result));
       setOpponentStatus("");
 
-      // Tournament-only "dramatic hold": keep the result on screen for at
-      // least TOURNAMENT_REVEAL_HOLD_MS before allowing the next round's
-      // match:update to clear it.
-      if (tournamentContextRef.current.isTournament) {
-        tournamentRevealHoldUntilRef.current =
-          Date.now() + TOURNAMENT_REVEAL_HOLD_MS;
-        console.info(
-          "[RevealTiming] tournament reveal hold armed for",
-          TOURNAMENT_REVEAL_HOLD_MS,
-          "ms — round=",
-          authoritative.round
-        );
-      } else {
-        tournamentRevealHoldUntilRef.current = 0;
-      }
+      // "Dramatic hold": keep the result on screen so REVEALED actually
+      // paints before the server's next-round `match:update` clears it.
+      // Casual gets a shorter hold (~1500ms); tournament keeps the longer
+      // cinematic hold (~4000ms).
+      const holdMs = tournamentContextRef.current.isTournament
+        ? TOURNAMENT_REVEAL_HOLD_MS
+        : CASUAL_REVEAL_HOLD_MS;
+      revealHoldUntilRef.current = Date.now() + holdMs;
+      console.info(
+        "[RevealTiming] reveal hold armed for",
+        holdMs,
+        "ms — round=",
+        authoritative.round,
+        "tournament=",
+        tournamentContextRef.current.isTournament
+      );
 
       if (authoritative.result === "GOAL") {
         goalSound.currentTime = 0;
@@ -1036,7 +1072,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       }
       clearMatchResultRevealTimeout();
       clearDeferredMatchUpdate();
-      tournamentRevealHoldUntilRef.current = 0;
+      revealHoldUntilRef.current = 0;
       lateResultRoundRef.current = null;
       closingRevealRoundSnapshotRef.current = null;
       matchResultRevealArmedRef.current = false;
@@ -1098,7 +1134,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       }
       clearMatchResultRevealTimeout();
       clearDeferredMatchUpdate();
-      tournamentRevealHoldUntilRef.current = 0;
+      revealHoldUntilRef.current = 0;
       lateResultRoundRef.current = null;
       closingRevealRoundSnapshotRef.current = null;
       matchResultRevealArmedRef.current = false;
@@ -1230,7 +1266,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
       clearMatchResultRevealTimeout();
       clearDeferredMatchUpdate();
-      tournamentRevealHoldUntilRef.current = 0;
+      revealHoldUntilRef.current = 0;
       clearActiveMatch();
       setStatus("Match cancelled. No penalty applied.");
 
@@ -1266,7 +1302,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       clearDisconnectCountdownVisual();
       clearMatchResultRevealTimeout();
       clearDeferredMatchUpdate();
-      tournamentRevealHoldUntilRef.current = 0;
+      revealHoldUntilRef.current = 0;
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
       socket.off("room:update", onRoomUpdate);
@@ -1482,6 +1518,16 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   ]);
 
   // Phase 4: full-screen GOAL/SAVE/DRAW burst on reveal.
+  //
+  // Bug #5 fix: the cleanup ALSO resets `resultBurstResult` to null. If
+  // the revealStage transitions out of REVEALED before the auto-clear
+  // timeout fires (e.g. next-round match:update arrives early), the
+  // pending `setResultBurstResult(null)` timer is cancelled by the
+  // cleanup. Without this explicit reset the state would stick on
+  // "GOAL"/"SAVE"/"DRAW" indefinitely; only the CSS opacity:0 keyframe
+  // hides it visually. Resetting here keeps state honest and prevents a
+  // stale burst from popping back if the overlay is ever toggled by
+  // visibility alone.
   useEffect(() => {
     if (revealStage !== "REVEALED" || !result?.result) {
       return;
@@ -1492,7 +1538,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setResultBurstResult(null);
     }, RESULT_OVERLAY_VISIBLE_MS);
 
-    return () => window.clearTimeout(timeout);
+    return () => {
+      window.clearTimeout(timeout);
+      setResultBurstResult(null);
+    };
   }, [revealStage, result?.result, result?.round]);
 
   useEffect(() => {
@@ -1516,6 +1565,20 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
   const myPlayerId = identity?.playerId || "";
   const myRole = myPlayerId ? roles[myPlayerId] : undefined;
+
+  // Keep myDisplayNameRef in sync with the canonical server name. Prefer
+  // the server-broadcast playerNames entry (matches the exact string the
+  // realtime server uses when emitting "<name> locked pick.") and fall
+  // back to the local identity username, finally to the server's "Player"
+  // default. This is read by the `match:status` self-lock filter below.
+  useEffect(() => {
+    if (myPlayerId && playerNames[myPlayerId]) {
+      myDisplayNameRef.current = playerNames[myPlayerId];
+      return;
+    }
+    const fallback = (identity?.username ?? "").trim();
+    myDisplayNameRef.current = fallback || "Player";
+  }, [myPlayerId, playerNames, identity]);
 
   useEffect(() => {
     if (!myPlayerId || playerCount < 2) return;
