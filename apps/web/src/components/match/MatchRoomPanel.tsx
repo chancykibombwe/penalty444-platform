@@ -504,8 +504,12 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     null
   );
   const [redirectingAfterAbort, setRedirectingAfterAbort] = useState(false);
+  const [waitingForOpponent, setWaitingForOpponent] = useState(false);
+  const [stagingCountdown, setStagingCountdown] = useState<number | null>(null);
+  const [matchCancelled, setMatchCancelled] = useState(false);
 
   const matchAbortedRef = useRef(false);
+  const stagingDismissedRef = useRef(false);
   const abortRedirectTimeoutRef = useRef<number | null>(null);
 
   function clearAbortRedirectTimeout() {
@@ -554,6 +558,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         roomCode: normalizedRoomCode,
         playerId: currentIdentity.playerId,
         username: currentIdentity.username || "",
+      });
+      socket.emit("player:present", {
+        playerId: currentIdentity.playerId,
+        roomCode: normalizedRoomCode,
       });
     }
 
@@ -1253,6 +1261,41 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setStatus(payload.message);
     }
 
+    function onMatchWaitingForOpponent(payload: {
+      roomCode?: string;
+      deadlineMs?: number;
+      opponentName?: string;
+    }) {
+      if (!isSocketEventForRoom(payload, normalizedRoomCode)) return;
+      setWaitingForOpponent(true);
+      setStatus(
+        `Waiting for ${payload.opponentName ?? "opponent"} to return...`
+      );
+    }
+
+    function onMatchStagingBegin(payload: {
+      roomCode?: string;
+      seconds?: number;
+    }) {
+      if (!isSocketEventForRoom(payload, normalizedRoomCode)) return;
+      if (stagingDismissedRef.current) return;
+      setWaitingForOpponent(false);
+      const secs = typeof payload.seconds === "number" ? payload.seconds : 3;
+      setStagingCountdown(secs);
+    }
+
+    function onMatchCancelled(payload: { roomCode?: string; reason?: string }) {
+      if (!isSocketEventForRoom(payload, normalizedRoomCode)) return;
+      clearActiveMatch();
+      setMatchCancelled(true);
+      setWaitingForOpponent(false);
+      setStagingCountdown(null);
+      setStatus("Match cancelled. No penalty applied.");
+      window.setTimeout(() => {
+        router.push("/lobby");
+      }, 2500);
+    }
+
     function onMatchAborted(_payload: MatchAbortedPayload) {
       matchAbortedRef.current = true;
       setLeaveMatchBusy(false);
@@ -1291,12 +1334,21 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     socket.on("match:rematch:declined", onRematchDeclined);
     socket.on("match:aborted", onMatchAborted);
     socket.on("error:message", onErrorMessage);
+    socket.on("match:waitingForOpponent", onMatchWaitingForOpponent);
+    socket.on("match:stagingBegin", onMatchStagingBegin);
+    socket.on("match:cancelled", onMatchCancelled);
 
     if (socket.connected) {
       onConnect();
     }
 
     return () => {
+      if (identity?.playerId) {
+        socket.emit("player:leave", {
+          playerId: identity.playerId,
+          roomCode: normalizedRoomCode,
+        });
+      }
       socket.emit("room:leave", { roomCode: normalizedRoomCode });
       clearAbortRedirectTimeout();
       clearDisconnectCountdownVisual();
@@ -1316,6 +1368,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       socket.off("match:rematch:declined", onRematchDeclined);
       socket.off("match:aborted", onMatchAborted);
       socket.off("error:message", onErrorMessage);
+      socket.off("match:waitingForOpponent", onMatchWaitingForOpponent);
+      socket.off("match:stagingBegin", onMatchStagingBegin);
+      socket.off("match:cancelled", onMatchCancelled);
     };
   }, [normalizedRoomCode, identity, router]);
 
@@ -1424,6 +1479,24 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setTournamentStagingCountdown(null);
     }
   }, [hasSubmittedPick, tournamentStagingCountdown]);
+
+  // Server-driven staging countdown tick. Fires when server emits match:stagingBegin.
+  useEffect(() => {
+    if (stagingCountdown === null || stagingCountdown <= 0) return;
+
+    const id = window.setInterval(() => {
+      setStagingCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          window.clearInterval(id);
+          stagingDismissedRef.current = true;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(id);
+  }, [stagingCountdown]);
 
   useEffect(() => {
     if (
@@ -1871,6 +1944,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
   const showTournamentStaging =
     isTournamentMatch && tournamentStagingCountdown !== null;
+  // Server-driven staging takes precedence for all match types.
+  const showStaging = stagingCountdown !== null || showTournamentStaging;
+  const activeStagingSeconds =
+    stagingCountdown !== null ? stagingCountdown : tournamentStagingCountdown;
 
   const presentationAccent = accentForContext({
     isTournament: isTournamentMatch,
@@ -1910,16 +1987,51 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         intense={isSuddenDeath || isFinalTournamentMatch}
       />
       <MatchStagingScreen
-        visible={showTournamentStaging}
+        visible={showStaging}
         title={tournamentRoundDisplayLabel ?? "Match starting"}
         tournamentName={
           isFinalTournamentMatch ? "Championship" : isTournamentMatch ? "Tournament" : null
         }
         leftName={myName}
         rightName={opponentName}
-        seconds={tournamentStagingCountdown}
+        seconds={activeStagingSeconds}
         accent={presentationAccent}
       />
+      {waitingForOpponent && !matchEnded && !matchCancelled && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-900 px-6 py-8 text-center shadow-2xl">
+            <p className="text-xs font-black uppercase tracking-widest text-zinc-400">
+              Waiting
+            </p>
+            <p className="mt-3 text-xl font-bold text-white">
+              Opponent stepped away
+            </p>
+            <p className="mt-2 text-sm text-zinc-400">
+              They have a few seconds to return.
+            </p>
+            <div className="mt-5 flex items-center justify-center gap-1 text-zinc-400">
+              <span className="match-waiting-dot" />
+              <span className="match-waiting-dot" />
+              <span className="match-waiting-dot" />
+            </div>
+          </div>
+        </div>
+      )}
+      {matchCancelled && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-900 px-6 py-8 text-center shadow-2xl">
+            <p className="text-sm font-bold uppercase tracking-widest text-zinc-400">
+              Match Cancelled
+            </p>
+            <p className="mt-3 text-xl font-bold text-white">
+              Opponent didn&apos;t return
+            </p>
+            <p className="mt-2 text-sm text-zinc-400">
+              No penalty. Returning to lobby...
+            </p>
+          </div>
+        </div>
+      )}
       {roundTransition ? (
         <RoundTransition
           visible

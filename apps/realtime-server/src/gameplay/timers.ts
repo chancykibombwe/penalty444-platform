@@ -52,6 +52,14 @@ export function clearRoomTimer(room: Room) {
     clearTimeout(room.disconnectForfeitTimeout);
     room.disconnectForfeitTimeout = undefined;
   }
+  if (room.returnWindowTimeout) {
+    clearTimeout(room.returnWindowTimeout);
+    room.returnWindowTimeout = undefined;
+  }
+  if (room.stagingTimeout) {
+    clearTimeout(room.stagingTimeout);
+    room.stagingTimeout = undefined;
+  }
 }
 
 export function startRoundTimer(roomCode: string, room: Room) {

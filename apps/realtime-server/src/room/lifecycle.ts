@@ -4,6 +4,7 @@ import { playerActiveRooms, rooms } from "../state/stores";
 import type { MatchType, Room, RoomPlayer } from "../types/room";
 import { getStakeAmount } from "../wallet/stakes";
 import { generateRoomCode, normalizeRoomCode } from "./codes";
+import { evaluateMatchStart } from "./readiness";
 
 /**
  * Hardening Sprint 1 — TASK 3: stable per-match-instance id. Recomputed
@@ -150,7 +151,7 @@ export function createRoomWithPlayers(
   emitMatchState(code, room);
 
   if (room.players.length === 2) {
-    startRoundTimer(code, room);
+    evaluateMatchStart(code, room);
   }
 
   return { code, room };
@@ -262,7 +263,7 @@ export function createTournamentRoom({
   emitMatchState(code, room);
 
   if (room.players.length === 2) {
-    startRoundTimer(code, room);
+    evaluateMatchStart(code, room);
   }
 
   return { code, room };

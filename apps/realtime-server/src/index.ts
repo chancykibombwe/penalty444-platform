@@ -58,6 +58,7 @@ import {
   startStaleRoomSweeper,
   touchRoomActivity,
 } from "./room/cleanup";
+import { bindReadinessDeps, evaluateMatchStart } from "./room/readiness";
 import {
   bindSpectatorServer,
   mirrorToSpectators,
@@ -1566,6 +1567,13 @@ bindRoundTimers({
   resolveRound,
 });
 
+bindReadinessDeps({
+  io,
+  startRoundTimer,
+  emitMatchState,
+  emitRoomUpdate,
+});
+
 bindRoomLifecycle({
   io,
   emitRoomUpdate,
@@ -1606,6 +1614,7 @@ bindRoomSocketHandlers({
   emitRoomUpdate,
   emitMatchState,
   startRoundTimer,
+  evaluateMatchStart,
 });
 
 bindMatchActionHandlers({

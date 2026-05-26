@@ -54,16 +54,26 @@ export type LobbyConnectionState = {
    * mount window before the socket has had a chance to handshake.
    */
   ready: boolean;
+  /** Set when the server signals the player's opponent is ready in a room. */
+  opponentReadyRoomCode: string | null;
+  clearOpponentReady: () => void;
 };
 
 const LobbyConnectionContext = createContext<LobbyConnectionState>({
   connected: false,
   ready: false,
+  opponentReadyRoomCode: null,
+  clearOpponentReady: () => {},
 });
 
 export function LobbyConnectionProvider({ children }: { children: ReactNode }) {
   const [connected, setConnected] = useState(false);
   const [ready, setReady] = useState(false);
+  const [opponentReadyRoomCode, setOpponentReadyRoomCode] = useState<string | null>(null);
+
+  function clearOpponentReady() {
+    setOpponentReadyRoomCode(null);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -94,8 +104,15 @@ export function LobbyConnectionProvider({ children }: { children: ReactNode }) {
         setConnected(false);
       }
 
+      function onMatchOpponentReady(payload: { roomCode?: string }) {
+        if (typeof payload.roomCode === "string" && payload.roomCode) {
+          setOpponentReadyRoomCode(payload.roomCode);
+        }
+      }
+
       socket.on("connect", onConnect);
       socket.on("disconnect", onDisconnect);
+      socket.on("match:opponentReady", onMatchOpponentReady);
 
       // If the socket is already healthy (e.g. survived navigation from
       // /match back to /lobby), reflect that immediately.
@@ -114,6 +131,7 @@ export function LobbyConnectionProvider({ children }: { children: ReactNode }) {
       detach = () => {
         socket.off("connect", onConnect);
         socket.off("disconnect", onDisconnect);
+        socket.off("match:opponentReady", onMatchOpponentReady);
       };
     }
 
@@ -126,7 +144,7 @@ export function LobbyConnectionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <LobbyConnectionContext.Provider value={{ connected, ready }}>
+    <LobbyConnectionContext.Provider value={{ connected, ready, opponentReadyRoomCode, clearOpponentReady }}>
       {children}
     </LobbyConnectionContext.Provider>
   );

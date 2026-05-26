@@ -8,6 +8,7 @@ export type RoomPlayer = {
   playerId: string;
   socketId: string;
   username: string;
+  present?: boolean;
 };
 
 export type Room = {
@@ -62,6 +63,10 @@ export type Room = {
   cleanupTimeout?: NodeJS.Timeout;
   /** Sprint 1 TASK 1: spectator socket ids attached to `${code}:spectators`. */
   spectatorSocketIds: Set<string>;
+  returnWindowTimeout?: NodeJS.Timeout;
+  returnWindowDeadline?: number;
+  stagingInProgress?: boolean;
+  stagingTimeout?: NodeJS.Timeout;
 };
 
 export type PublicMatchOffer = {

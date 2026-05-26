@@ -7,6 +7,7 @@ import {
 import { allowSocketAction } from "../security/rateLimit";
 import { rooms } from "../state/stores";
 import type { MatchType, Room, RoomPlayer } from "../types/room";
+import { evaluateMatchStart } from "../room/readiness";
 
 type CreateRoomWithPlayersFn = (
   players: RoomPlayer[],
@@ -30,6 +31,7 @@ type RoomSocketHandlerDeps = {
   emitRoomUpdate: (roomCode: string, room: Room) => void;
   emitMatchState: (roomCode: string, room: Room) => void;
   startRoundTimer: (roomCode: string, room: Room) => void;
+  evaluateMatchStart: (roomCode: string, room: Room) => void;
 };
 
 let roomSocketDeps: RoomSocketHandlerDeps | null = null;
@@ -233,8 +235,12 @@ export function registerRoomSocketHandlers(socket: Socket) {
             suddenDeathRound: room.suddenDeathRound,
           });
 
-          // Keep reconnect logic simple: always restart the round timer.
-          deps.startRoundTimer(code, room);
+          // Active match: restart timer immediately. Pre-start: re-evaluate presence.
+          if (room.matchStartedAt !== undefined) {
+            deps.startRoundTimer(code, room);
+          } else {
+            deps.evaluateMatchStart(code, room);
+          }
         }
 
         socket.join(code);
@@ -314,9 +320,67 @@ export function registerRoomSocketHandlers(socket: Socket) {
 
       deps.emitRoomUpdate(code, room);
       deps.emitMatchState(code, room);
+      // Do NOT start timer here — player:present from MatchRoomPanel triggers evaluateMatchStart.
+    }
+  );
 
-      if (room.players.length === 2) {
-        deps.startRoundTimer(code, room);
+  socket.on(
+    "player:present",
+    ({ playerId, roomCode }: { playerId: string; roomCode: string }) => {
+      try {
+        if (typeof playerId !== "string" || !playerId.trim()) return;
+        if (typeof roomCode !== "string" || !roomCode.trim()) return;
+
+        const code = normalizeRoomCode(roomCode);
+        if (!code) return;
+
+        const room = rooms.get(code);
+        if (!room || room.matchEnded) return;
+
+        const player = room.players.find((p) => p.playerId === playerId);
+        if (!player) return;
+
+        player.present = true;
+
+        console.log(
+          `[Presence] player:present playerId=${playerId} roomCode=${code}`
+        );
+
+        evaluateMatchStart(code, room);
+      } catch (err) {
+        console.error("player:present crashed:", err);
+      }
+    }
+  );
+
+  socket.on(
+    "player:leave",
+    ({ playerId, roomCode }: { playerId: string; roomCode: string }) => {
+      try {
+        if (typeof playerId !== "string" || !playerId.trim()) return;
+        if (typeof roomCode !== "string" || !roomCode.trim()) return;
+
+        const code = normalizeRoomCode(roomCode);
+        if (!code) return;
+
+        const room = rooms.get(code);
+        if (!room || room.matchEnded) return;
+
+        // Once the match has started, presence changes don't affect the timer.
+        if (room.matchStartedAt !== undefined) return;
+
+        const player = room.players.find((p) => p.playerId === playerId);
+        if (!player) return;
+
+        player.present = false;
+
+        console.log(
+          `[Presence] player:leave playerId=${playerId} roomCode=${code}`
+        );
+
+        evaluateMatchStart(code, room);
+      } catch (err) {
+        console.error("player:leave crashed:", err);
       }
     }
   );
