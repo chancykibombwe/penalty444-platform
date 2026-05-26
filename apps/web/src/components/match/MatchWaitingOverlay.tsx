@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import type { PresentationAccent } from "./matchPresentation";
 
-export type MatchWaitingPhase = "waiting" | "opponent-joined" | "countdown";
+export type MatchWaitingPhase =
+  | "waiting"
+  | "opponent-joined"
+  | "countdown"
+  | "waiting-for-return";
 
 /**
  * Cinematic pre-match overlay for casual / private rooms.
@@ -32,6 +36,8 @@ export default function MatchWaitingOverlay({
   myName,
   opponentName,
   onCancel,
+  returnSecondsRemaining,
+  absentPlayerName,
 }: {
   visible: boolean;
   phase: MatchWaitingPhase;
@@ -41,6 +47,17 @@ export default function MatchWaitingOverlay({
   myName?: string;
   opponentName?: string;
   onCancel?: () => void;
+  /**
+   * Seconds left on the server's `match:waitingForReturn` deadline.
+   * Used only in `waiting-for-return` phase. Pass `null` when unknown
+   * (will display "any moment now").
+   */
+  returnSecondsRemaining?: number | null;
+  /**
+   * Name of the player the present user is waiting on. Displayed in
+   * `waiting-for-return` phase. Pass undefined for "Opponent".
+   */
+  absentPlayerName?: string;
 }) {
   const [copied, setCopied] = useState(false);
   const [canShare, setCanShare] = useState(false);
@@ -114,6 +131,7 @@ export default function MatchWaitingOverlay({
 
   const showCountdown = phase === "countdown" && countdownSeconds !== null;
   const showOpponentJoined = phase === "opponent-joined";
+  const showWaitingForReturn = phase === "waiting-for-return";
 
   return (
     <div
@@ -125,7 +143,9 @@ export default function MatchWaitingOverlay({
           ? `Match starting in ${countdownSeconds}`
           : showOpponentJoined
             ? "Opponent joined"
-            : "Waiting for opponent"
+            : showWaitingForReturn
+              ? `Waiting for ${absentPlayerName ?? "opponent"} to return`
+              : "Waiting for opponent"
       }
     >
       {showCountdown ? (
@@ -140,6 +160,12 @@ export default function MatchWaitingOverlay({
           accent={accent}
           myName={myName}
           opponentName={opponentName}
+        />
+      ) : showWaitingForReturn ? (
+        <WaitingForReturnStage
+          accent={accent}
+          absentPlayerName={absentPlayerName}
+          secondsRemaining={returnSecondsRemaining ?? null}
         />
       ) : (
         <div
@@ -262,6 +288,87 @@ function OpponentJoinedStage({
           {opponentName ?? "Opponent"}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * "Waiting for opponent to return" — shown to the PRESENT player when
+ * the server has armed a `match:waitingForReturn` window because the
+ * opponent is currently absent (not on the match page).
+ *
+ * Mirrors the cinematic style of the other stages but never displays
+ * the room code (this player already passed the share step) and shows
+ * the live server-driven countdown.
+ */
+function WaitingForReturnStage({
+  accent,
+  absentPlayerName,
+  secondsRemaining,
+}: {
+  accent: PresentationAccent;
+  absentPlayerName?: string;
+  secondsRemaining: number | null;
+}) {
+  const accentRing =
+    accent === "gold" || accent === "gold-final"
+      ? "border-amber-300/55 shadow-[0_0_38px_rgba(251,191,36,0.22)]"
+      : "border-cyan-400/55 shadow-[0_0_38px_rgba(56,189,248,0.22)]";
+
+  const accentEyebrow =
+    accent === "gold" || accent === "gold-final"
+      ? "text-amber-300/90"
+      : "text-cyan-300/90";
+
+  const accentNumber =
+    accent === "gold" || accent === "gold-final"
+      ? "text-amber-200 drop-shadow-[0_0_24px_rgba(251,191,36,0.45)]"
+      : "text-cyan-200 drop-shadow-[0_0_24px_rgba(56,189,248,0.45)]";
+
+  const display = secondsRemaining === null ? null : Math.max(0, secondsRemaining);
+  const opponentLabel = absentPlayerName ?? "Opponent";
+
+  return (
+    <div
+      className={`p444-waiting-card w-full max-w-lg rounded-3xl border bg-zinc-950/90 px-6 py-8 text-center shadow-2xl sm:px-8 sm:py-10 ${accentRing}`}
+    >
+      <span
+        className={`p444-waiting-ring inline-flex h-3 w-3 rounded-full ${
+          accent === "gold" || accent === "gold-final" ? "bg-amber-300" : "bg-cyan-300"
+        }`}
+        aria-hidden
+      />
+      <p
+        className={`mt-4 text-[11px] font-black uppercase tracking-[0.32em] ${accentEyebrow}`}
+      >
+        Opponent stepped away
+      </p>
+      <h2 className="mt-2 break-words text-2xl font-black text-white sm:text-3xl">
+        Waiting for {opponentLabel} to return
+      </h2>
+      <p className="mt-3 text-sm text-zinc-400 sm:text-base">
+        Your gameplay timer is paused. We've alerted them to come back.
+      </p>
+
+      {display !== null ? (
+        <div className="mt-7">
+          <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-zinc-500">
+            Auto-cancels in
+          </p>
+          <p
+            key={display}
+            className={`p444-countdown-digit mt-2 text-[5rem] font-black tabular-nums leading-none sm:text-[6rem] ${accentNumber}`}
+            aria-live="assertive"
+          >
+            {display}s
+          </p>
+          <p className="mt-2 text-xs text-zinc-500">
+            If they don't return in time, the match is cancelled with no penalty.
+          </p>
+        </div>
+      ) : (
+        <p className="mt-7 text-sm text-zinc-400">Any moment now…</p>
+      )}
     </div>
   );
 }

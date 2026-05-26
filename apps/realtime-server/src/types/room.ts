@@ -8,6 +8,19 @@ export type RoomPlayer = {
   playerId: string;
   socketId: string;
   username: string;
+  /**
+   * Match-page presence. True only between an explicit `room:join` (when
+   * the player's `MatchRoomPanel` mounts) and `room:leave` (unmount) /
+   * socket disconnect.
+   *
+   * This is intentionally NOT the same as "has a live socket". A player
+   * can be on `/lobby` with a healthy socket — they're connected, but
+   * NOT on the match page, so `present` is `false` and the round timer
+   * MUST NOT start against them. The pre-match `evaluateMatchStart`
+   * gate uses this field to delay `startRoundTimer` until every slot
+   * is filled AND every player has confirmed presence.
+   */
+  present: boolean;
 };
 
 export type Room = {
@@ -54,6 +67,22 @@ export type Room = {
   disconnectedPlayerId?: string;
   disconnectedAt?: number;
   disconnectForfeitTimeout?: NodeJS.Timeout;
+  /**
+   * Pre-match fairness window. When both player slots are filled but
+   * at least one player has `present === false`, the server stops the
+   * round timer from starting and instead arms a short return window.
+   * `waitingForReturnUntil` is the ms-epoch deadline by which the
+   * absent player must `room:join` again, and `waitingForReturnTimeout`
+   * is the server-side timer that fires `match:cancelled` (for
+   * non-tournament rooms) or simply ends the wait (tournament rooms,
+   * which delegate no-show handling to tournament cleanup).
+   *
+   * Both fields are cleared as soon as everyone is present OR the
+   * room is cancelled — see `clearWaitingForReturn` in
+   * `room/lifecycle.ts`.
+   */
+  waitingForReturnUntil?: number;
+  waitingForReturnTimeout?: NodeJS.Timeout;
   /** Sprint 1 TASK 8: room creation timestamp (ms). */
   createdAt: number;
   /** Sprint 1 TASK 8: last meaningful activity (ms) — joins, picks, results. */

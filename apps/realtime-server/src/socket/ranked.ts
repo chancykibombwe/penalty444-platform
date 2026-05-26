@@ -81,11 +81,17 @@ function tryFlushRankedQueue() {
       playerId: a.playerId,
       socketId: a.socketId,
       username: a.username,
+      // Both queued players are still on /lobby at match time. Presence
+      // flips true when their MatchRoomPanel mounts and emits room:join.
+      // `createRoomWithPlayers` also reseeds this value, but TS requires
+      // an explicit one here.
+      present: false,
     };
     const p2: RoomPlayer = {
       playerId: b.playerId,
       socketId: b.socketId,
       username: b.username,
+      present: false,
     };
 
     try {

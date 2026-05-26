@@ -30,6 +30,12 @@ type RoomSocketHandlerDeps = {
   emitRoomUpdate: (roomCode: string, room: Room) => void;
   emitMatchState: (roomCode: string, room: Room) => void;
   startRoundTimer: (roomCode: string, room: Room) => void;
+  /**
+   * Decides whether `startRoundTimer` should fire yet based on
+   * presence + player count. The new presence model defers timer
+   * start until both players have explicitly emitted `room:join`.
+   */
+  evaluateMatchStart: (roomCode: string, room: Room) => void;
 };
 
 let roomSocketDeps: RoomSocketHandlerDeps | null = null;
@@ -132,6 +138,10 @@ export function registerRoomSocketHandlers(socket: Socket) {
             playerId,
             socketId: socket.id,
             username: playerName,
+            // Creator is still on /lobby at room-create time. Presence
+            // flips true only once their MatchRoomPanel mounts on
+            // /match/CODE and emits room:join.
+            present: false,
           },
         ],
         3,
@@ -215,6 +225,11 @@ export function registerRoomSocketHandlers(socket: Socket) {
       if (existingPlayer) {
         existingPlayer.socketId = socket.id;
         existingPlayer.username = playerName;
+        // Fairness gate: every `room:join` flips presence back on.
+        // The pre-match `evaluateMatchStart` at the bottom of this
+        // branch uses it to decide whether to (a) start the timer,
+        // (b) clear a still-armed return window, or (c) keep waiting.
+        existingPlayer.present = true;
 
         deps.setPlayerActiveRoom(playerId, code);
 
@@ -271,6 +286,12 @@ export function registerRoomSocketHandlers(socket: Socket) {
           isResolving: Boolean(room.isResolving),
         };
         socket.emit("match:rejoinState", rejoinPayload);
+
+        // Pre-match fairness gate. If the match has not yet started
+        // (no `matchStartedAt` set), presence may have unlocked the
+        // timer or closed an in-flight return window. No-op once the
+        // match is in progress.
+        deps.evaluateMatchStart(code, room);
         return;
       }
 
@@ -302,6 +323,11 @@ export function registerRoomSocketHandlers(socket: Socket) {
         playerId,
         socketId: socket.id,
         username: playerName,
+        // Joining player is on the match page (their `MatchRoomPanel`
+        // just mounted) — flip presence on immediately so the new
+        // `evaluateMatchStart` can fire the timer if the other slot
+        // is also present.
+        present: true,
       });
 
       room.roles[playerId] = "KEEPER";
@@ -315,9 +341,11 @@ export function registerRoomSocketHandlers(socket: Socket) {
       deps.emitRoomUpdate(code, room);
       deps.emitMatchState(code, room);
 
-      if (room.players.length === 2) {
-        deps.startRoundTimer(code, room);
-      }
+      // Single source of truth for "start the timer yet?". Honors
+      // presence on both player slots — see `evaluateMatchStart` in
+      // `room/lifecycle.ts`. Replaces the previous unconditional
+      // `if (players.length === 2) startRoundTimer(...)`.
+      deps.evaluateMatchStart(code, room);
     }
   );
 }

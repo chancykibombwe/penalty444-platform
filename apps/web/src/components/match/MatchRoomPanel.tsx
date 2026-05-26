@@ -168,6 +168,33 @@ type MatchStatusPayload = {
   suddenRound?: number;
 };
 
+/**
+ * Emitted by the server when both player slots are filled but at
+ * least one player is absent from the match page (`present === false`).
+ *
+ * Tells the PRESENT player to show the "Waiting for opponent to
+ * return" overlay variant + live deadline countdown. The actual
+ * round-pick timer is held back on the server until the absent
+ * player returns OR the window expires.
+ */
+type MatchWaitingForReturnPayload = {
+  roomCode?: string;
+  expiresAt?: number;
+  absentPlayerName?: string | null;
+};
+
+/**
+ * Emitted by the server when the no-return window expired without
+ * the opponent coming back, or when the room is otherwise cancelled
+ * pre-match. The client routes back to /lobby with a friendly toast
+ * — no score change, no penalty.
+ */
+type MatchCancelledPayload = {
+  roomCode?: string;
+  reason?: string;
+  message?: string;
+};
+
 function getLaneButtonClass(
   lane: Lane,
   options: {
@@ -220,15 +247,43 @@ function normalizeAuthoritativeResult(
   };
 }
 
+/**
+ * Diagnostic for the rare "LEFT vs RIGHT shows SAVE" class of bugs.
+ *
+ * The server's `resolveShot()` is the single source of truth and is
+ * already provably correct (same lane => SAVE, different => GOAL).
+ * However if a `match:result` payload ever arrives with two distinct
+ * lanes AND a SAVE result (or two matching lanes AND a GOAL result),
+ * something — either a stale-payload race upstream, a network mid-
+ * flight mutation, or a future regression — has produced an invalid
+ * combination.
+ *
+ * Previously this assertion only ran in development, which meant a
+ * production-side regression would render without leaving any
+ * evidence. We now always log a warning (with the full payload) so
+ * a real occurrence shows up in browser consoles and Sentry-style
+ * collectors. We deliberately do NOT mutate the displayed result —
+ * the server stays authoritative; we just gather forensic data.
+ */
 function assertAuthoritativeResultIntegrity(payload: MatchResultPayload): void {
-  if (process.env.NODE_ENV !== "development") return;
   if (!payload.kickerPick || !payload.keeperPick) return;
 
   const inferred: ShotResult =
     payload.kickerPick === payload.keeperPick ? "SAVE" : "GOAL";
 
   if (inferred !== payload.result && payload.result !== "DRAW") {
-    console.warn("[match:result] payload integrity mismatch", payload);
+    console.warn(
+      "[match:result] payload integrity mismatch — server result disagrees with same-lane rule",
+      {
+        kickerPick: payload.kickerPick,
+        keeperPick: payload.keeperPick,
+        serverResult: payload.result,
+        clientInferred: inferred,
+        round: payload.round,
+        kickerPlayerId: payload.kickerPlayerId,
+        keeperPlayerId: payload.keeperPlayerId,
+      }
+    );
   }
 }
 
@@ -413,6 +468,22 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
    * no scores, no picks).
    */
   const startCinematicCompletedRef = useRef(false);
+  /**
+   * Server-driven "waiting for opponent to return" deadline (ms epoch).
+   * Populated by `match:waitingForReturn`; cleared when the absent
+   * player returns (server emits `room:update` with both players
+   * present + `startRoundTimer` then fires) or when the window expires
+   * via `match:cancelled`.
+   */
+  const [returnWindowExpiresAt, setReturnWindowExpiresAt] = useState<
+    number | null
+  >(null);
+  const [absentOpponentName, setAbsentOpponentName] = useState<string | null>(
+    null
+  );
+  const [returnSecondsRemaining, setReturnSecondsRemaining] = useState<
+    number | null
+  >(null);
   /**
    * "Dramatic hold" timestamp. After `applyRevealedResult` runs, this is
    * set to `now + CASUAL_REVEAL_HOLD_MS` (or the tournament variant). While
@@ -1307,6 +1378,59 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       }, 2000);
     }
 
+    /**
+     * Server has detected both player slots filled but the opponent
+     * is not currently on the match page. Show the
+     * "Waiting for opponent to return" overlay variant + live
+     * deadline countdown. The pick timer is held on the server side
+     * until either the opponent returns OR the window expires (which
+     * the server signals via `match:cancelled`).
+     */
+    function onMatchWaitingForReturn(data: MatchWaitingForReturnPayload) {
+      if (!isSocketEventForRoom(data, normalizedRoomCode)) return;
+      if (typeof data.expiresAt !== "number") {
+        setReturnWindowExpiresAt(null);
+        return;
+      }
+      setReturnWindowExpiresAt(data.expiresAt);
+      setAbsentOpponentName(
+        typeof data.absentPlayerName === "string" && data.absentPlayerName.trim()
+          ? data.absentPlayerName.trim()
+          : null
+      );
+    }
+
+    /**
+     * Server hard-cancelled this room — opponent didn't return in
+     * time, or another no-penalty pre-match cancellation fired. Clear
+     * local state and route back to /lobby with a friendly status
+     * line. No score change, no rematch flow, no rating delta.
+     */
+    function onMatchCancelled(data: MatchCancelledPayload) {
+      if (!isSocketEventForRoom(data, normalizedRoomCode)) return;
+      if (disconnectCountdownRef.current !== null) {
+        clearDisconnectCountdownVisual();
+      }
+      clearMatchResultRevealTimeout();
+      clearDeferredMatchUpdate();
+      revealHoldUntilRef.current = 0;
+      clearActiveMatch();
+      setReturnWindowExpiresAt(null);
+      setReturnSecondsRemaining(null);
+      setAbsentOpponentName(null);
+      setStatus(
+        data.message ??
+          "Match cancelled. No penalty applied."
+      );
+
+      clearAbortRedirectTimeout();
+      abortRedirectTimeoutRef.current = window.setTimeout(() => {
+        abortRedirectTimeoutRef.current = null;
+        setRedirectingAfterAbort(true);
+        router.push("/lobby");
+      }, 1800);
+    }
+
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("room:update", onRoomUpdate);
@@ -1319,6 +1443,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     socket.on("match:rematch:accepted", onRematchAccepted);
     socket.on("match:rematch:declined", onRematchDeclined);
     socket.on("match:aborted", onMatchAborted);
+    socket.on("match:waitingForReturn", onMatchWaitingForReturn);
+    socket.on("match:cancelled", onMatchCancelled);
     socket.on("error:message", onErrorMessage);
 
     if (socket.connected) {
@@ -1344,6 +1470,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       socket.off("match:rematch:accepted", onRematchAccepted);
       socket.off("match:rematch:declined", onRematchDeclined);
       socket.off("match:aborted", onMatchAborted);
+      socket.off("match:waitingForReturn", onMatchWaitingForReturn);
+      socket.off("match:cancelled", onMatchCancelled);
       socket.off("error:message", onErrorMessage);
     };
   }, [normalizedRoomCode, identity, router]);
@@ -1576,6 +1704,65 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     }, 1000);
     return () => window.clearTimeout(tickTimer);
   }, [waitingState, waitingCountdown]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  /**
+   * 1 Hz ticker that derives an integer "seconds remaining" from the
+   * server-driven `returnWindowExpiresAt` deadline. Deliberately
+   * recomputes from `Date.now()` on every tick so drift between
+   * client / server clocks doesn't accumulate. The deadline is the
+   * single source of truth — when it elapses the server emits
+   * `match:cancelled`, which clears all of this state.
+   */
+  /* eslint-disable react-hooks/set-state-in-effect -- 1Hz drift-correcting countdown derived from server deadline */
+  useEffect(() => {
+    if (returnWindowExpiresAt === null) {
+      if (returnSecondsRemaining !== null) setReturnSecondsRemaining(null);
+      return;
+    }
+
+    function tick() {
+      const remaining = Math.max(
+        0,
+        Math.ceil(((returnWindowExpiresAt ?? 0) - Date.now()) / 1000)
+      );
+      setReturnSecondsRemaining(remaining);
+    }
+
+    tick();
+    const interval = window.setInterval(tick, 1000);
+    return () => window.clearInterval(interval);
+  }, [returnWindowExpiresAt, returnSecondsRemaining]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  /**
+   * Auto-clear the return-window state when the server reverts to a
+   * normal start path. The cleanest signal we have is
+   * `playerCount === 2` AND `matchStartedAt !== null` — meaning the
+   * opponent has now `room:join`'d and the round timer is running.
+   * Without this the overlay could stick visually for a frame while
+   * the next `match:status timeoutSeconds=10` rolls in.
+   *
+   * When this fires we ALSO reset `startCinematicCompletedRef` so the
+   * 3 → 2 → 1 countdown replays for BOTH players on the resume. The
+   * present player had already burned through their cinematic while
+   * waiting; that flag was set true at the end of effect 3. Without
+   * the reset they'd miss the synchronized restart cinematic the
+   * spec requires when the absent player returns.
+   */
+  /* eslint-disable react-hooks/set-state-in-effect -- clear server-driven flag once start path is observed */
+  useEffect(() => {
+    if (
+      returnWindowExpiresAt !== null &&
+      playerCount >= 2 &&
+      matchStartedAt !== null &&
+      !matchEnded
+    ) {
+      setReturnWindowExpiresAt(null);
+      setAbsentOpponentName(null);
+      startCinematicCompletedRef.current = false;
+    }
+  }, [returnWindowExpiresAt, playerCount, matchStartedAt, matchEnded]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
@@ -1844,6 +2031,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     // second layer of defense so a stray click can't lock a pick during
     // the 3 → 2 → 1 sequence.
     waitingState === "idle" &&
+    // Also disabled while waiting for the absent opponent to return —
+    // the server-side pick timer is paused, but the lane buttons must
+    // not be clickable either.
+    returnWindowExpiresAt === null &&
     !!identity;
 
   const matchEndOutcome = useMemo(() => {
@@ -1883,7 +2074,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       // screen. The overlay covers them visually anyway, but hiding them at
       // the source keeps the DOM clean and prevents focus rings or tab
       // navigation from reaching disabled controls behind the overlay.
-      waitingState === "idle"
+      waitingState === "idle" &&
+      // Also suppressed while the server-side return window is armed.
+      returnWindowExpiresAt === null
     );
   }, [
     matchEnded,
@@ -1894,6 +2087,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     matchStartedAt,
     earlyCancelDeadlineAt,
     waitingState,
+    returnWindowExpiresAt,
   ]);
 
   const isEarlyCancelWindow = useMemo(() => {
@@ -2098,8 +2292,14 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         result={resultBurstResult}
       />
       <MatchWaitingOverlay
-        visible={waitingState !== "idle"}
-        phase={waitingState === "idle" ? "waiting" : waitingState}
+        visible={waitingState !== "idle" || returnWindowExpiresAt !== null}
+        phase={
+          returnWindowExpiresAt !== null
+            ? "waiting-for-return"
+            : waitingState === "idle"
+              ? "waiting"
+              : waitingState
+        }
         roomCode={normalizedRoomCode}
         countdownSeconds={waitingCountdown}
         accent={presentationAccent}
@@ -2109,8 +2309,12 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             ? undefined
             : opponentName
         }
+        absentPlayerName={absentOpponentName ?? undefined}
+        returnSecondsRemaining={returnSecondsRemaining}
         onCancel={
-          waitingState === "waiting" ? () => router.replace("/lobby") : undefined
+          waitingState === "waiting" && returnWindowExpiresAt === null
+            ? () => router.replace("/lobby")
+            : undefined
         }
       />
       <div

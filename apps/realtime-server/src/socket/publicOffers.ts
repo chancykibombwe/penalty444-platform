@@ -207,6 +207,9 @@ export function registerPublicOfferHandlers(socket: Socket) {
               playerId,
               socketId: socket.id,
               username: playerName,
+              // `createRoomWithPlayers` reseeds `present` to false anyway;
+              // the explicit value here just satisfies the type contract.
+              present: false,
             },
           ],
           safeRounds,
@@ -420,6 +423,10 @@ export function registerPublicOfferHandlers(socket: Socket) {
           playerId,
           socketId: socket.id,
           username: playerName,
+          // Accepting player is still on /lobby at this point — they
+          // haven't routed to /match/CODE yet. Presence flips true on
+          // the subsequent `room:join` from MatchRoomPanel's mount.
+          present: false,
         });
 
         room.roles[playerId] = "KEEPER";

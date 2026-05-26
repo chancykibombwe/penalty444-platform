@@ -48,6 +48,7 @@ import {
   clearPlayersActiveRoomsForRoom,
   createRoomWithPlayers,
   createTournamentRoom,
+  evaluateMatchStart,
   getTrackedActiveRoom,
   playerIsBusyInDifferentRoom,
   setPlayerActiveRoom,
@@ -1606,6 +1607,7 @@ bindRoomSocketHandlers({
   emitRoomUpdate,
   emitMatchState,
   startRoundTimer,
+  evaluateMatchStart,
 });
 
 bindMatchActionHandlers({
@@ -1667,7 +1669,25 @@ io.on("connection", (socket) => {
   socket.on("room:leave", ({ roomCode }: { roomCode?: string }) => {
     const code = normalizeRoomCode(roomCode ?? "");
     if (!code) return;
+
+    // Flip presence off for the leaving player (if they're in this
+    // room) BEFORE leaving the channel. This drives the pre-match
+    // fairness gate: if the match hasn't started yet,
+    // `evaluateMatchStart` will arm the 10s return window when
+    // playerCount is still 2 but presence drops below 2.
+    const room = rooms.get(code);
+    if (room) {
+      const player = room.players.find((p) => p.socketId === socket.id);
+      if (player) {
+        player.present = false;
+      }
+    }
+
     socket.leave(code);
+
+    if (room) {
+      evaluateMatchStart(code, room);
+    }
   });
 
   socket.on(
@@ -1821,6 +1841,24 @@ io.on("connection", (socket) => {
       );
 
       if (!player) continue;
+
+      // Drop presence first — regardless of which branch we take below.
+      // Pre-match branch uses it directly through `evaluateMatchStart`;
+      // post-match branches are unaffected by the field.
+      player.present = false;
+
+      // Pre-match branch: if the match never started, do NOT run the
+      // 39s reconnect-forfeit (there's nothing to forfeit yet). Just
+      // re-evaluate fairness — `evaluateMatchStart` will either keep
+      // waiting, arm the 10s return window, or cancel the room when
+      // appropriate. `clearWaitingForReturn` cleanup happens inside
+      // it for the < 2 case.
+      if (room.matchStartedAt === undefined) {
+        emitRoomUpdate(room.code, room);
+        emitMatchState(room.code, room);
+        evaluateMatchStart(room.code, room);
+        return;
+      }
 
       // Only apply reconnect-forfeit to active 2-player matches that are not ended.
       if (room.players.length !== 2 || room.matchEnded) {

@@ -52,6 +52,15 @@ export function clearRoomTimer(room: Room) {
     clearTimeout(room.disconnectForfeitTimeout);
     room.disconnectForfeitTimeout = undefined;
   }
+  // Pre-match return window timer. Safe to clear unconditionally —
+  // it's only ever armed before `matchStartedAt` is set, so post-match
+  // callers won't have one in flight, but defensive cleanup here
+  // keeps `endMatch` / room-sweep paths from leaking the timer ref.
+  if (room.waitingForReturnTimeout) {
+    clearTimeout(room.waitingForReturnTimeout);
+    room.waitingForReturnTimeout = undefined;
+  }
+  room.waitingForReturnUntil = undefined;
 }
 
 export function startRoundTimer(roomCode: string, room: Room) {
