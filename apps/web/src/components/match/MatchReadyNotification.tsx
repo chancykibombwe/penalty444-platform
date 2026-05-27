@@ -25,7 +25,7 @@
  * self-contained so the animation works on every route.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSocket } from "../../lib/socket/client";
 
@@ -69,7 +69,6 @@ export default function MatchReadyNotification() {
   const router = useRouter();
   const [state, setState] = useState<ReadyState | null>(null);
   const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null);
-  const dismissTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     const socket = getSocket();
@@ -89,41 +88,50 @@ export default function MatchReadyNotification() {
       });
     }
 
+    function dismissForRoom(payloadRoomCode: unknown) {
+      // Generic dismiss: hide if either we never had state, or the
+      // event matches the currently-displayed room. We use the
+      // functional updater so we don't capture stale `state` from
+      // the closure.
+      setState((prev) => {
+        if (!prev) return prev;
+        if (typeof payloadRoomCode !== "string") return prev;
+        if (payloadRoomCode.trim().toUpperCase() !== prev.roomCode) return prev;
+        return null;
+      });
+    }
+
     function onCancelled(payload: { roomCode?: string }) {
-      // Server torn down the room — the notification is no longer
-      // actionable, dismiss whatever was showing.
-      if (
-        state &&
-        typeof payload?.roomCode === "string" &&
-        payload.roomCode.trim().toUpperCase() === state.roomCode
-      ) {
-        setState(null);
-      } else if (!state) {
-        // Defensive: if we'd never actually shown a notification we
-        // still want to be ready to dismiss any racing state-set.
-        setState(null);
-      }
+      // Server tore down the room — the notification is no longer
+      // actionable.
+      dismissForRoom(payload?.roomCode);
+    }
+
+    function onStagingBegin(payload: { roomCode?: string }) {
+      // Both players are present and the server has armed staging —
+      // either we navigated to the match (our own `MatchRoomPanel`
+      // emitted `player:present`) or a racing recovery resolved it.
+      // The "Match Ready" modal has done its job; hide it so the
+      // staging countdown owned by `MatchRoomPanel` isn't covered.
+      dismissForRoom(payload?.roomCode);
     }
 
     socket.on("match:opponentReady", onOpponentReady);
     socket.on("match:cancelled", onCancelled);
+    socket.on("match:stagingBegin", onStagingBegin);
 
     return () => {
       socket.off("match:opponentReady", onOpponentReady);
       socket.off("match:cancelled", onCancelled);
+      socket.off("match:stagingBegin", onStagingBegin);
     };
-    // We intentionally depend on `state` so the cancel handler sees
-    // the latest in-scope room. Re-binding on every change is cheap
-    // and avoids a ref dance.
-  }, [state]);
+    // Handlers reach into state via the functional updater, so this
+    // effect can run once on mount with no `state` dep.
+  }, []);
 
   useEffect(() => {
     if (!state) {
       setSecondsRemaining(null);
-      if (dismissTimeoutRef.current !== null) {
-        window.clearTimeout(dismissTimeoutRef.current);
-        dismissTimeoutRef.current = null;
-      }
       return;
     }
 

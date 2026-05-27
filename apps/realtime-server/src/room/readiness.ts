@@ -1,6 +1,8 @@
 import type { Server } from "socket.io";
+import { refundAllMatchEscrows } from "../economy";
 import { rooms } from "../state/stores";
 import type { Room } from "../types/room";
+import { refundBothStakes } from "../wallet/stakes";
 import { clearPlayersActiveRoomsForRoom } from "./lifecycle";
 
 /**
@@ -245,7 +247,12 @@ function armReturnWindow(roomCode: string, room: Room): void {
       return;
     }
 
-    cancelRoomDueToNoReturn(roomCode, live);
+    // Fire-and-forget: the timeout callback itself isn't awaited by
+    // Node's timer queue. `cancelRoomDueToNoReturn` is internally
+    // async (refunds) but every step before `rooms.delete` runs
+    // sequentially within the async function, so by the time the
+    // map entry is removed the refunds have already settled.
+    void cancelRoomDueToNoReturn(roomCode, live);
   }, WAITING_FOR_RETURN_WINDOW_MS);
 }
 
@@ -259,12 +266,29 @@ function clearReturnWindow(room: Room): void {
 
 /**
  * Hard-cancel for casual / public / ranked rooms when the absent
- * player doesn't come back. No score change, no forfeit, no wallet
- * settlement — the room never officially started, so there's
- * nothing to settle. Both players' active-room locks are released
- * so they can immediately start a new match.
+ * player doesn't come back. No score change, no forfeit, no
+ * settlement — the room never officially started.
+ *
+ * Wallet / escrow handling mirrors `abortMatchEarly`
+ * (`index.ts:abortMatchEarly`):
+ *   • `refundBothStakes` — idempotent on `room.stakeSettled`; no-op
+ *     when `stakeAmount <= 0`. Releases legacy wallet locks for
+ *     paid public offers.
+ *   • `refundAllMatchEscrows` — idempotent (refundMatchEscrow
+ *     short-circuits on `escrow_not_found`); no-op when economy is
+ *     off, stake is zero, or no escrows exist. Wrapped in try/catch
+ *     because economy failures must not strand the room.
+ *
+ * Tournament rooms never reach this function — the timeout
+ * callback in `armReturnWindow` short-circuits before calling us
+ * for `matchType === "tournament"`. So no double-refund vs
+ * tournament cleanup, and no chance of touching tournament-entry
+ * escrows here.
  */
-function cancelRoomDueToNoReturn(roomCode: string, room: Room): void {
+async function cancelRoomDueToNoReturn(
+  roomCode: string,
+  room: Room
+): Promise<void> {
   const { io } = getDeps();
 
   const payload = {
@@ -281,6 +305,31 @@ function cancelRoomDueToNoReturn(roomCode: string, room: Room): void {
     io.to(spectatorSocketId).emit("match:cancelled", payload);
   }
 
+  // Release legacy wallet stake locks first (synchronous-ish RPC).
+  // `refundBothStakes` flips `room.stakeSettled = true` on success
+  // so a repeated call (e.g. from a racing cleanup path) is a no-op.
+  try {
+    await refundBothStakes(room);
+  } catch (error) {
+    console.error(
+      `[readiness] refundBothStakes crashed roomCode=${roomCode}:`,
+      error
+    );
+  }
+
+  // Phase 11 economy escrow refund. Each per-player refund is
+  // idempotent on the escrow row state, so this is safe to call
+  // even when stakes were never locked (free matches short-circuit
+  // inside the helper).
+  try {
+    await refundAllMatchEscrows(room);
+  } catch (error) {
+    console.error(
+      `[readiness] refundAllMatchEscrows crashed roomCode=${roomCode}:`,
+      error
+    );
+  }
+
   clearReturnWindow(room);
   abortStaging(room);
   clearPlayersActiveRoomsForRoom(room);
@@ -288,7 +337,8 @@ function cancelRoomDueToNoReturn(roomCode: string, room: Room): void {
 
   console.log(
     `[readiness] room cancelled (no return) roomCode=${roomCode} ` +
-      `matchType=${room.matchType ?? "unknown"}`
+      `matchType=${room.matchType ?? "unknown"} ` +
+      `stakeAmount=${room.stakeAmount} stakeSettled=${room.stakeSettled}`
   );
 }
 
