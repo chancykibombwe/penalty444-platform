@@ -201,8 +201,13 @@ export default function Navbar() {
 
   return (
     <>
-      {/* Desktop / tablet top bar (md+) */}
-      <header className="border-b border-zinc-800 bg-gradient-to-b from-zinc-950 to-black">
+      {/* Desktop / tablet top bar (md+).
+          `relative z-50` keeps the header above the match page's
+          pre-start overlay (`z-40`) so Home / Lobby / Wallet / etc.
+          stay clickable while a creator is waiting for an opponent
+          on `/match/[roomCode]`. Without it the `fixed inset-0`
+          overlay covers the navbar visually AND blocks taps. */}
+      <header className="relative z-50 border-b border-zinc-800 bg-gradient-to-b from-zinc-950 to-black">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 md:py-4">
           <Link
             href="/"
@@ -286,9 +291,14 @@ export default function Navbar() {
         </div>
       </header>
 
-      {/* Mobile bottom nav (visible <md) */}
+      {/* Mobile bottom nav (visible <md).
+          `z-50` (was `z-40`) so it stacks ABOVE the match page's
+          pre-start overlay (also `z-40`) — same reason as the
+          desktop header: a creator waiting for an opponent must
+          still be able to tap Home / Lobby / Wallet without
+          having to back out of the match page first. */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-800/90 bg-zinc-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-zinc-950/85 md:hidden"
+        className="fixed inset-x-0 bottom-0 z-50 border-t border-zinc-800/90 bg-zinc-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-zinc-950/85 md:hidden"
         aria-label="Primary mobile"
       >
         <ul className="mx-auto grid max-w-md grid-cols-6 px-1">
