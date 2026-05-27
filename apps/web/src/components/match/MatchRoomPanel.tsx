@@ -970,13 +970,29 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           clearDisconnectCountdownVisual();
         }
 
-        const revealLocked =
-          revealStageRef.current === "REVEALING" ||
-          revealStageRef.current === "REVEALED";
-
-        if (!revealLocked) {
-          clearMatchResultRevealTimeout();
-          matchResultRevealArmedRef.current = false;
+        // Hotfix — use the timer-based `isRevealActive()` gate
+        // instead of inspecting `revealStageRef`. The reveal
+        // pipeline's hold timer is what ultimately clears the
+        // stage; if no local reveal timer is in flight (e.g.
+        // `onMatchRejoinState` seeded a placeholder REVEALING
+        // from a server snapshot without arming one), we are
+        // free to apply the round-reset clears here.
+        //
+        // PR #14 integration note — when PR #14 lands on this
+        // branch, ALSO clear the pre-start staging / waiting
+        // states at the top of this branch:
+        //
+        //   setIsStaging(false);
+        //   setStagingStartsAt(null);
+        //   setWaitingForReturnDeadline(null);
+        //   setAbsentOpponentName(null);
+        //   setReturnSecondsRemaining(null);
+        //
+        // Those setters don't exist on this branch (PR #14 is
+        // unmerged) so they are intentionally omitted here; the
+        // existing PR #13 pre-start clear lives elsewhere.
+        if (!isRevealActive()) {
+          clearAllRevealTimers();
           setRevealStage("IDLE");
           setHasSubmittedPick(false);
           setOpponentStatus("");
