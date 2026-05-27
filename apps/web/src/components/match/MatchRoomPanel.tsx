@@ -294,6 +294,112 @@ function isReconnectForfeitCountdownStatusMessage(message: string) {
   );
 }
 
+/**
+ * Pre-start waiting card — rendered when the creator is alone in the
+ * room (playerCount < 2, match not yet started). Designed to be
+ * NON-TRAPPING: explicit copy that the user can navigate away, plus
+ * Copy / native-share buttons and a direct "Back to Lobby" link.
+ *
+ * The wrapping overlay (`fixed inset-0 z-40`) is intentionally kept
+ * BELOW the Navbar (`z-50` after this PR), so the user can also use
+ * the app's tab bar to move around freely while we hold the room.
+ *
+ * Server-side: `MatchRoomPanel`'s cleanup emits `player:leave`, which
+ * flips presence false. If an opponent later joins, the readiness
+ * authority emits `match:opponentReady` to the creator's lobby
+ * socket → `MatchReadyNotification` shows the "Join match" modal.
+ * If the creator never returns, the readiness authority cancels the
+ * room cleanly with no penalty (see `cancelRoomDueToNoReturn`).
+ */
+function WaitingForOpponentCard({ roomCode }: { roomCode: string }) {
+  const [copied, setCopied] = useState(false);
+  const [canShare, setCanShare] = useState(false);
+
+  useEffect(() => {
+    setCanShare(
+      typeof navigator !== "undefined" &&
+        typeof navigator.share === "function"
+    );
+  }, []);
+
+  async function handleCopy() {
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        await navigator.clipboard.writeText(roomCode);
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1600);
+      }
+    } catch {
+      // Clipboard can be blocked by permissions or insecure context;
+      // the code itself is `select-all` so users can still copy it
+      // manually.
+    }
+  }
+
+  async function handleShare() {
+    if (typeof navigator === "undefined" || typeof navigator.share !== "function") {
+      return;
+    }
+    try {
+      await navigator.share({
+        title: "444 ARENA — match invite",
+        text: `Join my Penalty444 match. Room code: ${roomCode}`,
+      });
+    } catch {
+      // User cancelled the share sheet; no-op.
+    }
+  }
+
+  return (
+    <>
+      <p className="text-xs font-black uppercase tracking-[0.32em] text-zinc-400">
+        Waiting for opponent
+      </p>
+      <p className="mt-3 text-sm text-zinc-300">
+        Share your room code to start the match.
+      </p>
+      <p className="mt-4 select-all text-3xl font-black tracking-[0.4em] text-white">
+        {roomCode}
+      </p>
+
+      <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.22em] text-white transition hover:bg-white/15"
+        >
+          {copied ? "Copied" : "Copy code"}
+        </button>
+        {canShare ? (
+          <button
+            type="button"
+            onClick={handleShare}
+            className="inline-flex items-center justify-center rounded-xl border border-cyan-400/40 bg-cyan-500/15 px-4 py-2 text-xs font-bold uppercase tracking-[0.22em] text-cyan-100 transition hover:bg-cyan-500/25"
+          >
+            Share
+          </button>
+        ) : null}
+      </div>
+
+      {/* Anti-trap messaging. Pairs with the lifted-z Navbar so the
+          creator has two clear ways to leave: the app tabs OR this
+          inline "Back to Lobby" link. */}
+      <p className="mt-6 text-xs text-zinc-400">
+        You can leave this screen. We&apos;ll notify you when an opponent joins.
+      </p>
+      <Link
+        href="/lobby"
+        className="mt-3 inline-flex items-center justify-center rounded-xl bg-white/[0.06] px-4 py-2 text-xs font-bold uppercase tracking-[0.22em] text-zinc-200 transition hover:bg-white/10"
+      >
+        Back to Lobby
+      </Link>
+      <p className="mt-3 text-[10px] uppercase tracking-[0.24em] text-zinc-500">
+        No penalty if no one joins
+      </p>
+    </>
+  );
+}
+
 export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const router = useRouter();
   const [identity, setIdentity] = useState<PlayerIdentity | null>(null);
@@ -2260,17 +2366,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                 </p>
               </>
             ) : (
-              <>
-                <p className="text-xs font-black uppercase tracking-[0.32em] text-zinc-400">
-                  Waiting for opponent
-                </p>
-                <p className="mt-3 text-sm text-zinc-300">
-                  Share your room code to start the match.
-                </p>
-                <p className="mt-4 select-all text-3xl font-black tracking-[0.4em] text-white">
-                  {normalizedRoomCode}
-                </p>
-              </>
+              <WaitingForOpponentCard roomCode={normalizedRoomCode} />
             )}
           </div>
         </div>
