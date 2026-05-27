@@ -505,11 +505,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   );
   const [redirectingAfterAbort, setRedirectingAfterAbort] = useState(false);
   const [waitingForOpponent, setWaitingForOpponent] = useState(false);
-  const [stagingCountdown, setStagingCountdown] = useState<number | null>(null);
+  const [isStaging, setIsStaging] = useState(false);
   const [matchCancelled, setMatchCancelled] = useState(false);
 
   const matchAbortedRef = useRef(false);
-  const stagingDismissedRef = useRef(false);
   const abortRedirectTimeoutRef = useRef<number | null>(null);
 
   function clearAbortRedirectTimeout() {
@@ -884,6 +883,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       }
 
       if (typeof data.timeoutSeconds === "number") {
+        // Round started — server is authoritative. Clear all pre-match overlays.
+        setIsStaging(false);
+        setWaitingForOpponent(false);
         if (disconnectCountdownRef.current !== null) {
           clearDisconnectCountdownVisual();
         }
@@ -1278,10 +1280,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       seconds?: number;
     }) {
       if (!isSocketEventForRoom(payload, normalizedRoomCode)) return;
-      if (stagingDismissedRef.current) return;
+      // Both players just became present — clear any stale pre-match overlays.
+      clearDisconnectCountdownVisual();
       setWaitingForOpponent(false);
-      const secs = typeof payload.seconds === "number" ? payload.seconds : 3;
-      setStagingCountdown(secs);
+      setIsStaging(true);
     }
 
     function onMatchCancelled(payload: { roomCode?: string; reason?: string }) {
@@ -1289,7 +1291,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       clearActiveMatch();
       setMatchCancelled(true);
       setWaitingForOpponent(false);
-      setStagingCountdown(null);
+      setIsStaging(false);
       setStatus("Match cancelled. No penalty applied.");
       window.setTimeout(() => {
         router.push("/lobby");
@@ -1480,23 +1482,6 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     }
   }, [hasSubmittedPick, tournamentStagingCountdown]);
 
-  // Server-driven staging countdown tick. Fires when server emits match:stagingBegin.
-  useEffect(() => {
-    if (stagingCountdown === null || stagingCountdown <= 0) return;
-
-    const id = window.setInterval(() => {
-      setStagingCountdown((prev) => {
-        if (prev === null || prev <= 1) {
-          window.clearInterval(id);
-          stagingDismissedRef.current = true;
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => window.clearInterval(id);
-  }, [stagingCountdown]);
 
   useEffect(() => {
     if (
@@ -1944,10 +1929,11 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
   const showTournamentStaging =
     isTournamentMatch && tournamentStagingCountdown !== null;
-  // Server-driven staging takes precedence for all match types.
-  const showStaging = stagingCountdown !== null || showTournamentStaging;
-  const activeStagingSeconds =
-    stagingCountdown !== null ? stagingCountdown : tournamentStagingCountdown;
+  // Server-driven staging (isStaging) takes precedence for all match types.
+  // No client-side countdown — the server's match:status with timeoutSeconds
+  // is the authoritative signal that the round has started and staging is over.
+  const showStaging = isStaging || showTournamentStaging;
+  const activeStagingSeconds = isStaging ? null : tournamentStagingCountdown;
 
   const presentationAccent = accentForContext({
     isTournament: isTournamentMatch,
