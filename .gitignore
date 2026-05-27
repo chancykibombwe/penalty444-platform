@@ -51,3 +51,4 @@ supabase/.temp/
 .env.*
 !.env.example
 !**/.env.example
+.claude/
