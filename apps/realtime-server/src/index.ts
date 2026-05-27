@@ -1376,6 +1376,26 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
     console.log(
       `[resolveRound] skip duplicate room=${roomCode} round=${room.round} fromTimeout=${fromTimeout}`
     );
+    // === Reveal-deadlock instrumentation (logs only) ===
+    //
+    // Terminal symptom of the hypothesised deadlock: the pick timer
+    // expires (or both-picks branch fires) but `isResolving` is
+    // still true from a previous round whose continuation was
+    // dropped by a mid-resolve disconnect → reconnect cycle.
+    // Includes the live continuation-timer presence so we can tell
+    // whether the round is actually mid-resolve (legitimate skip)
+    // or stuck (deadlock).
+    console.warn(
+      `[diag:reveal-deadlock] AUTH_DEADLOCK_CANDIDATE_RESOLVE_SKIPPED_ALREADY_RESOLVING ` +
+        `roomCode=${roomCode} ` +
+        `round=${room.round} ` +
+        `fromTimeout=${fromTimeout} ` +
+        `hasContinuationTimeout=${Boolean(room.resolveContinuationTimeout)} ` +
+        `hasKickerPick=${Boolean(room.picks.KICKER)} ` +
+        `hasKeeperPick=${Boolean(room.picks.KEEPER)} ` +
+        `phase=${room.phase}`
+    );
+    // === end instrumentation ===
     return;
   }
 
@@ -1892,6 +1912,24 @@ io.on("connection", (socket) => {
         emitMatchState(room.code, room);
         return;
       }
+
+      // === Reveal-deadlock instrumentation (logs only) ===
+      //
+      // Logged immediately BEFORE `clearRoomTimer` so the snapshot
+      // shows whether the continuation timer was live at the moment
+      // we tore everything down. Paired with the
+      // `clearRoomTimer` line in `timers.ts` this lets us reconstruct
+      // every clear, including which caller fired it.
+      console.log(
+        `[diag:reveal-deadlock] AUTH_DEADLOCK_TRACE_DISCONNECT_DURING_MATCH ` +
+          `roomCode=${room.code} ` +
+          `playerId=${player.playerId} ` +
+          `isResolving=${Boolean(room.isResolving)} ` +
+          `hasContinuationTimeout=${Boolean(room.resolveContinuationTimeout)} ` +
+          `round=${room.round} ` +
+          `phase=${room.phase}`
+      );
+      // === end instrumentation ===
 
       // Pause all match timers while we wait for reconnect.
       clearRoomTimer(room);

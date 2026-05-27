@@ -238,6 +238,30 @@ export function registerRoomSocketHandlers(socket: Socket) {
             suddenDeathRound: room.suddenDeathRound,
           });
 
+          // === Reveal-deadlock instrumentation (logs only) ===
+          //
+          // This call site is the suspected trigger for the
+          // deadlock: it unconditionally calls `startRoundTimer`
+          // when an existing player reconnects, even if the
+          // previous round was mid-resolve when they dropped. If
+          // `isResolving` is true here AND
+          // `hasContinuationTimeout` is false, we've confirmed the
+          // hypothesised race window — the continuation was
+          // dropped by the matching disconnect's `clearRoomTimer`
+          // and is never re-armed by this path.
+          console.log(
+            `[diag:reveal-deadlock] AUTH_DEADLOCK_TRACE_RECONNECT_RESTART_TIMER ` +
+              `roomCode=${code} ` +
+              `playerId=${playerId} ` +
+              `isResolving=${Boolean(room.isResolving)} ` +
+              `hasContinuationTimeout=${Boolean(room.resolveContinuationTimeout)} ` +
+              `round=${room.round} ` +
+              `phase=${room.phase} ` +
+              `hasKickerPick=${Boolean(room.picks.KICKER)} ` +
+              `hasKeeperPick=${Boolean(room.picks.KEEPER)}`
+          );
+          // === end instrumentation ===
+
           // Keep reconnect logic simple: always restart the round timer.
           deps.startRoundTimer(code, room);
         }
