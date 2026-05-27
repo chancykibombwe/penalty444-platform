@@ -422,21 +422,45 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
    */
   const myDisplayNameRef = useRef<string>("");
   /**
-   * "Dramatic hold" timestamp. After `applyRevealedResult` runs, this is
-   * set to `now + CASUAL_REVEAL_HOLD_MS` (or the tournament variant). While
-   * this is in the future, the next `match:update` for a different round
-   * is deferred so the REVEALED stage actually paints. Used in BOTH casual
-   * and tournament modes — without it casual REVEALED was clobbered by
-   * the next-round update on the same frame the timer fired.
+   * Reveal-hold setTimeout id. Armed by `applyRevealedResult`, it
+   * is the single authority that transitions REVEALED → IDLE and
+   * flushes any deferred `match:update` payload queued while the
+   * reveal was running. Hotfix: replaces the previous timestamp-
+   * based `revealHoldUntilRef` (whose comparisons created a race
+   * window right at expiry) and the separate
+   * `deferredMatchUpdateTimerRef` (which armed an independent
+   * timer to flush the deferred payload). Consolidating into one
+   * timeout removes any chance the flush fires before the hold
+   * actually completes or vice-versa.
    */
-  const revealHoldUntilRef = useRef<number>(0);
-  /** Pending deferred onMatchUpdate payload + timer (tournament hold). */
+  const revealHoldTimeoutRef = useRef<number | null>(null);
+  /** Pending deferred onMatchUpdate payload. Flushed by `revealHoldTimeoutRef`. */
   const deferredMatchUpdatePayloadRef = useRef<MatchUpdatePayload | null>(null);
-  const deferredMatchUpdateTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     revealStageRef.current = revealStage;
   }, [revealStage]);
+
+  /**
+   * Hotfix — single source of truth for "is the local reveal
+   * pipeline currently in charge of the UI?" Used by
+   * `match:update` and `match:status` to defer/freeze mutations
+   * until the hold timer transitions us back to IDLE.
+   *
+   * Deliberately keyed off the active reveal-lifecycle TIMERS
+   * (REVEALING tension delay or REVEALED hold), NOT the stage
+   * state. Reason: `onMatchRejoinState` may seed
+   * `revealStage = "REVEALING"` from a server snapshot without
+   * arming any local timer. In that case nothing local would
+   * ever flush a deferred `match:update`, so we must let
+   * subsequent broadcasts pass straight through.
+   */
+  function isRevealActive(): boolean {
+    return (
+      matchResultRevealArmedRef.current ||
+      revealHoldTimeoutRef.current !== null
+    );
+  }
 
   function clearMatchResultRevealTimeout() {
     if (matchResultRevealTimeoutRef.current !== null) {
@@ -445,11 +469,26 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     }
   }
 
-  function clearDeferredMatchUpdate() {
-    if (deferredMatchUpdateTimerRef.current !== null) {
-      window.clearTimeout(deferredMatchUpdateTimerRef.current);
-      deferredMatchUpdateTimerRef.current = null;
+  function clearRevealHoldTimeout() {
+    if (revealHoldTimeoutRef.current !== null) {
+      window.clearTimeout(revealHoldTimeoutRef.current);
+      revealHoldTimeoutRef.current = null;
     }
+  }
+
+  /**
+   * Hotfix — clear EVERY reveal-lifecycle timer. Used in teardown
+   * paths (match end, abort, unmount, rematch reset) so neither
+   * the REVEALING delay nor the REVEALED hold can fire after the
+   * surrounding flow has moved on.
+   */
+  function clearAllRevealTimers() {
+    clearMatchResultRevealTimeout();
+    clearRevealHoldTimeout();
+    matchResultRevealArmedRef.current = false;
+  }
+
+  function clearDeferredMatchUpdate() {
     deferredMatchUpdatePayloadRef.current = null;
   }
 
@@ -665,6 +704,28 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         return;
       }
 
+      // === REVEAL GATE ===
+      // Hotfix — the reveal pipeline owns all UI state mutations
+      // while a result is on screen. Any `match:update` arriving
+      // during REVEALING / REVEALED is queued; the latest payload
+      // is replayed by `revealHoldTimeoutRef` when the hold ends.
+      //
+      // `match:end` is the one exception — a match-ending payload
+      // is allowed through so we can tear down cleanly even if it
+      // races the reveal hold.
+      if (isRevealActive() && !data.matchEnded) {
+        deferredMatchUpdatePayloadRef.current = data;
+        console.info(
+          "[RevealTiming] match:update queued — reveal active (stage=",
+          revealStageRef.current,
+          ", round=",
+          data.round,
+          ")"
+        );
+        return;
+      }
+      // === END REVEAL GATE ===
+
       const incomingRound = data.round;
 
       const previousRoundTracked = lastPickRoundRef.current;
@@ -672,49 +733,6 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         previousRoundTracked === null
           ? true
           : previousRoundTracked !== incomingRound;
-
-      // Dramatic hold: if we just revealed a result and the server is
-      // already pushing the next round, defer the entire update by the
-      // remaining hold time so the verdict stays on screen long enough.
-      // Applies to BOTH casual and tournament (casual hold is shorter).
-      // We DO NOT touch any state here so the re-fire path is clean.
-      if (
-        pickRoundAdvanced &&
-        !data.matchEnded &&
-        revealHoldUntilRef.current > Date.now()
-      ) {
-        const holdRemaining = Math.max(
-          0,
-          revealHoldUntilRef.current - Date.now()
-        );
-        console.info(
-          "[RevealTiming] deferring next-round match:update by",
-          holdRemaining,
-          "ms (round →",
-          incomingRound,
-          ")"
-        );
-
-        // Cancel an existing deferred update; we always want the latest data.
-        if (deferredMatchUpdateTimerRef.current !== null) {
-          window.clearTimeout(deferredMatchUpdateTimerRef.current);
-          deferredMatchUpdateTimerRef.current = null;
-        }
-        deferredMatchUpdatePayloadRef.current = data;
-
-        deferredMatchUpdateTimerRef.current = window.setTimeout(() => {
-          deferredMatchUpdateTimerRef.current = null;
-          const payload = deferredMatchUpdatePayloadRef.current;
-          deferredMatchUpdatePayloadRef.current = null;
-          // Force the hold to expire so the re-fire isn't deferred again.
-          revealHoldUntilRef.current = 0;
-          if (payload) {
-            onMatchUpdate(payload);
-          }
-        }, holdRemaining);
-
-        return;
-      }
 
       lastPickRoundRef.current = incomingRound;
 
@@ -853,12 +871,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         if (disconnectCountdownRef.current !== null) {
           clearDisconnectCountdownVisual();
         }
-        clearMatchResultRevealTimeout();
+        clearAllRevealTimers();
         clearDeferredMatchUpdate();
-        revealHoldUntilRef.current = 0;
         lateResultRoundRef.current = null;
         closingRevealRoundSnapshotRef.current = null;
-        matchResultRevealArmedRef.current = false;
         resolvingPickRoundRef.current = null;
         setMatchEnded(true);
         setStatus("Match finished");
@@ -880,22 +896,32 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         return;
       }
 
+      // Hotfix — during REVEALING / REVEALED the reveal pipeline
+      // owns the status text. Server-driven status messages still
+      // arrive on their own clock (round-start announcements, lock
+      // broadcasts, etc.) and used to clobber "Both players locked.
+      // Revealing..." or "Result: GOAL" mid-reveal.
+      //
+      // Suppress every textual / phase / sudden-death mutation
+      // while the reveal is active. Disconnect-countdown timers
+      // and the authoritative `timeoutSeconds` branch (which IS
+      // the next-round signal) are still respected: they don't
+      // overwrite the reveal text, they just keep the underlying
+      // socket / timer machinery in sync.
+      const revealActive = isRevealActive();
+
       // Bug #2 fix: the realtime server broadcasts
       //   "<username> locked pick."
-      // to the WHOLE room on every pick. That's useful for the opponent
-      // ("Player B locked pick.") but for the local player it overwrites
-      // the carefully-set "You locked LEFT. Waiting for opponent…" text
-      // with a confusing third-person line about themselves. Suppress
-      // ONLY that exact self-referential broadcast; let every other
-      // status message (round starts, sudden death, timeouts, opponent
-      // locks, reconnect countdowns, etc.) pass through unchanged.
+      // to the WHOLE room on every pick. Suppress ONLY the local
+      // player's self-referential broadcast — opponent / system
+      // messages still flow through unchanged when outside reveal.
       const selfName = myDisplayNameRef.current;
       const isSelfLockBroadcast =
         typeof data.message === "string" &&
         selfName.length > 0 &&
         data.message === `${selfName} locked pick.`;
 
-      if (!isSelfLockBroadcast) {
+      if (!isSelfLockBroadcast && !revealActive) {
         setStatus(data.message);
       }
 
@@ -910,16 +936,18 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         startDisconnectCountdownVisual(39);
       }
 
-      if (data.phase) {
-        setPhase(data.phase);
-      }
+      if (!revealActive) {
+        if (data.phase) {
+          setPhase(data.phase);
+        }
 
-      if (typeof data.suddenDeathRound === "number") {
-        setSuddenDeathRound(data.suddenDeathRound);
-      }
+        if (typeof data.suddenDeathRound === "number") {
+          setSuddenDeathRound(data.suddenDeathRound);
+        }
 
-      if (typeof data.suddenRound === "number") {
-        setSuddenDeathRound(data.suddenRound);
+        if (typeof data.suddenRound === "number") {
+          setSuddenDeathRound(data.suddenRound);
+        }
       }
 
       if (typeof data.timeoutSeconds === "number") {
@@ -990,10 +1018,31 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       // paints before the server's next-round `match:update` clears it.
       // Casual gets a shorter hold (~1500ms); tournament keeps the longer
       // cinematic hold (~4000ms).
+      //
+      // Hotfix — the hold is now a single setTimeout that owns BOTH
+      // the REVEALED → IDLE transition AND flushing any `match:update`
+      // queued by the reveal gate. One timer = one source of truth,
+      // so the flush can't race the stage transition.
       const holdMs = tournamentContextRef.current.isTournament
         ? TOURNAMENT_REVEAL_HOLD_MS
         : CASUAL_REVEAL_HOLD_MS;
-      revealHoldUntilRef.current = Date.now() + holdMs;
+
+      clearRevealHoldTimeout();
+      revealHoldTimeoutRef.current = window.setTimeout(() => {
+        revealHoldTimeoutRef.current = null;
+        setRevealStage("IDLE");
+
+        const pending = deferredMatchUpdatePayloadRef.current;
+        deferredMatchUpdatePayloadRef.current = null;
+        if (pending) {
+          console.info(
+            "[RevealTiming] flushing deferred match:update — round=",
+            pending.round
+          );
+          onMatchUpdate(pending);
+        }
+      }, holdMs);
+
       console.info(
         "[RevealTiming] reveal hold armed for",
         holdMs,
@@ -1084,11 +1133,18 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         return;
       }
 
-      clearMatchResultRevealTimeout();
+      // Hotfix — `match:result` is now the single authority that
+      // enters REVEALING. Tear down any in-flight reveal timers
+      // first so a racing earlier result can't keep ticking.
+      clearAllRevealTimers();
       closingRevealRoundSnapshotRef.current =
         authoritative.round ?? expectedRound ?? lastPickRoundRef.current;
 
-      setOpponentStatus("Opponent locked their choice");
+      // Hotfix — the "Opponent locked their choice" interstitial
+      // is no longer relevant once the result is in flight. Clear
+      // it immediately so the reveal narrative is the only thing
+      // on screen.
+      setOpponentStatus("");
       setTimer(null);
 
       const bothLocked = Boolean(
@@ -1132,12 +1188,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       if (disconnectCountdownRef.current !== null) {
         clearDisconnectCountdownVisual();
       }
-      clearMatchResultRevealTimeout();
+      clearAllRevealTimers();
       clearDeferredMatchUpdate();
-      revealHoldUntilRef.current = 0;
       lateResultRoundRef.current = null;
       closingRevealRoundSnapshotRef.current = null;
-      matchResultRevealArmedRef.current = false;
       resolvingPickRoundRef.current = null;
       lastFullyRevealedPickRoundRef.current = 0;
       lastPickRoundRef.current = null;
@@ -1194,12 +1248,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       if (disconnectCountdownRef.current !== null) {
         clearDisconnectCountdownVisual();
       }
-      clearMatchResultRevealTimeout();
+      clearAllRevealTimers();
       clearDeferredMatchUpdate();
-      revealHoldUntilRef.current = 0;
       lateResultRoundRef.current = null;
       closingRevealRoundSnapshotRef.current = null;
-      matchResultRevealArmedRef.current = false;
       resolvingPickRoundRef.current = null;
       lastFullyRevealedPickRoundRef.current = 0;
       lastPickRoundRef.current = null;
@@ -1326,9 +1378,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         clearDisconnectCountdownVisual();
       }
 
-      clearMatchResultRevealTimeout();
+      clearAllRevealTimers();
       clearDeferredMatchUpdate();
-      revealHoldUntilRef.current = 0;
       clearActiveMatch();
       setStatus("Match cancelled. No penalty applied.");
 
@@ -1449,9 +1500,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       socket.emit("room:leave", { roomCode: normalizedRoomCode });
       clearAbortRedirectTimeout();
       clearDisconnectCountdownVisual();
-      clearMatchResultRevealTimeout();
+      clearAllRevealTimers();
       clearDeferredMatchUpdate();
-      revealHoldUntilRef.current = 0;
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
       socket.off("room:update", onRoomUpdate);
