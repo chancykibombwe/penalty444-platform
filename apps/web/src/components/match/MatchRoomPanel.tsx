@@ -342,19 +342,26 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
   // Phase 6C — readiness authority pre-start states.
   //
-  // These three are mutually exclusive at any given moment:
+  // Three mutually-exclusive pre-start states:
   //
   //   • waitingForReturnDeadline !== null  → 2 players but opponent
   //     is absent; show "Waiting for opponent to return" overlay,
   //     gate canPick and the leave-controls.
-  //   • stagingStartsAt !== null           → both players present;
-  //     show 3-2-1 cinematic countdown over a dimmed match canvas.
+  //   • isStaging === true                 → both players present;
+  //     show the 3-2-1 staging overlay over a dimmed match canvas.
   //   • cancelledMessage !== null          → server emitted
   //     `match:cancelled`; show terminal banner then redirect.
   //
   // None of these unlock the lane buttons — `canPick` is gated on
-  // all of them being null (i.e. the round timer must have actually
-  // started server-side).
+  // all of them being clear (i.e. `match:status { timeoutSeconds }`
+  // has authoritatively reported the pick window has begun).
+  //
+  // Hotfix: `isStaging` replaces the previous client-ticked
+  // `stagingSecondsRemaining` state. The locally-computed seconds
+  // were getting stuck at 0 if `match:status` arrived late or was
+  // dropped — the boolean tracks only "server announced staging,
+  // gameplay has not yet started" and is cleared the moment the
+  // round timer's `match:status` payload lands.
   const [
     waitingForReturnDeadline,
     setWaitingForReturnDeadline,
@@ -365,11 +372,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const [returnSecondsRemaining, setReturnSecondsRemaining] = useState<
     number | null
   >(null);
+  const [isStaging, setIsStaging] = useState<boolean>(false);
   const [stagingStartsAt, setStagingStartsAt] = useState<number | null>(null);
   const [stagingDurationMs, setStagingDurationMs] = useState<number>(3700);
-  const [stagingSecondsRemaining, setStagingSecondsRemaining] = useState<
-    number | null
-  >(null);
   const [cancelledMessage, setCancelledMessage] = useState<string | null>(null);
   const [disconnectCountdown, setDisconnectCountdown] = useState<number | null>(
     null
@@ -918,6 +923,21 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       }
 
       if (typeof data.timeoutSeconds === "number") {
+        // Hotfix — authoritative gameplay-has-begun signal.
+        //
+        // `match:status` with `timeoutSeconds` is emitted by the
+        // server's `startRoundTimer` (and only by it). Every
+        // pre-start overlay state must be torn down here so the
+        // overlay never lingers past the moment the pick window
+        // actually opens, regardless of whether `match:stagingBegin`
+        // or `match:update(matchStartedAt)` arrived in the expected
+        // order — or at all.
+        setIsStaging(false);
+        setStagingStartsAt(null);
+        setWaitingForReturnDeadline(null);
+        setAbsentOpponentName(null);
+        setReturnSecondsRemaining(null);
+
         if (disconnectCountdownRef.current !== null) {
           clearDisconnectCountdownVisual();
         }
@@ -1328,8 +1348,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     }) {
       if (!isSocketEventForRoom(payload, normalizedRoomCode)) return;
       if (typeof payload.expiresAt !== "number") return;
+      // Returning to the waiting-for-opponent state means staging
+      // had to be aborted server-side; mirror that here.
+      setIsStaging(false);
       setStagingStartsAt(null);
-      setStagingSecondsRemaining(null);
       setWaitingForReturnDeadline(payload.expiresAt);
       setAbsentOpponentName(payload.absentPlayerName ?? null);
       setStatus(
@@ -1355,6 +1377,14 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           : 3700;
       setStagingDurationMs(duration);
       setStagingStartsAt(payload.startsAt);
+      setIsStaging(true);
+      // Hotfix — if a mid-match reconnect is in progress when the
+      // server walks us back through staging (e.g. opponent return
+      // window resolved into a fresh staging arm), the 39s
+      // disconnect visual is no longer relevant.
+      if (disconnectCountdownRef.current !== null) {
+        clearDisconnectCountdownVisual();
+      }
       setStatus("Match starting...");
     }
 
@@ -1372,8 +1402,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setWaitingForReturnDeadline(null);
       setAbsentOpponentName(null);
       setReturnSecondsRemaining(null);
+      setIsStaging(false);
       setStagingStartsAt(null);
-      setStagingSecondsRemaining(null);
       setStatus(message);
       clearActiveMatch();
 
@@ -1590,41 +1620,24 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     return () => window.clearInterval(interval);
   }, [waitingForReturnDeadline]);
 
-  // Phase 6C — staging-countdown ticker. The server emits a single
-  // `match:stagingBegin { startsAt, durationMs }`; both clients tick
-  // locally off the server's wall-clock to stay drift-corrected.
-  useEffect(() => {
-    if (stagingStartsAt === null) {
-      setStagingSecondsRemaining(null);
-      return;
-    }
+  // Hotfix — the previous client-ticked staging-seconds-remaining
+  // state was removed. The 3-2-1 cinematic still plays for ~3.7s
+  // (the staging overlay UI doesn't render a numeric countdown
+  // anymore) and is torn down authoritatively by `match:status`
+  // with `timeoutSeconds` — see `onMatchStatus`.
 
-    const tick = () => {
-      const elapsed = Date.now() - stagingStartsAt;
-      const remainingMs = stagingDurationMs - elapsed;
-      if (remainingMs <= 0) {
-        setStagingSecondsRemaining(0);
-        return;
-      }
-      // 700ms "opponent joined" beat, then 3 → 2 → 1.
-      // For simplicity expose seconds-remaining-rounded-up so the
-      // overlay renders 3 / 2 / 1.
-      setStagingSecondsRemaining(Math.max(1, Math.ceil(remainingMs / 1000)));
-    };
-
-    tick();
-    const interval = window.setInterval(tick, 120);
-
-    return () => window.clearInterval(interval);
-  }, [stagingStartsAt, stagingDurationMs]);
-
-  // Phase 6C — when the actual round timer fires (server emits
-  // `match:status` with `timeoutSeconds`, which sets matchStartedAt
-  // upstream), tear down the staging overlay immediately.
+  // Belt-and-braces — when `matchStartedAt` flips non-null (via
+  // `match:update`), clear every pre-start state. This is
+  // redundant with the clears inside `onMatchStatus` but covers
+  // the rare ordering where `match:update` arrives before
+  // `match:status`.
   useEffect(() => {
     if (matchStartedAt !== null) {
+      setIsStaging(false);
       setStagingStartsAt(null);
-      setStagingSecondsRemaining(null);
+      setWaitingForReturnDeadline(null);
+      setAbsentOpponentName(null);
+      setReturnSecondsRemaining(null);
     }
   }, [matchStartedAt]);
 
@@ -1861,13 +1874,14 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const isRevealLocked =
     revealStage === "REVEALING" || revealStage === "REVEALED";
 
-  // Phase 6C — gate `canPick` on the readiness authority. Until the
-  // server actually starts the round timer (i.e. presence
-  // confirmed → staging completes), `matchStartedAt` is null AND
-  // either `stagingStartsAt` or `waitingForReturnDeadline` is set.
-  // We treat both as "round timer not running yet" and refuse picks.
+  // Phase 6C — gate `canPick` on the readiness authority. Until
+  // `match:status { timeoutSeconds }` arrives, picks are refused.
+  // Hotfix: gate uses the authoritative `isStaging` boolean (set
+  // on `match:stagingBegin`, cleared by `match:status`) rather
+  // than the raw `stagingStartsAt` payload — so a stuck startsAt
+  // value never leaves the gate held open.
   const isPreStartGate =
-    stagingStartsAt !== null ||
+    isStaging ||
     waitingForReturnDeadline !== null ||
     cancelledMessage !== null;
 
@@ -2133,12 +2147,16 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       {/* Phase 6C — pre-start readiness overlay. Covers four states:
             • waiting for opponent to join (1 player in room)
             • waiting for opponent to return (2 slots, opponent absent)
-            • staging countdown (both present, 3-2-1)
+            • staging (both present; cleared by `match:status` with `timeoutSeconds`)
             • cancelled (room torn down by readiness authority)
-          Rendered above the match canvas with pointer-events that
-          block interaction with anything beneath. */}
+          Hotfix: staging branch is gated on `isStaging` (the
+          authoritative server-driven flag) rather than the raw
+          `stagingStartsAt`, and no longer renders a client-ticked
+          numeric countdown — that was the source of "stuck at 0"
+          and "staging overlay persists after gameplay started"
+          bugs. */}
       {cancelledMessage !== null ||
-      stagingStartsAt !== null ||
+      isStaging ||
       waitingForReturnDeadline !== null ||
       (playerCount < 2 && !matchEnded) ? (
         <div
@@ -2159,16 +2177,16 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                   Returning to lobby...
                 </p>
               </>
-            ) : stagingStartsAt !== null ? (
+            ) : isStaging ? (
               <>
                 <p className="text-xs font-black uppercase tracking-[0.32em] text-emerald-300/90">
                   Both players ready
                 </p>
-                <p className="mt-3 text-sm text-zinc-300">
-                  Match starting in
+                <p className="mt-4 text-3xl font-black tracking-tight text-white">
+                  Match starting...
                 </p>
-                <p className="mt-3 text-7xl font-black tabular-nums text-white">
-                  {stagingSecondsRemaining ?? "—"}
+                <p className="mt-3 text-[10px] uppercase tracking-[0.28em] text-zinc-500">
+                  Get ready
                 </p>
               </>
             ) : waitingForReturnDeadline !== null ? (
