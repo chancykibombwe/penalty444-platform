@@ -976,21 +976,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         // stage; if no local reveal timer is in flight (e.g.
         // `onMatchRejoinState` seeded a placeholder REVEALING
         // from a server snapshot without arming one), we are
-        // free to apply the round-reset clears here.
-        //
-        // PR #14 integration note — when PR #14 lands on this
-        // branch, ALSO clear the pre-start staging / waiting
-        // states at the top of this branch:
-        //
-        //   setIsStaging(false);
-        //   setStagingStartsAt(null);
-        //   setWaitingForReturnDeadline(null);
-        //   setAbsentOpponentName(null);
-        //   setReturnSecondsRemaining(null);
-        //
-        // Those setters don't exist on this branch (PR #14 is
-        // unmerged) so they are intentionally omitted here; the
-        // existing PR #13 pre-start clear lives elsewhere.
+        // free to apply the round-reset clears here. Pre-start
+        // staging / waiting clears above come from PR #14.
         if (!isRevealActive()) {
           clearAllRevealTimers();
           setRevealStage("IDLE");
