@@ -52,6 +52,20 @@ export function clearRoomTimer(room: Room) {
     clearTimeout(room.disconnectForfeitTimeout);
     room.disconnectForfeitTimeout = undefined;
   }
+  // Phase 6C — pre-match readiness timers. Safe to clear
+  // unconditionally; both are only ever armed before
+  // `matchStartedAt` is set, but defensive cleanup here keeps
+  // `endMatch` / room-sweep paths from leaking handles.
+  if (room.waitingForReturnTimeout) {
+    clearTimeout(room.waitingForReturnTimeout);
+    room.waitingForReturnTimeout = undefined;
+  }
+  room.waitingForReturnUntil = undefined;
+  if (room.stagingCountdownTimeout) {
+    clearTimeout(room.stagingCountdownTimeout);
+    room.stagingCountdownTimeout = undefined;
+  }
+  room.stagingStartsAt = undefined;
 }
 
 export function startRoundTimer(roomCode: string, room: Room) {

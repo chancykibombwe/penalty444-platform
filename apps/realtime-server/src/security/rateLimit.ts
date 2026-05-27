@@ -44,6 +44,13 @@ const DEFAULT_LIMITS: Record<string, ActionLimit> = {
   "room:create": { limit: 6, windowMs: 30_000 },
   "room:join": { limit: 30, windowMs: 30_000 },
   "ranked:enqueue": { limit: 10, windowMs: 60_000 },
+  // Phase 6C — presence signals. Legitimate clients fire one
+  // `player:present` per `MatchRoomPanel` mount and one
+  // `player:leave` per unmount; allow some slack for reconnects
+  // and tab refresh storms but stay tight enough to block flooders
+  // from spoofing readiness re-evaluations.
+  "player:present": { limit: 10, windowMs: 30_000 },
+  "player:leave": { limit: 10, windowMs: 30_000 },
 };
 
 const FALLBACK_LIMIT: ActionLimit = { limit: 30, windowMs: 60_000 };

@@ -81,11 +81,16 @@ function tryFlushRankedQueue() {
       playerId: a.playerId,
       socketId: a.socketId,
       username: a.username,
+      // Phase 6C — both queued players are still on /lobby at match
+      // time. `createRoomWithPlayers` reseeds this anyway; the
+      // explicit value satisfies the type contract.
+      present: false,
     };
     const p2: RoomPlayer = {
       playerId: b.playerId,
       socketId: b.socketId,
       username: b.username,
+      present: false,
     };
 
     try {

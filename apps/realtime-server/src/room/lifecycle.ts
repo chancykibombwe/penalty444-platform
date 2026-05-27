@@ -4,6 +4,7 @@ import { playerActiveRooms, rooms } from "../state/stores";
 import type { MatchType, Room, RoomPlayer } from "../types/room";
 import { getStakeAmount } from "../wallet/stakes";
 import { generateRoomCode, normalizeRoomCode } from "./codes";
+import { evaluateMatchStart } from "./readiness";
 
 /**
  * Hardening Sprint 1 — TASK 3: stable per-match-instance id. Recomputed
@@ -92,12 +93,19 @@ export function createRoomWithPlayers(
   matchType: MatchType = "private",
   stakeLabel = "Free"
 ) {
-  const { io, emitRoomUpdate, emitMatchState, startRoundTimer } =
-    getLifecycleDeps();
+  const { io, emitRoomUpdate, emitMatchState } = getLifecycleDeps();
 
   const code = generateRoomCode();
-  const firstPlayer = players[0];
-  const secondPlayer = players[1];
+  // Phase 6C — every player starts with `present: false`. Presence
+  // flips to true only when their `MatchRoomPanel` mounts and emits
+  // `player:present`. The readiness authority uses this to gate
+  // `startRoundTimer`.
+  const seededPlayers: RoomPlayer[] = players.map((p) => ({
+    ...p,
+    present: false,
+  }));
+  const firstPlayer = seededPlayers[0];
+  const secondPlayer = seededPlayers[1];
   const stakeAmount = getStakeAmount(stakeLabel);
   const now = Date.now();
 
@@ -105,7 +113,7 @@ export function createRoomWithPlayers(
     code,
     matchInstance: 1,
     matchInstanceId: generateMatchInstanceId(),
-    players,
+    players: seededPlayers,
     roles: {},
     picks: {},
     scores: {},
@@ -140,7 +148,7 @@ export function createRoomWithPlayers(
 
   rooms.set(code, room);
 
-  for (const player of players) {
+  for (const player of seededPlayers) {
     const playerSocket = io.sockets.sockets.get(player.socketId);
     playerSocket?.join(code);
     setPlayerActiveRoom(player.playerId, code);
@@ -149,9 +157,11 @@ export function createRoomWithPlayers(
   emitRoomUpdate(code, room);
   emitMatchState(code, room);
 
-  if (room.players.length === 2) {
-    startRoundTimer(code, room);
-  }
+  // Phase 6C — the readiness authority is the SOLE caller of
+  // `startRoundTimer`. At creation time presence is always false on
+  // every slot, so this will sit quietly until each player's
+  // `MatchRoomPanel` emits `player:present`.
+  evaluateMatchStart(code, room);
 
   return { code, room };
 }
@@ -175,8 +185,7 @@ export function createTournamentRoom({
   tournamentId,
   allowedPlayerIds,
 }: CreateTournamentRoomParams) {
-  const { io, emitRoomUpdate, emitMatchState, startRoundTimer } =
-    getLifecycleDeps();
+  const { io, emitRoomUpdate, emitMatchState } = getLifecycleDeps();
 
   const normalizedAllowed = allowedPlayerIds
     .map((id) => id.trim())
@@ -206,15 +215,22 @@ export function createTournamentRoom({
   }
 
   const code = generateRoomCode();
-  const firstPlayer = players[0];
-  const secondPlayer = players[1];
+  // Phase 6C — seed presence to false on every slot. Tournament
+  // rooms go through the same readiness authority; their cancel-on-
+  // no-return path is short-circuited inside the authority itself.
+  const seededPlayers: RoomPlayer[] = players.map((p) => ({
+    ...p,
+    present: false,
+  }));
+  const firstPlayer = seededPlayers[0];
+  const secondPlayer = seededPlayers[1];
   const now = Date.now();
 
   const room: Room = {
     code,
     matchInstance: 1,
     matchInstanceId: generateMatchInstanceId(),
-    players: [...players],
+    players: seededPlayers,
     roles: {},
     picks: {},
     scores: {},
@@ -252,7 +268,7 @@ export function createTournamentRoom({
 
   rooms.set(code, room);
 
-  for (const player of players) {
+  for (const player of seededPlayers) {
     const playerSocket = io.sockets.sockets.get(player.socketId);
     playerSocket?.join(code);
     setPlayerActiveRoom(player.playerId, code);
@@ -261,9 +277,10 @@ export function createTournamentRoom({
   emitRoomUpdate(code, room);
   emitMatchState(code, room);
 
-  if (room.players.length === 2) {
-    startRoundTimer(code, room);
-  }
+  // Phase 6C — readiness authority is the SOLE caller of
+  // `startRoundTimer`. See `createRoomWithPlayers` above for the
+  // same pattern.
+  evaluateMatchStart(code, room);
 
   return { code, room };
 }
