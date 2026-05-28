@@ -42,6 +42,48 @@ export function clearPickTimer(room: Room) {
 }
 
 export function clearRoomTimer(room: Room) {
+  // === Reveal-deadlock instrumentation (logs only, no behaviour change) ===
+  //
+  // We hypothesize that disconnects landing inside the
+  // RESULT_REVEAL_PAUSE_MS window (after `match:result` emit, before
+  // continuation fires) silently drop `room.resolveContinuationTimeout`
+  // here while `room.isResolving` is still true. The reconnect path
+  // then calls `startRoundTimer` without re-arming the continuation,
+  // and the room locks permanently with `isResolving === true`.
+  //
+  // Captures the timer snapshot BEFORE we null any handles so a single
+  // log line shows exactly which timers were live at clear time.
+  const hadPickTimer = Boolean(room.timeout);
+  const hadResolveContinuationTimeout = Boolean(room.resolveContinuationTimeout);
+  const hadDisconnectForfeitTimeout = Boolean(room.disconnectForfeitTimeout);
+  const hadWaitingForReturnTimeout = Boolean(room.waitingForReturnTimeout);
+  const hadStagingCountdownTimeout = Boolean(room.stagingCountdownTimeout);
+
+  console.log(
+    `[diag:reveal-deadlock] clearRoomTimer ` +
+      `roomCode=${room.code} ` +
+      `hadPickTimer=${hadPickTimer} ` +
+      `hadResolveContinuationTimeout=${hadResolveContinuationTimeout} ` +
+      `hadDisconnectForfeitTimeout=${hadDisconnectForfeitTimeout} ` +
+      `hadWaitingForReturnTimeout=${hadWaitingForReturnTimeout} ` +
+      `hadStagingCountdownTimeout=${hadStagingCountdownTimeout} ` +
+      `isResolving=${Boolean(room.isResolving)} ` +
+      `matchStartedAt=${room.matchStartedAt ?? "—"} ` +
+      `round=${room.round} ` +
+      `phase=${room.phase}`
+  );
+
+  if (hadResolveContinuationTimeout && room.isResolving) {
+    console.warn(
+      `[diag:reveal-deadlock] AUTH_DEADLOCK_CANDIDATE_CLEARING_CONTINUATION ` +
+        `roomCode=${room.code} ` +
+        `round=${room.round} ` +
+        `phase=${room.phase} ` +
+        `matchStartedAt=${room.matchStartedAt ?? "—"}`
+    );
+  }
+  // === end instrumentation ===
+
   clearPickTimer(room);
 
   if (room.resolveContinuationTimeout) {
@@ -69,6 +111,27 @@ export function clearRoomTimer(room: Room) {
 }
 
 export function startRoundTimer(roomCode: string, room: Room) {
+  // === Reveal-deadlock instrumentation (logs only, no behaviour change) ===
+  //
+  // Hypothesis: the reconnect path in `socket/rooms.ts:room:join`
+  // calls `startRoundTimer` unconditionally after clearing the
+  // 39s forfeit timer. If a disconnect-during-continuation race has
+  // dropped `resolveContinuationTimeout` and left `isResolving=true`,
+  // this is where we'd see the bogus pick-timer arm that ultimately
+  // expires into a `resolveRound` skip.
+  if (room.isResolving) {
+    console.warn(
+      `[diag:reveal-deadlock] AUTH_DEADLOCK_CANDIDATE_START_TIMER_WHILE_RESOLVING ` +
+        `roomCode=${roomCode} ` +
+        `round=${room.round} ` +
+        `phase=${room.phase} ` +
+        `hasKickerPick=${Boolean(room.picks.KICKER)} ` +
+        `hasKeeperPick=${Boolean(room.picks.KEEPER)} ` +
+        `matchStartedAt=${room.matchStartedAt ?? "—"}`
+    );
+  }
+  // === end instrumentation ===
+
   clearPickTimer(room);
 
   if (room.matchEnded) return;
