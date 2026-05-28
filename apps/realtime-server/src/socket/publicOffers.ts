@@ -27,12 +27,11 @@ import {
  * made offers feel fragile to hosts and forced lobby viewers to
  * watch offers vanish/reappear on every minor disconnect.
  *
- * 15s matches the typical socket.io reconnect window the web client
- * uses; long enough to absorb a refresh / quick network hiccup, short
- * enough that lobby viewers don't see stale offers from genuinely-gone
- * hosts.
+ * 30s absorbs slow socket.io reconnects (JWT verify + lobby mount +
+ * `player:register` round-trip) and repeated refreshes without
+ * letting genuinely-abandoned offers linger too long in the lobby.
  */
-export const PUBLIC_OFFER_HOST_GRACE_MS = 15_000;
+export const PUBLIC_OFFER_HOST_GRACE_MS = 30_000;
 
 /**
  * Server-only handle map for host-disconnect grace timers. Not part
@@ -40,6 +39,14 @@ export const PUBLIC_OFFER_HOST_GRACE_MS = 15_000;
  * the wire shape kept narrow).
  */
 const publicOfferHostGraceTimers = new Map<string, NodeJS.Timeout>();
+
+/**
+ * Monotonic generation per offerId. Every (re)schedule and every
+ * cancel/revive bumps the generation so a stale `setTimeout` from an
+ * earlier disconnect cannot delete an offer that was revived or
+ * re-armed by a later refresh.
+ */
+const publicOfferHostGraceGeneration = new Map<string, number>();
 
 type CreateRoomWithPlayersFn = (
   players: RoomPlayer[],
@@ -175,9 +182,9 @@ async function removeAbandonedPublicOffer(
   deps.clearPlayerActiveRoom(offer.hostPlayerId);
 
   console.log(
-    `[publicOffer:hostGrace] OFFER_REMOVED offerId=${offer.offerId} ` +
-      `roomCode=${offer.roomCode} hostPlayerId=${offer.hostPlayerId} ` +
-      `reason=${reason}`
+    `[diag:public-offer] OFFER_GRACE_EXPIRED_REMOVED ` +
+      `offerId=${offer.offerId} roomCode=${offer.roomCode} ` +
+      `hostPlayerId=${offer.hostPlayerId} reason=${reason}`
   );
 
   emitPublicOffers(reason);
@@ -200,20 +207,30 @@ export function scheduleHostDisconnectGrace(offerId: string): void {
     publicOfferHostGraceTimers.delete(offerId);
   }
 
+  const generation =
+    (publicOfferHostGraceGeneration.get(offerId) ?? 0) + 1;
+  publicOfferHostGraceGeneration.set(offerId, generation);
+
   const now = Date.now();
   offer.hostDisconnectedAt = now;
   offer.hostExpiresAt = now + PUBLIC_OFFER_HOST_GRACE_MS;
 
   console.log(
-    `[publicOffer:hostGrace] GRACE_ARMED offerId=${offerId} ` +
+    `[diag:public-offer] OFFER_GRACE_ARMED offerId=${offerId} ` +
       `roomCode=${offer.roomCode} hostPlayerId=${offer.hostPlayerId} ` +
-      `expiresAt=${offer.hostExpiresAt}`
+      `generation=${generation} expiresAt=${offer.hostExpiresAt}`
   );
 
   const timer = setTimeout(() => {
+    if (publicOfferHostGraceGeneration.get(offerId) !== generation) {
+      publicOfferHostGraceTimers.delete(offerId);
+      return;
+    }
+
+    publicOfferHostGraceTimers.delete(offerId);
+
     const stillLive = publicOffers.get(offerId);
     if (!stillLive) {
-      publicOfferHostGraceTimers.delete(offerId);
       return;
     }
 
@@ -222,7 +239,6 @@ export function scheduleHostDisconnectGrace(offerId: string): void {
     // explicit cancel or join). In that case the offer is alive and
     // we must NOT remove it.
     if (stillLive.hostDisconnectedAt === undefined) {
-      publicOfferHostGraceTimers.delete(offerId);
       return;
     }
 
@@ -239,19 +255,36 @@ export function scheduleHostDisconnectGrace(offerId: string): void {
 
 /**
  * Cancel an armed host-disconnect grace timer and clear the
- * disconnected flags on the offer. Idempotent.
+ * disconnected flags on the offer. Bumps generation so any in-flight
+ * timeout from a prior schedule is ignored. Idempotent.
  */
-function cancelHostDisconnectGrace(offerId: string): void {
+function cancelHostDisconnectGrace(
+  offerId: string,
+  logReason?: string
+): void {
+  const hadTimer = publicOfferHostGraceTimers.has(offerId);
   const timer = publicOfferHostGraceTimers.get(offerId);
   if (timer) {
     clearTimeout(timer);
     publicOfferHostGraceTimers.delete(offerId);
   }
 
+  publicOfferHostGraceGeneration.set(
+    offerId,
+    (publicOfferHostGraceGeneration.get(offerId) ?? 0) + 1
+  );
+
   const offer = publicOffers.get(offerId);
   if (offer) {
     offer.hostDisconnectedAt = undefined;
     offer.hostExpiresAt = undefined;
+  }
+
+  if (logReason && hadTimer) {
+    console.log(
+      `[diag:public-offer] OFFER_GRACE_CANCELLED offerId=${offerId} ` +
+        `reason=${logReason}`
+    );
   }
 }
 
@@ -266,13 +299,18 @@ function cancelHostDisconnectGrace(offerId: string): void {
  *     cleared by a stale path.
  *   - Emit a fresh lobby snapshot.
  *
- * Called from the JWT-verified user hook AND from `player:register`
- * — both fire on lobby reconnect without requiring any frontend
- * changes. Idempotent and cheap when no matching offer exists.
+ * Called from the earliest reconnect hooks we have:
+ *   - sync `socket.data.userId` on connect (if JWT already resolved)
+ *   - JWT-verified callback
+ *   - `publicOffers:request` (lobby snapshot — often before register)
+ *   - `player:register`
+ *
+ * Idempotent and cheap when no matching offer exists.
  */
 export function revivePublicOffersForPlayer(
   playerId: string,
-  newSocketId: string
+  newSocketId: string,
+  reason = "reconnect"
 ): void {
   if (typeof playerId !== "string" || playerId.length === 0) return;
 
@@ -298,9 +336,9 @@ export function revivePublicOffersForPlayer(
 
     revivedAny = true;
     console.log(
-      `[publicOffer:hostGrace] REVIVED offerId=${offer.offerId} ` +
+      `[diag:public-offer] OFFER_GRACE_REVIVED offerId=${offer.offerId} ` +
         `roomCode=${offer.roomCode} hostPlayerId=${playerId} ` +
-        `newSocketId=${newSocketId}`
+        `newSocketId=${newSocketId} reason=${reason}`
     );
   }
 
@@ -309,10 +347,30 @@ export function revivePublicOffersForPlayer(
   }
 }
 
+/**
+ * Best-effort revive using whatever identity is already on the socket.
+ * Safe to call synchronously on connect before the lobby snapshot.
+ */
+export function tryRevivePublicOffersForSocket(
+  socket: Socket,
+  reason = "socket"
+): void {
+  const userId = socket.data.userId;
+  if (typeof userId === "string" && userId.length > 0) {
+    revivePublicOffersForPlayer(userId, socket.id, reason);
+  }
+}
+
 export function registerPublicOfferHandlers(socket: Socket) {
   const deps = getDeps();
 
   socket.on("publicOffers:request", () => {
+    // Earliest lobby-side hook with a stable host identity: the web
+    // client fires this on mount, often before `player:register`.
+    // If JWT verification already stamped `socket.data.userId`, revive
+    // NOW so the snapshot below shows a live offer instead of a
+    // grace-window offer that expires before register lands.
+    tryRevivePublicOffersForSocket(socket, "publicOffers:request");
     emitPublicOffersToSocket(socket.id, "client requested snapshot");
   });
 
@@ -667,7 +725,7 @@ export function registerPublicOfferHandlers(socket: Socket) {
         // the host is mid-reconnect, but if a race lets us through
         // we still want the timer cleaned so its callback can't
         // remove the now-matched offer.
-        cancelHostDisconnectGrace(offerId);
+        cancelHostDisconnectGrace(offerId, "publicOffer:join matched");
 
         publicOffers.delete(offerId);
         emitPublicOffers("publicOffer:join matched");
@@ -749,7 +807,7 @@ export function registerPublicOfferHandlers(socket: Socket) {
       // If the host had an active disconnect-grace timer (rare race:
       // host reconnects, immediately cancels), clear it so the timer
       // callback doesn't fire a redundant `OFFER_REMOVED` later.
-      cancelHostDisconnectGrace(offerId);
+      cancelHostDisconnectGrace(offerId, "publicOffer:cancel");
 
       publicOffers.delete(offerId);
 

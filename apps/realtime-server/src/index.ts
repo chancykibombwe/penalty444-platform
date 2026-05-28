@@ -98,6 +98,7 @@ import {
   registerPublicOfferHandlers,
   revivePublicOffersForPlayer,
   scheduleHostDisconnectGrace,
+  tryRevivePublicOffersForSocket,
 } from "./socket/publicOffers";
 import {
   bindRankedHandlers,
@@ -1816,20 +1817,24 @@ io.on("connection", (socket) => {
   // so async handlers can await freshness when needed. The synchronous
   // fields `socket.data.authenticated` / `authError` are populated by
   // `verifySocketJwt` before resolution.
+  // Public-offer grace revival — run as early as connect allows.
+  // If JWT verification already resolved synchronously (rare but
+  // possible on reconnect), revive before the lobby snapshot. The
+  // async JWT callback and `publicOffers:request` / `player:register`
+  // hooks below provide additional chances before the 30s window ends.
+  tryRevivePublicOffersForSocket(socket, "connection");
+
   void bindSocketJwtVerification(socket).then((result) => {
     if (result.ok === true) {
       console.log(
         `[Security] jwt verified socketId=${socket.id} userId=${result.userId}`
       );
 
-      // Public-offer host-disconnect grace revival hook.
-      //
-      // When a host's lobby reconnects after a brief disconnect, the
-      // new socket lands here with a verified Supabase userId that
-      // matches the offer's `hostPlayerId`. Revive any of their
-      // offers that are sitting in the disconnect-grace window.
-      // Safe + cheap when no matching offer exists.
-      revivePublicOffersForPlayer(result.userId, socket.id);
+      revivePublicOffersForPlayer(
+        result.userId,
+        socket.id,
+        "jwt-verified"
+      );
     } else {
       const reason = result.reason;
       if (reason !== "no_token" && reason !== "no_backend") {
@@ -1927,7 +1932,7 @@ io.on("connection", (socket) => {
       // null, a returning host's lobby will reach this handler with
       // its playerId in the payload, and we revive their offer
       // before the 15s grace timer would otherwise wipe it.
-      revivePublicOffersForPlayer(trimmed, socket.id);
+      revivePublicOffersForPlayer(trimmed, socket.id, "player:register");
     }
   );
 
@@ -2012,13 +2017,30 @@ io.on("connection", (socket) => {
     // Guests cannot accept an offer while it's mid-grace — the
     // `publicOffer:join` handler short-circuits with a "Host is
     // reconnecting" message.
+    const verifiedUserIdOnDisconnect =
+      typeof socket.data.userId === "string" && socket.data.userId.length > 0
+        ? socket.data.userId
+        : null;
+
     for (const offer of publicOffers.values()) {
       const room = rooms.get(offer.roomCode);
       const host = room?.players.find(
         (player) => player.playerId === offer.hostPlayerId
       );
 
-      if (host?.socketId === socket.id) {
+      if (!host) continue;
+
+      const hostSocketMatch = host.socketId === socket.id;
+      const hostUserIdMatch =
+        verifiedUserIdOnDisconnect !== null &&
+        offer.hostPlayerId === verifiedUserIdOnDisconnect;
+
+      // Primary match: this socket is still bound on the room slot.
+      // Fallback: rapid double-refresh can disconnect a new socket
+      // before `revivePublicOffersForPlayer` rebound the slot; JWT
+      // `userId` on the dying socket still identifies the host so we
+      // (re)arm grace instead of leaving a stale timer running.
+      if (hostSocketMatch || hostUserIdMatch) {
         if (publicOffers.has(offer.offerId)) {
           scheduleHostDisconnectGrace(offer.offerId);
         }
