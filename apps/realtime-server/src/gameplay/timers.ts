@@ -89,6 +89,26 @@ export function clearRoomTimer(room: Room) {
   if (room.resolveContinuationTimeout) {
     clearTimeout(room.resolveContinuationTimeout);
     room.resolveContinuationTimeout = undefined;
+
+    // `resolveContinuationTimeout` is the only callback that advances
+    // the round after `match:result` — it clears `room.isResolving` and
+    // resets `room.picks` before calling `startRoundTimer` or `endMatch`.
+    // If disconnect (or any other path) calls `clearRoomTimer` while that
+    // timer is still pending, we orphan the room: `isResolving` stays true,
+    // picks stay locked, and reconnect's `startRoundTimer` arms a pick
+    // timer that expires into a permanent `resolveRound` skip. Roll back
+    // the orphaned resolution state here so reconnect cannot restart into
+    // a poisoned `isResolving === true` room.
+    if (room.isResolving) {
+      console.warn(
+        `[diag:reveal-deadlock] RESETTING_ORPHANED_RESOLUTION_STATE ` +
+          `roomCode=${room.code} ` +
+          `round=${room.round} ` +
+          `phase=${room.phase}`
+      );
+      room.isResolving = false;
+      room.picks = {};
+    }
   }
   if (room.disconnectForfeitTimeout) {
     clearTimeout(room.disconnectForfeitTimeout);
