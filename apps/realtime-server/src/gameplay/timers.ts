@@ -41,7 +41,33 @@ export function clearPickTimer(room: Room) {
   }
 }
 
-export function clearRoomTimer(room: Room) {
+/**
+ * Options for {@link clearRoomTimer}.
+ *
+ * Strict-disconnect policy: when a player drops mid-resolve (both picks
+ * already locked, continuation pending) we MUST NOT clear the
+ * continuation timer — that callback owns advancing the round / ending
+ * the match. The default behaviour stays "tear everything down", which
+ * remains the right choice for `endMatch`, `abortMatchEarly`, rematch
+ * reset, and cleanup-sweep callers. Disconnect handlers that detect a
+ * resolving room opt into `preserveResolution: true`.
+ */
+export type ClearRoomTimerOptions = {
+  /**
+   * Skip clearing `resolveContinuationTimeout` (and the orphan-reset
+   * rollback that piggy-backs on it). Used by the disconnect handler
+   * when both picks are already locked / `room.isResolving === true`,
+   * so reveal/result/next-round continues without disruption.
+   */
+  preserveResolution?: boolean;
+};
+
+export function clearRoomTimer(
+  room: Room,
+  opts: ClearRoomTimerOptions = {}
+) {
+  const { preserveResolution = false } = opts;
+
   // === Reveal-deadlock instrumentation (logs only, no behaviour change) ===
   //
   // We hypothesize that disconnects landing inside the
@@ -62,6 +88,7 @@ export function clearRoomTimer(room: Room) {
   console.log(
     `[diag:reveal-deadlock] clearRoomTimer ` +
       `roomCode=${room.code} ` +
+      `preserveResolution=${preserveResolution} ` +
       `hadPickTimer=${hadPickTimer} ` +
       `hadResolveContinuationTimeout=${hadResolveContinuationTimeout} ` +
       `hadDisconnectForfeitTimeout=${hadDisconnectForfeitTimeout} ` +
@@ -73,7 +100,7 @@ export function clearRoomTimer(room: Room) {
       `phase=${room.phase}`
   );
 
-  if (hadResolveContinuationTimeout && room.isResolving) {
+  if (hadResolveContinuationTimeout && room.isResolving && !preserveResolution) {
     console.warn(
       `[diag:reveal-deadlock] AUTH_DEADLOCK_CANDIDATE_CLEARING_CONTINUATION ` +
         `roomCode=${room.code} ` +
@@ -84,9 +111,17 @@ export function clearRoomTimer(room: Room) {
   }
   // === end instrumentation ===
 
-  clearPickTimer(room);
+  // Pick timer is safe to clear in either mode:
+  //   - In resolving mode it's already cleared by `resolveRound`.
+  //   - In non-resolving mode this is the standard pause path.
+  // We deliberately skip it under `preserveResolution` anyway, because
+  // an unexpectedly live pick timer here would only be a bug we want
+  // to surface via the existing diagnostic logs, not silently squash.
+  if (!preserveResolution) {
+    clearPickTimer(room);
+  }
 
-  if (room.resolveContinuationTimeout) {
+  if (!preserveResolution && room.resolveContinuationTimeout) {
     clearTimeout(room.resolveContinuationTimeout);
     room.resolveContinuationTimeout = undefined;
 

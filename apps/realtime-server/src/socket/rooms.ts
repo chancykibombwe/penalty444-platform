@@ -223,6 +223,21 @@ export function registerRoomSocketHandlers(socket: Socket) {
 
         deps.setPlayerActiveRoom(playerId, code);
 
+        // Strict-disconnect policy follow-up:
+        //
+        // The returning socket MUST join the room channel BEFORE we
+        // can call `startRoundTimer` or emit any `io.to(code)` events
+        // tied to the reconnect. Previously `socket.join(code)` came
+        // after the conditional `startRoundTimer` call below, so the
+        // reconnecting client missed the authoritative
+        // `match:status { timeoutSeconds: 10 }` emit and rendered a
+        // blank / stale countdown while the server-side pick timer
+        // was running. Hoisting the channel join (and the `room:joined`
+        // ack) here makes every subsequent `io.to(code).emit(...)`
+        // observable by the reconnecting client.
+        socket.join(code);
+        socket.emit("room:joined", { roomCode: code });
+
         if (room.disconnectedPlayerId === playerId) {
           if (room.disconnectForfeitTimeout) {
             clearTimeout(room.disconnectForfeitTimeout);
@@ -262,13 +277,62 @@ export function registerRoomSocketHandlers(socket: Socket) {
           );
           // === end instrumentation ===
 
-          // Keep reconnect logic simple: always restart the round timer.
-          deps.startRoundTimer(code, room);
+          // Strict-disconnect policy (PR hotfix/strict-disconnect-policy):
+          //
+          // Only restart the pick timer when there is genuinely a
+          // pending pick decision for the reconnecting player. The
+          // previous unconditional call could:
+          //   - re-enter `startRoundTimer` while `isResolving === true`
+          //     (the orphan-deadlock chain PR #18 fixed in
+          //      `clearRoomTimer`, but defence-in-depth here too)
+          //   - restart a 10s pick window after both picks were
+          //     already locked, racing the continuation
+          //   - replace the round's running pick timer when the
+          //     reconnecting player had already locked their pick,
+          //     which would unfairly extend the opponent's window
+          //
+          // We only restart the timer in the no-pick-yet case — the
+          // SAME state in which the disconnect handler armed the 39s
+          // grace and cleared the pick timer. The other classifier
+          // branches (resolving / own-pick-locked) intentionally
+          // never set `disconnectedPlayerId`, so reaching this block
+          // already implies no-pick-yet on disconnect — but reality
+          // may have moved on (opponent picked, round timed out,
+          // continuation fired) while the player was offline, so we
+          // re-classify on the live room state.
+          const reconnectRole = room.roles[playerId];
+          const reconnectOwnPickLocked = reconnectRole
+            ? Boolean(room.picks[reconnectRole])
+            : false;
+          const reconnectBothPicksLocked = Boolean(
+            room.picks.KICKER && room.picks.KEEPER
+          );
+
+          if (room.matchEnded) {
+            console.log(
+              `[diag:disconnect-policy] reconnect skip startRoundTimer ` +
+                `roomCode=${code} reason=matchEnded`
+            );
+          } else if (room.isResolving || reconnectBothPicksLocked) {
+            console.log(
+              `[diag:disconnect-policy] reconnect skip startRoundTimer ` +
+                `roomCode=${code} reason=resolving ` +
+                `isResolving=${Boolean(room.isResolving)} ` +
+                `bothPicksLocked=${reconnectBothPicksLocked}`
+            );
+          } else if (reconnectOwnPickLocked) {
+            console.log(
+              `[diag:disconnect-policy] reconnect skip startRoundTimer ` +
+                `roomCode=${code} reason=ownPickLocked role=${reconnectRole}`
+            );
+          } else {
+            deps.startRoundTimer(code, room);
+          }
         }
 
-        socket.join(code);
-        socket.emit("room:joined", { roomCode: code });
-
+        // Channel join + `room:joined` ack happen ABOVE, before the
+        // reconnect block, so the conditional `startRoundTimer`
+        // emit reaches the returning socket.
         deps.emitRoomUpdate(code, room);
         deps.emitMatchState(code, room);
 
