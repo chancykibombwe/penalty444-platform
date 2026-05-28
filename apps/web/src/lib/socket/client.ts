@@ -137,16 +137,38 @@ function bindAuthListenerOnce(): void {
 
     if (event === "SIGNED_IN") {
       const previousUserId = lastAttachedUserId;
+
+      // Classify the transition so we only bounce when the realtime
+      // handshake actually needs to re-run with a new identity.
+      //
+      //   - anonToAuthed : socket never had a verified user (or was
+      //                    only ever opened anonymously) and we now
+      //                    have a session. Must reconnect so the
+      //                    dynamic auth callback re-runs with the
+      //                    fresh JWT and the server can verify
+      //                    `socket.data.userId`.
+      //   - userChanged  : different verified user (account switch).
+      //                    Must reconnect to re-handshake under the
+      //                    new identity.
+      //   - same user / re-emit on the same identity → do NOT bounce
+      //                    a healthy socket. The server-verified
+      //                    `socket.data.userId` is still correct and
+      //                    the existing connection is fine.
+      const anonToAuthed = previousUserId === null && newUserId !== null;
       const userChanged =
         previousUserId !== null && newUserId !== null && previousUserId !== newUserId;
+      const mustReconnect = anonToAuthed || userChanged;
+
       lastAttachedUserId = newUserId;
 
       devLog("signed in", {
         sameUser: previousUserId === newUserId,
         wasConnected: socket?.connected ?? false,
+        anonToAuthed,
         userChanged,
       });
       lifecycleLog("auth_signed_in", {
+        anonToAuthed,
         userChanged,
         hadSocket: Boolean(socket),
         wasConnected: socket?.connected ?? false,
@@ -158,10 +180,7 @@ function bindAuthListenerOnce(): void {
         return;
       }
 
-      // Only bounce when the IDENTITY actually changed. A SIGNED_IN
-      // re-emit for the same user on a healthy socket would otherwise
-      // tear the connection down for no reason.
-      if (userChanged) {
+      if (mustReconnect) {
         if (socket.connected) {
           socket.disconnect().connect();
         } else {

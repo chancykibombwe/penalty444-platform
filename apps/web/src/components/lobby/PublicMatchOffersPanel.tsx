@@ -252,53 +252,61 @@ export default function PublicMatchOffersPanel() {
     setCreating(true);
     setStatus("Creating public match offer...");
 
-    // Track our own one-shot ack listeners so the timeout path can
-    // detach them. `socket.once` would leak the listener forever when
-    // the event never arrives (slow backend / dropped packet).
-    let detachAcks: (() => void) | null = null;
+    // Resolve identity BEFORE arming the timeout / attaching ack
+    // listeners. Doing it the other way around opens a race where the
+    // 8s timeout can fire mid-`await`, leaving the ack listeners
+    // attached (because they were registered AFTER the timeout fired)
+    // with no cleanup hook. That made every "slow start" retry stack
+    // a fresh pair of listeners.
+    let identity: Awaited<ReturnType<typeof getCurrentPlayerIdentity>>;
+    try {
+      identity = await getCurrentPlayerIdentity();
+    } catch {
+      setCreating(false);
+      setStatus("Failed to load player identity. Please login again.");
+      return;
+    }
+
+    if (!identity) {
+      setCreating(false);
+      router.replace("/auth/login");
+      return;
+    }
+
+    setMyPlayerId(identity.playerId);
+
+    // Now that identity is known, attach ack listeners FIRST so the
+    // timeout closure always sees a valid `detachAcks`.
+    const onAck = () => {
+      window.clearTimeout(timeoutId);
+      detachAcks();
+    };
+    socket.on("publicOffer:created", onAck);
+    socket.on("publicOffers:error", onAck);
+    const detachAcks = (() => {
+      let detached = false;
+      return () => {
+        if (detached) return;
+        detached = true;
+        socket.off("publicOffer:created", onAck);
+        socket.off("publicOffers:error", onAck);
+      };
+    })();
+
     const timeoutId = window.setTimeout(() => {
-      detachAcks?.();
+      detachAcks();
       setCreating(false);
       setStatus(
         "No response from server. Check backend terminal for error, then try again."
       );
     }, 8000);
 
-    try {
-      const identity = await getCurrentPlayerIdentity();
-
-      if (!identity) {
-        window.clearTimeout(timeoutId);
-        setCreating(false);
-        router.replace("/auth/login");
-        return;
-      }
-
-      setMyPlayerId(identity.playerId);
-
-      const onAck = () => {
-        window.clearTimeout(timeoutId);
-        detachAcks?.();
-      };
-      socket.on("publicOffer:created", onAck);
-      socket.on("publicOffers:error", onAck);
-      detachAcks = () => {
-        socket.off("publicOffer:created", onAck);
-        socket.off("publicOffers:error", onAck);
-      };
-
-      socket.emit("publicOffer:create", {
-        playerId: identity.playerId,
-        username: identity.username,
-        stakeLabel,
-        rounds,
-      });
-    } catch {
-      window.clearTimeout(timeoutId);
-      detachAcks?.();
-      setCreating(false);
-      setStatus("Failed to load player identity. Please login again.");
-    }
+    socket.emit("publicOffer:create", {
+      playerId: identity.playerId,
+      username: identity.username,
+      stakeLabel,
+      rounds,
+    });
   }
 
   async function joinOffer(offerId: string) {
@@ -315,47 +323,51 @@ export default function PublicMatchOffersPanel() {
     setJoiningOfferId(offerId);
     setStatus("Joining public match...");
 
-    let detachAcks: (() => void) | null = null;
+    // See createOffer for the rationale: identity → listeners → timer.
+    let identity: Awaited<ReturnType<typeof getCurrentPlayerIdentity>>;
+    try {
+      identity = await getCurrentPlayerIdentity();
+    } catch {
+      setJoiningOfferId(null);
+      setStatus("Failed to load player identity. Please login again.");
+      return;
+    }
+
+    if (!identity) {
+      setJoiningOfferId(null);
+      router.replace("/auth/login");
+      return;
+    }
+
+    const onAck = () => {
+      window.clearTimeout(timeoutId);
+      detachAcks();
+    };
+    socket.on("publicOffer:matched", onAck);
+    socket.on("publicOffers:error", onAck);
+    const detachAcks = (() => {
+      let detached = false;
+      return () => {
+        if (detached) return;
+        detached = true;
+        socket.off("publicOffer:matched", onAck);
+        socket.off("publicOffers:error", onAck);
+      };
+    })();
+
     const timeoutId = window.setTimeout(() => {
-      detachAcks?.();
+      detachAcks();
       setJoiningOfferId(null);
       setStatus(
         "No response from server. Check backend terminal for error, then try again."
       );
     }, 8000);
 
-    try {
-      const identity = await getCurrentPlayerIdentity();
-
-      if (!identity) {
-        window.clearTimeout(timeoutId);
-        setJoiningOfferId(null);
-        router.replace("/auth/login");
-        return;
-      }
-
-      const onAck = () => {
-        window.clearTimeout(timeoutId);
-        detachAcks?.();
-      };
-      socket.on("publicOffer:matched", onAck);
-      socket.on("publicOffers:error", onAck);
-      detachAcks = () => {
-        socket.off("publicOffer:matched", onAck);
-        socket.off("publicOffers:error", onAck);
-      };
-
-      socket.emit("publicOffer:join", {
-        offerId,
-        playerId: identity.playerId,
-        username: identity.username,
-      });
-    } catch {
-      window.clearTimeout(timeoutId);
-      detachAcks?.();
-      setJoiningOfferId(null);
-      setStatus("Failed to load player identity. Please login again.");
-    }
+    socket.emit("publicOffer:join", {
+      offerId,
+      playerId: identity.playerId,
+      username: identity.username,
+    });
   }
 
   async function cancelOffer(offerId: string) {
@@ -372,46 +384,50 @@ export default function PublicMatchOffersPanel() {
     setCancellingOfferId(offerId);
     setStatus("Cancelling public offer...");
 
-    let detachAcks: (() => void) | null = null;
+    // See createOffer for the rationale: identity → listeners → timer.
+    let identity: Awaited<ReturnType<typeof getCurrentPlayerIdentity>>;
+    try {
+      identity = await getCurrentPlayerIdentity();
+    } catch {
+      setCancellingOfferId(null);
+      setStatus("Failed to load player identity. Please login again.");
+      return;
+    }
+
+    if (!identity) {
+      setCancellingOfferId(null);
+      router.replace("/auth/login");
+      return;
+    }
+
+    const onAck = () => {
+      window.clearTimeout(timeoutId);
+      detachAcks();
+    };
+    socket.on("publicOffer:cancelled", onAck);
+    socket.on("publicOffers:error", onAck);
+    const detachAcks = (() => {
+      let detached = false;
+      return () => {
+        if (detached) return;
+        detached = true;
+        socket.off("publicOffer:cancelled", onAck);
+        socket.off("publicOffers:error", onAck);
+      };
+    })();
+
     const timeoutId = window.setTimeout(() => {
-      detachAcks?.();
+      detachAcks();
       setCancellingOfferId(null);
       setStatus(
         "No response from server. Check backend terminal for error, then try again."
       );
     }, 8000);
 
-    try {
-      const identity = await getCurrentPlayerIdentity();
-
-      if (!identity) {
-        window.clearTimeout(timeoutId);
-        setCancellingOfferId(null);
-        router.replace("/auth/login");
-        return;
-      }
-
-      const onAck = () => {
-        window.clearTimeout(timeoutId);
-        detachAcks?.();
-      };
-      socket.on("publicOffer:cancelled", onAck);
-      socket.on("publicOffers:error", onAck);
-      detachAcks = () => {
-        socket.off("publicOffer:cancelled", onAck);
-        socket.off("publicOffers:error", onAck);
-      };
-
-      socket.emit("publicOffer:cancel", {
-        offerId,
-        playerId: identity.playerId,
-      });
-    } catch {
-      window.clearTimeout(timeoutId);
-      detachAcks?.();
-      setCancellingOfferId(null);
-      setStatus("Failed to load player identity. Please login again.");
-    }
+    socket.emit("publicOffer:cancel", {
+      offerId,
+      playerId: identity.playerId,
+    });
   }
 
   async function clearSavedMatch() {
