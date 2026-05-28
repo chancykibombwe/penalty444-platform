@@ -262,8 +262,57 @@ export function registerRoomSocketHandlers(socket: Socket) {
           );
           // === end instrumentation ===
 
-          // Keep reconnect logic simple: always restart the round timer.
-          deps.startRoundTimer(code, room);
+          // Strict-disconnect policy (PR hotfix/strict-disconnect-policy):
+          //
+          // Only restart the pick timer when there is genuinely a
+          // pending pick decision for the reconnecting player. The
+          // previous unconditional call could:
+          //   - re-enter `startRoundTimer` while `isResolving === true`
+          //     (the orphan-deadlock chain PR #18 fixed in
+          //      `clearRoomTimer`, but defence-in-depth here too)
+          //   - restart a 10s pick window after both picks were
+          //     already locked, racing the continuation
+          //   - replace the round's running pick timer when the
+          //     reconnecting player had already locked their pick,
+          //     which would unfairly extend the opponent's window
+          //
+          // We only restart the timer in the no-pick-yet case — the
+          // SAME state in which the disconnect handler armed the 39s
+          // grace and cleared the pick timer. The other classifier
+          // branches (resolving / own-pick-locked) intentionally
+          // never set `disconnectedPlayerId`, so reaching this block
+          // already implies no-pick-yet on disconnect — but reality
+          // may have moved on (opponent picked, round timed out,
+          // continuation fired) while the player was offline, so we
+          // re-classify on the live room state.
+          const reconnectRole = room.roles[playerId];
+          const reconnectOwnPickLocked = reconnectRole
+            ? Boolean(room.picks[reconnectRole])
+            : false;
+          const reconnectBothPicksLocked = Boolean(
+            room.picks.KICKER && room.picks.KEEPER
+          );
+
+          if (room.matchEnded) {
+            console.log(
+              `[diag:disconnect-policy] reconnect skip startRoundTimer ` +
+                `roomCode=${code} reason=matchEnded`
+            );
+          } else if (room.isResolving || reconnectBothPicksLocked) {
+            console.log(
+              `[diag:disconnect-policy] reconnect skip startRoundTimer ` +
+                `roomCode=${code} reason=resolving ` +
+                `isResolving=${Boolean(room.isResolving)} ` +
+                `bothPicksLocked=${reconnectBothPicksLocked}`
+            );
+          } else if (reconnectOwnPickLocked) {
+            console.log(
+              `[diag:disconnect-policy] reconnect skip startRoundTimer ` +
+                `roomCode=${code} reason=ownPickLocked role=${reconnectRole}`
+            );
+          } else {
+            deps.startRoundTimer(code, room);
+          }
         }
 
         socket.join(code);

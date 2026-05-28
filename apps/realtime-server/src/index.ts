@@ -1885,6 +1885,41 @@ io.on("connection", (socket) => {
       // `evaluateMatchStart`; the post-start branches don't read it.
       player.present = false;
 
+      // ============================================================
+      // Strict disconnect/reconnect policy (PR hotfix/strict-disconnect-policy)
+      //
+      // We classify the room state at the moment of disconnect and
+      // apply ONLY the cleanup that is safe for that state. The
+      // previous "one-size-fits-all" behaviour (clearRoomTimer + 39s
+      // forfeit on every active-match disconnect) caused:
+      //   - reveal deadlock (clearing continuation mid-resolve)
+      //   - pick unlock (clearing pick timer while own pick was final)
+      //   - forfeit fires into wrong round (39s outliving the round
+      //     it was armed for)
+      //
+      // Classification:
+      //   matchEnded     – no gameplay timer action, no countdown emit
+      //   preMatch       – delegate to readiness authority (Phase 6C)
+      //   resolving      – preserve continuation, no forfeit, no clears
+      //   ownPickLocked  – preserve pick, no forfeit, leave pick timer
+      //                    running for opponent
+      //   noPickYet      – classic 39s grace + paused pick timer
+      // ============================================================
+
+      // Rule 5 — match already ended. No reveal/forfeit/timer events
+      // should ever fire here. Just refresh room state (presence) and
+      // bail. Crucially, do NOT emit "Opponent disconnected. Waiting
+      // for reconnect..." — there is no reconnect window to wait for.
+      if (room.matchEnded) {
+        console.log(
+          `[diag:disconnect-policy] MATCH_ENDED_NO_ACTION ` +
+            `roomCode=${room.code} playerId=${player.playerId}`
+        );
+        emitRoomUpdate(room.code, room);
+        emitMatchState(room.code, room);
+        return;
+      }
+
       // Phase 6C — pre-match disconnect path.
       //
       // If the match never actually started (no `matchStartedAt`)
@@ -1899,8 +1934,11 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // Only apply reconnect-forfeit to active 2-player matches that are not ended.
-      if (room.players.length !== 2 || room.matchEnded) {
+      // Defensive: a started match should always have exactly two
+      // players in `room.players`. If somehow we're here with a
+      // different shape, fall back to a quiet status emit and bail —
+      // we don't want to arm a forfeit against a degenerate room.
+      if (room.players.length !== 2) {
         io.to(room.code).emit("match:status", {
           roomCode: room.code,
           message: "Opponent disconnected. Waiting for reconnect...",
@@ -1913,35 +1951,127 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // === Reveal-deadlock instrumentation (logs only) ===
-      //
-      // Logged immediately BEFORE `clearRoomTimer` so the snapshot
-      // shows whether the continuation timer was live at the moment
-      // we tore everything down. Paired with the
-      // `clearRoomTimer` line in `timers.ts` this lets us reconstruct
-      // every clear, including which caller fired it.
+      // From here on: 2-player, started, not-ended match.
+      const role = room.roles[player.playerId];
+      const ownPickLocked = role ? Boolean(room.picks[role]) : false;
+      const bothPicksLocked = Boolean(
+        room.picks.KICKER && room.picks.KEEPER
+      );
+      const isResolving = Boolean(room.isResolving);
+
+      // Existing reveal-deadlock instrumentation — kept verbatim per
+      // PR #17 contract. Augmented with the classifier outcome.
       console.log(
         `[diag:reveal-deadlock] AUTH_DEADLOCK_TRACE_DISCONNECT_DURING_MATCH ` +
           `roomCode=${room.code} ` +
           `playerId=${player.playerId} ` +
-          `isResolving=${Boolean(room.isResolving)} ` +
+          `isResolving=${isResolving} ` +
           `hasContinuationTimeout=${Boolean(room.resolveContinuationTimeout)} ` +
           `round=${room.round} ` +
-          `phase=${room.phase}`
+          `phase=${room.phase} ` +
+          `ownPickLocked=${ownPickLocked} ` +
+          `bothPicksLocked=${bothPicksLocked}`
       );
-      // === end instrumentation ===
 
-      // Pause all match timers while we wait for reconnect.
+      // ---------- Rule 2: both picks locked / resolving ----------
+      // Reveal/result pipeline is mid-flight. The continuation timer
+      // owns the transition to next round / `endMatch`. Touching it
+      // here is exactly what caused the orphan-resolution deadlock.
+      //
+      // Policy:
+      //   - DO NOT clear `resolveContinuationTimeout`
+      //   - DO NOT reset `room.isResolving` / `room.picks`
+      //   - DO NOT arm 39s forfeit
+      //   - emit a neutral status only (no countdown copy)
+      //
+      // We still call `clearRoomTimer` with `preserveResolution: true`
+      // so any phantom waitingForReturn / staging handles get cleaned,
+      // but the continuation block is left strictly intact.
+      if (isResolving || bothPicksLocked) {
+        console.log(
+          `[diag:disconnect-policy] PRESERVE_RESOLUTION ` +
+            `roomCode=${room.code} playerId=${player.playerId} ` +
+            `isResolving=${isResolving} bothPicksLocked=${bothPicksLocked}`
+        );
+
+        clearRoomTimer(room, { preserveResolution: true });
+
+        io.to(room.code).emit("match:status", {
+          roomCode: room.code,
+          message: "Opponent connection lost. Result continues.",
+          phase: room.phase,
+          suddenDeathRound: room.suddenDeathRound,
+        });
+
+        emitRoomUpdate(room.code, room);
+        emitMatchState(room.code, room);
+        return;
+      }
+
+      // ---------- Rule 4: own pick already locked, opponent not ----------
+      // The disconnected player has already submitted this round's
+      // pick — that pick is FINAL. We must not unlock it, must not
+      // restart their decision, and must not arm a 39s forfeit that
+      // would later fire into the NEXT round's pick window.
+      //
+      // Policy:
+      //   - DO NOT clear submitted picks
+      //   - DO NOT clear pick timer (opponent still has live decision)
+      //   - DO NOT set `disconnectedPlayerId` (matchActions' role-pick
+      //     guard `if (room.picks[role]) return;` already blocks
+      //     duplicate picks, and setting `disconnectedPlayerId` would
+      //     incorrectly block the disconnected player's NEXT-round
+      //     pick after role swap)
+      //   - DO NOT arm 39s forfeit
+      //   - emit a neutral status only
+      //
+      // If the player never reconnects, the round will resolve via
+      // pick-timer or opponent's pick, and subsequent rounds will
+      // time out naturally for the absent player.
+      if (ownPickLocked) {
+        console.log(
+          `[diag:disconnect-policy] OWN_PICK_LOCKED_NO_FORFEIT ` +
+            `roomCode=${room.code} playerId=${player.playerId} ` +
+            `role=${role} round=${room.round}`
+        );
+
+        io.to(room.code).emit("match:status", {
+          roomCode: room.code,
+          message: "Opponent connection lost. Their pick is locked.",
+          phase: room.phase,
+          suddenDeathRound: room.suddenDeathRound,
+        });
+
+        emitRoomUpdate(room.code, room);
+        emitMatchState(room.code, room);
+        return;
+      }
+
+      // ---------- Rule 3: no pick yet — classic 39s grace ----------
+      // Disconnected player owes a pick this round. Pause the pick
+      // timer (so they don't get auto-resolved against), mark them
+      // disconnected (so matchActions blocks any pre-reconnect picks
+      // from a stray duplicate socket), and arm the 39s forfeit.
+      console.log(
+        `[diag:disconnect-policy] NO_PICK_GRACE_ARMED ` +
+          `roomCode=${room.code} playerId=${player.playerId} ` +
+          `round=${room.round} phase=${room.phase}`
+      );
+
       clearRoomTimer(room);
 
+      const forfeitArmedAt = Date.now();
+      const forfeitExpiresAt = forfeitArmedAt + 39_000;
+
       room.disconnectedPlayerId = player.playerId;
-      room.disconnectedAt = Date.now();
+      room.disconnectedAt = forfeitArmedAt;
 
       io.to(room.code).emit("match:status", {
         roomCode: room.code,
         message: "Opponent disconnected. Waiting 39 seconds for reconnect...",
         phase: room.phase,
         suddenDeathRound: room.suddenDeathRound,
+        expiresAt: forfeitExpiresAt,
       });
 
       room.disconnectForfeitTimeout = setTimeout(() => {
