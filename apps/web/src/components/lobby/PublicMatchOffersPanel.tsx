@@ -252,7 +252,12 @@ export default function PublicMatchOffersPanel() {
     setCreating(true);
     setStatus("Creating public match offer...");
 
+    // Track our own one-shot ack listeners so the timeout path can
+    // detach them. `socket.once` would leak the listener forever when
+    // the event never arrives (slow backend / dropped packet).
+    let detachAcks: (() => void) | null = null;
     const timeoutId = window.setTimeout(() => {
+      detachAcks?.();
       setCreating(false);
       setStatus(
         "No response from server. Check backend terminal for error, then try again."
@@ -271,13 +276,16 @@ export default function PublicMatchOffersPanel() {
 
       setMyPlayerId(identity.playerId);
 
-      socket.once("publicOffer:created", () => {
+      const onAck = () => {
         window.clearTimeout(timeoutId);
-      });
-
-      socket.once("publicOffers:error", () => {
-        window.clearTimeout(timeoutId);
-      });
+        detachAcks?.();
+      };
+      socket.on("publicOffer:created", onAck);
+      socket.on("publicOffers:error", onAck);
+      detachAcks = () => {
+        socket.off("publicOffer:created", onAck);
+        socket.off("publicOffers:error", onAck);
+      };
 
       socket.emit("publicOffer:create", {
         playerId: identity.playerId,
@@ -287,6 +295,7 @@ export default function PublicMatchOffersPanel() {
       });
     } catch {
       window.clearTimeout(timeoutId);
+      detachAcks?.();
       setCreating(false);
       setStatus("Failed to load player identity. Please login again.");
     }
@@ -306,7 +315,9 @@ export default function PublicMatchOffersPanel() {
     setJoiningOfferId(offerId);
     setStatus("Joining public match...");
 
+    let detachAcks: (() => void) | null = null;
     const timeoutId = window.setTimeout(() => {
+      detachAcks?.();
       setJoiningOfferId(null);
       setStatus(
         "No response from server. Check backend terminal for error, then try again."
@@ -323,13 +334,16 @@ export default function PublicMatchOffersPanel() {
         return;
       }
 
-      socket.once("publicOffer:matched", () => {
+      const onAck = () => {
         window.clearTimeout(timeoutId);
-      });
-
-      socket.once("publicOffers:error", () => {
-        window.clearTimeout(timeoutId);
-      });
+        detachAcks?.();
+      };
+      socket.on("publicOffer:matched", onAck);
+      socket.on("publicOffers:error", onAck);
+      detachAcks = () => {
+        socket.off("publicOffer:matched", onAck);
+        socket.off("publicOffers:error", onAck);
+      };
 
       socket.emit("publicOffer:join", {
         offerId,
@@ -338,6 +352,7 @@ export default function PublicMatchOffersPanel() {
       });
     } catch {
       window.clearTimeout(timeoutId);
+      detachAcks?.();
       setJoiningOfferId(null);
       setStatus("Failed to load player identity. Please login again.");
     }
@@ -357,7 +372,9 @@ export default function PublicMatchOffersPanel() {
     setCancellingOfferId(offerId);
     setStatus("Cancelling public offer...");
 
+    let detachAcks: (() => void) | null = null;
     const timeoutId = window.setTimeout(() => {
+      detachAcks?.();
       setCancellingOfferId(null);
       setStatus(
         "No response from server. Check backend terminal for error, then try again."
@@ -374,13 +391,16 @@ export default function PublicMatchOffersPanel() {
         return;
       }
 
-      socket.once("publicOffer:cancelled", () => {
+      const onAck = () => {
         window.clearTimeout(timeoutId);
-      });
-
-      socket.once("publicOffers:error", () => {
-        window.clearTimeout(timeoutId);
-      });
+        detachAcks?.();
+      };
+      socket.on("publicOffer:cancelled", onAck);
+      socket.on("publicOffers:error", onAck);
+      detachAcks = () => {
+        socket.off("publicOffer:cancelled", onAck);
+        socket.off("publicOffers:error", onAck);
+      };
 
       socket.emit("publicOffer:cancel", {
         offerId,
@@ -388,6 +408,7 @@ export default function PublicMatchOffersPanel() {
       });
     } catch {
       window.clearTimeout(timeoutId);
+      detachAcks?.();
       setCancellingOfferId(null);
       setStatus("Failed to load player identity. Please login again.");
     }
