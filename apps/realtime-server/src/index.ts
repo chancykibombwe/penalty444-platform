@@ -94,9 +94,10 @@ import {
 } from "./economy";
 import {
   bindPublicOfferHandlers,
-  emitPublicOffers,
   emitPublicOffersToSocket,
   registerPublicOfferHandlers,
+  revivePublicOffersForPlayer,
+  scheduleHostDisconnectGrace,
 } from "./socket/publicOffers";
 import {
   bindRankedHandlers,
@@ -1697,6 +1698,15 @@ io.on("connection", (socket) => {
       console.log(
         `[Security] jwt verified socketId=${socket.id} userId=${result.userId}`
       );
+
+      // Public-offer host-disconnect grace revival hook.
+      //
+      // When a host's lobby reconnects after a brief disconnect, the
+      // new socket lands here with a verified Supabase userId that
+      // matches the offer's `hostPlayerId`. Revive any of their
+      // offers that are sitting in the disconnect-grace window.
+      // Safe + cheap when no matching offer exists.
+      revivePublicOffersForPlayer(result.userId, socket.id);
     } else {
       const reason = result.reason;
       if (reason !== "no_token" && reason !== "no_backend") {
@@ -1785,6 +1795,16 @@ io.on("connection", (socket) => {
       console.log(
         `[tournament-registry] player:register playerId=${trimmed} socketId=${socket.id}`
       );
+
+      // Public-offer host-disconnect grace revival hook.
+      //
+      // The web lobby emits `player:register` on connect / reconnect.
+      // This is the no-JWT-needed path back to offer revival — even
+      // when SOCKET_JWT_ENFORCE is off and `socket.data.userId` is
+      // null, a returning host's lobby will reach this handler with
+      // its playerId in the payload, and we revive their offer
+      // before the 15s grace timer would otherwise wipe it.
+      revivePublicOffersForPlayer(trimmed, socket.id);
     }
   );
 
@@ -1853,6 +1873,22 @@ io.on("connection", (socket) => {
 
     removeRankedQueueEntryBySocketId(socket.id);
 
+    // Public-offer host-disconnect grace (PR hotfix/public-offer-host-grace).
+    //
+    // Previously a brief disconnect (refresh / nav / network blip) deleted
+    // the host's public offer immediately, refunding the stake and forcing
+    // the host to rebuild from scratch. Now we arm a `PUBLIC_OFFER_HOST_GRACE_MS`
+    // window via `scheduleHostDisconnectGrace`:
+    //   - If the host's lobby reconnects (JWT-verified userId OR
+    //     `player:register`) inside the window, `revivePublicOffersForPlayer`
+    //     cancels the timer and re-binds the new socket.
+    //   - If the window elapses, `removeAbandonedPublicOffer` performs the
+    //     same teardown the old immediate-delete did (unlock stake +
+    //     economy refund + room cleanup + lobby emit).
+    //
+    // Guests cannot accept an offer while it's mid-grace — the
+    // `publicOffer:join` handler short-circuits with a "Host is
+    // reconnecting" message.
     for (const offer of publicOffers.values()) {
       const room = rooms.get(offer.roomCode);
       const host = room?.players.find(
@@ -1861,12 +1897,7 @@ io.on("connection", (socket) => {
 
       if (host?.socketId === socket.id) {
         if (publicOffers.has(offer.offerId)) {
-          publicOffers.delete(offer.offerId);
-
-          await unlockStake(offer.hostPlayerId, offer.stakeAmount);
-
-          clearPlayerActiveRoom(offer.hostPlayerId);
-          emitPublicOffers("host disconnected, offer removed");
+          scheduleHostDisconnectGrace(offer.offerId);
         }
 
         break;
