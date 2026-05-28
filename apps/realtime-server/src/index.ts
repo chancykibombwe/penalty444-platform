@@ -1370,6 +1370,74 @@ async function abortMatchEarly(
 const resolveRoundSeqByRoom = new Map<string, number>();
 bindResolveSeqMap(resolveRoundSeqByRoom);
 
+/**
+ * Arm the 39s disconnect/forfeit grace for `absentPlayerId` against the
+ * present opponent.
+ *
+ * Mirrors the `NO_PICK_GRACE_ARMED` branch of the disconnect handler so
+ * the reconnect path in `socket/rooms.ts` (clears
+ * `disconnectForfeitTimeout`, resets `disconnectedPlayerId`,
+ * re-emits status, runs the strict reconnect-gate classifier) keeps
+ * working unchanged.
+ *
+ * Idempotent: clears any prior forfeit timer / disconnect markers for
+ * the room before arming a fresh one. Safe to call from the
+ * resolve-continuation closure or from any other "about to start a new
+ * round but a player is absent" code path.
+ */
+function startDisconnectGraceForAbsentPlayer(
+  roomCode: string,
+  room: Room,
+  absentPlayerId: string
+): void {
+  if (room.disconnectForfeitTimeout) {
+    clearTimeout(room.disconnectForfeitTimeout);
+    room.disconnectForfeitTimeout = undefined;
+  }
+
+  const forfeitArmedAt = Date.now();
+  const forfeitExpiresAt = forfeitArmedAt + 39_000;
+
+  room.disconnectedPlayerId = absentPlayerId;
+  room.disconnectedAt = forfeitArmedAt;
+
+  console.log(
+    `[diag:disconnect-policy] NEXT_ROUND_GRACE_FOR_ABSENT ` +
+      `roomCode=${roomCode} absentPlayerId=${absentPlayerId} ` +
+      `round=${room.round} phase=${room.phase} ` +
+      `expiresAt=${forfeitExpiresAt}`
+  );
+
+  io.to(roomCode).emit("match:status", {
+    roomCode,
+    message: "Opponent disconnected. Waiting 39 seconds for reconnect...",
+    phase: room.phase,
+    suddenDeathRound: room.suddenDeathRound,
+    expiresAt: forfeitExpiresAt,
+  });
+
+  room.disconnectForfeitTimeout = setTimeout(() => {
+    const r = rooms.get(roomCode);
+    if (!r) return;
+    if (r.matchEnded) return;
+
+    const disconnectedId = r.disconnectedPlayerId;
+    if (!disconnectedId) return;
+
+    const opponent = r.players.find((p) => p.playerId !== disconnectedId);
+    if (!opponent) return;
+
+    const maxScore = Math.max(...Object.values(r.scores || {}), 0);
+    r.scores[opponent.playerId] = maxScore + 1;
+
+    r.disconnectedPlayerId = undefined;
+    r.disconnectedAt = undefined;
+    r.disconnectForfeitTimeout = undefined;
+
+    endMatch(r.code, r);
+  }, 39_000);
+}
+
 function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
   if (room.matchEnded) return;
   if (room.isResolving) {
@@ -1574,6 +1642,33 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
         console.log(
           `[Resolve] next round armed roomCode=${roomCode} round=${r.round} phase=${r.phase}`
         );
+        // Next-round absent-player grace (PR hotfix/next-round-absent-player-grace).
+        //
+        // If a player disconnected during the just-resolved round but
+        // their pick was already locked, the PR #19 strict-disconnect
+        // classifier intentionally did NOT arm a 39s forfeit (their
+        // pick was final, the current round resolves fairly). But by
+        // the time the continuation fires here, they may still be
+        // absent — `player.present === false`. Starting the next
+        // round's 10s pick timer immediately would penalise them for
+        // a disconnect that happened AFTER they already acted in the
+        // previous round.
+        //
+        // Detect any absent player, arm the standard 39s grace
+        // (which the reconnect path in `socket/rooms.ts` already
+        // understands), and skip `startRoundTimer` for now. The
+        // reconnect path's strict-classifier will start a fresh 10s
+        // pick timer once the player is back; if they don't return,
+        // the existing forfeit-timer logic ends the match cleanly.
+        const absentInSuddenDeath = r.players.find((p) => !p.present);
+        if (absentInSuddenDeath && r.players.length === 2) {
+          startDisconnectGraceForAbsentPlayer(
+            roomCode,
+            r,
+            absentInSuddenDeath.playerId
+          );
+          return;
+        }
         startRoundTimer(roomCode, r);
         return;
       }
@@ -1606,6 +1701,19 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
     console.log(
       `[Resolve] next round armed roomCode=${roomCode} round=${r.round} phase=${r.phase}`
     );
+    // Next-round absent-player grace — see comment on the sudden-death
+    // entry branch above. The fix applies identically here for normal
+    // and mid-sudden-death rounds because both reach this code path
+    // after `swapRoles` / `picks = {}` / `round += 1`.
+    const absentInNextRound = r.players.find((p) => !p.present);
+    if (absentInNextRound && r.players.length === 2) {
+      startDisconnectGraceForAbsentPlayer(
+        roomCode,
+        r,
+        absentInNextRound.playerId
+      );
+      return;
+    }
     startRoundTimer(roomCode, r);
   }, continuationPauseMs);
 }
