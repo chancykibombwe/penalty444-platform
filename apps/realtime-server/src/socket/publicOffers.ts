@@ -2,7 +2,7 @@ import type { Server, Socket } from "socket.io";
 import { clearRoomTimer } from "../gameplay/timers";
 import { cleanUsername, generateOfferId } from "../room/codes";
 import { evaluateMatchStart } from "../room/readiness";
-import { publicOffers, rooms } from "../state/stores";
+import { playerActiveRooms, publicOffers, rooms } from "../state/stores";
 import type {
   MatchType,
   PublicMatchOffer,
@@ -18,6 +18,28 @@ import {
   jwtEnforcementEnabled,
   jwtMatchesPlayer,
 } from "../security/jwt";
+
+/**
+ * Host-disconnect grace window for public match offers.
+ *
+ * Previously, the moment a host's socket dropped (refresh, brief
+ * network blip, navigation), the offer was deleted immediately. This
+ * made offers feel fragile to hosts and forced lobby viewers to
+ * watch offers vanish/reappear on every minor disconnect.
+ *
+ * 15s matches the typical socket.io reconnect window the web client
+ * uses; long enough to absorb a refresh / quick network hiccup, short
+ * enough that lobby viewers don't see stale offers from genuinely-gone
+ * hosts.
+ */
+export const PUBLIC_OFFER_HOST_GRACE_MS = 15_000;
+
+/**
+ * Server-only handle map for host-disconnect grace timers. Not part
+ * of the offer object (timers don't serialise to clients and we want
+ * the wire shape kept narrow).
+ */
+const publicOfferHostGraceTimers = new Map<string, NodeJS.Timeout>();
 
 type CreateRoomWithPlayersFn = (
   players: RoomPlayer[],
@@ -97,6 +119,194 @@ export function emitPublicOffersToSocket(
   );
 
   socket.emit("publicOffers:update", payload);
+}
+
+/**
+ * Hard-removal of a public offer after the host's grace window has
+ * elapsed. Mirrors `publicOffer:cancel`: legacy stake unlock, parallel
+ * economy refund, active-room clear, single-player room cleanup, and
+ * lobby snapshot re-emit. Idempotent — safe to call when the offer is
+ * already gone.
+ */
+async function removeAbandonedPublicOffer(
+  offer: PublicMatchOffer,
+  reason: string
+): Promise<void> {
+  const deps = getDeps();
+
+  const liveOffer = publicOffers.get(offer.offerId);
+  if (!liveOffer) return;
+
+  publicOffers.delete(offer.offerId);
+  publicOfferHostGraceTimers.delete(offer.offerId);
+
+  const waitingRoom = rooms.get(offer.roomCode);
+  if (
+    waitingRoom &&
+    waitingRoom.players.length === 1 &&
+    !waitingRoom.matchEnded
+  ) {
+    clearRoomTimer(waitingRoom);
+    rooms.delete(offer.roomCode);
+  }
+
+  try {
+    await deps.unlockStake(offer.hostPlayerId, offer.stakeAmount);
+  } catch (error) {
+    console.error(
+      `[publicOffer:hostGrace] unlockStake failed offerId=${offer.offerId} ` +
+        `playerId=${offer.hostPlayerId} reason=${reason}`,
+      error
+    );
+  }
+
+  if (waitingRoom) {
+    try {
+      await refundMatchEscrowForPlayer(waitingRoom, offer.hostPlayerId);
+    } catch (error) {
+      console.error(
+        `[publicOffer:hostGrace] refundMatchEscrow failed offerId=${offer.offerId} ` +
+          `playerId=${offer.hostPlayerId} reason=${reason}`,
+        error
+      );
+    }
+  }
+
+  deps.clearPlayerActiveRoom(offer.hostPlayerId);
+
+  console.log(
+    `[publicOffer:hostGrace] OFFER_REMOVED offerId=${offer.offerId} ` +
+      `roomCode=${offer.roomCode} hostPlayerId=${offer.hostPlayerId} ` +
+      `reason=${reason}`
+  );
+
+  emitPublicOffers(reason);
+}
+
+/**
+ * Mark the offer as host-disconnected and arm the grace timer. If a
+ * grace is already armed for this offer (e.g. a flapping connection
+ * dropped a second time before reviving) the existing timer is
+ * cancelled and a fresh one is scheduled. Pure-noop if the offer was
+ * already cleaned up.
+ */
+export function scheduleHostDisconnectGrace(offerId: string): void {
+  const offer = publicOffers.get(offerId);
+  if (!offer) return;
+
+  const existingTimer = publicOfferHostGraceTimers.get(offerId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    publicOfferHostGraceTimers.delete(offerId);
+  }
+
+  const now = Date.now();
+  offer.hostDisconnectedAt = now;
+  offer.hostExpiresAt = now + PUBLIC_OFFER_HOST_GRACE_MS;
+
+  console.log(
+    `[publicOffer:hostGrace] GRACE_ARMED offerId=${offerId} ` +
+      `roomCode=${offer.roomCode} hostPlayerId=${offer.hostPlayerId} ` +
+      `expiresAt=${offer.hostExpiresAt}`
+  );
+
+  const timer = setTimeout(() => {
+    const stillLive = publicOffers.get(offerId);
+    if (!stillLive) {
+      publicOfferHostGraceTimers.delete(offerId);
+      return;
+    }
+
+    // Defensive: another path may have cleared `hostDisconnectedAt`
+    // without going through `cancelHostDisconnectGrace` (e.g. an
+    // explicit cancel or join). In that case the offer is alive and
+    // we must NOT remove it.
+    if (stillLive.hostDisconnectedAt === undefined) {
+      publicOfferHostGraceTimers.delete(offerId);
+      return;
+    }
+
+    void removeAbandonedPublicOffer(
+      stillLive,
+      "publicOffer:hostGrace expired"
+    );
+  }, PUBLIC_OFFER_HOST_GRACE_MS);
+
+  publicOfferHostGraceTimers.set(offerId, timer);
+
+  emitPublicOffers("publicOffer:hostGrace armed");
+}
+
+/**
+ * Cancel an armed host-disconnect grace timer and clear the
+ * disconnected flags on the offer. Idempotent.
+ */
+function cancelHostDisconnectGrace(offerId: string): void {
+  const timer = publicOfferHostGraceTimers.get(offerId);
+  if (timer) {
+    clearTimeout(timer);
+    publicOfferHostGraceTimers.delete(offerId);
+  }
+
+  const offer = publicOffers.get(offerId);
+  if (offer) {
+    offer.hostDisconnectedAt = undefined;
+    offer.hostExpiresAt = undefined;
+  }
+}
+
+/**
+ * Revive every public offer hosted by `playerId` that is currently
+ * inside its disconnect-grace window:
+ *   - Cancel the grace timer.
+ *   - Clear the disconnect flags.
+ *   - Re-bind `room.players[0].socketId` to the fresh socket so the
+ *     NEXT disconnect can correctly key off this socket.
+ *   - Re-assert the host's `playerActiveRooms` mapping in case it was
+ *     cleared by a stale path.
+ *   - Emit a fresh lobby snapshot.
+ *
+ * Called from the JWT-verified user hook AND from `player:register`
+ * — both fire on lobby reconnect without requiring any frontend
+ * changes. Idempotent and cheap when no matching offer exists.
+ */
+export function revivePublicOffersForPlayer(
+  playerId: string,
+  newSocketId: string
+): void {
+  if (typeof playerId !== "string" || playerId.length === 0) return;
+
+  let revivedAny = false;
+
+  for (const offer of publicOffers.values()) {
+    if (offer.hostPlayerId !== playerId) continue;
+    if (offer.hostDisconnectedAt === undefined) continue;
+
+    cancelHostDisconnectGrace(offer.offerId);
+
+    const room = rooms.get(offer.roomCode);
+    if (room) {
+      const hostSlot = room.players.find(
+        (p) => p.playerId === playerId
+      );
+      if (hostSlot) {
+        hostSlot.socketId = newSocketId;
+      }
+    }
+
+    playerActiveRooms.set(playerId, offer.roomCode);
+
+    revivedAny = true;
+    console.log(
+      `[publicOffer:hostGrace] REVIVED offerId=${offer.offerId} ` +
+        `roomCode=${offer.roomCode} hostPlayerId=${playerId} ` +
+        `newSocketId=${newSocketId}`
+    );
+  }
+
+  if (revivedAny) {
+    emitPublicOffers("publicOffer:hostGrace revived");
+  }
 }
 
 export function registerPublicOfferHandlers(socket: Socket) {
@@ -335,6 +545,20 @@ export function registerPublicOfferHandlers(socket: Socket) {
           return;
         }
 
+        // Rule 5: do not let a guest land in a broken room while the
+        // host is mid-reconnect. The host either returns inside the
+        // grace window (offer revives + becomes joinable again) or
+        // the grace timer wipes the offer cleanly. Either way, the
+        // guest's wallet is never touched.
+        if (offer.hostDisconnectedAt !== undefined) {
+          socket.emit("publicOffers:error", {
+            message:
+              "Host is reconnecting. Please try again in a few seconds.",
+          });
+          emitPublicOffersToSocket(socket.id, "join blocked by host grace");
+          return;
+        }
+
         const busyDifferentRoomCode = deps.playerIsBusyInDifferentRoom(
           playerId,
           offer.roomCode
@@ -438,6 +662,13 @@ export function registerPublicOfferHandlers(socket: Socket) {
         deps.setPlayerActiveRoom(playerId, offer.roomCode);
         deps.setPlayerActiveRoom(offer.hostPlayerId, offer.roomCode);
 
+        // Defensive: clear any stale host-disconnect grace timer for
+        // this offer. The grace guard above already blocks joins while
+        // the host is mid-reconnect, but if a race lets us through
+        // we still want the timer cleaned so its callback can't
+        // remove the now-matched offer.
+        cancelHostDisconnectGrace(offerId);
+
         publicOffers.delete(offerId);
         emitPublicOffers("publicOffer:join matched");
 
@@ -514,6 +745,11 @@ export function registerPublicOfferHandlers(socket: Socket) {
         clearRoomTimer(waitingRoom);
         rooms.delete(offer.roomCode);
       }
+
+      // If the host had an active disconnect-grace timer (rare race:
+      // host reconnects, immediately cancels), clear it so the timer
+      // callback doesn't fire a redundant `OFFER_REMOVED` later.
+      cancelHostDisconnectGrace(offerId);
 
       publicOffers.delete(offerId);
 

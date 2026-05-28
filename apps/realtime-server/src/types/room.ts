@@ -117,6 +117,26 @@ export type PublicMatchOffer = {
   stakeAmount: number;
   rounds: number;
   createdAt: number;
+  /**
+   * Host-disconnect grace window.
+   *
+   * Set (in ms epoch) when the host's socket drops while the offer is
+   * still live and not yet matched. Unset when the host reconnects
+   * within the grace window or when the offer is matched/cancelled.
+   *
+   * Lobby clients use these to render "host reconnecting" affordances
+   * and to gate join attempts. The `publicOffer:join` handler rejects
+   * any incoming join while `hostDisconnectedAt` is defined, so a
+   * guest can never land in a broken room with an absent host.
+   */
+  hostDisconnectedAt?: number;
+  /**
+   * Ms epoch deadline at which `hostDisconnectedAt` flips into a
+   * hard offer-removal: stake released, room cleaned up, lobby snapshot
+   * re-emitted. Used by the server timer and surfaced to clients so
+   * the lobby UI can render a deterministic countdown if it wants.
+   */
+  hostExpiresAt?: number;
 };
 
 export type RankedQueueEntry = {
