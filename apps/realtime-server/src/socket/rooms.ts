@@ -223,6 +223,21 @@ export function registerRoomSocketHandlers(socket: Socket) {
 
         deps.setPlayerActiveRoom(playerId, code);
 
+        // Strict-disconnect policy follow-up:
+        //
+        // The returning socket MUST join the room channel BEFORE we
+        // can call `startRoundTimer` or emit any `io.to(code)` events
+        // tied to the reconnect. Previously `socket.join(code)` came
+        // after the conditional `startRoundTimer` call below, so the
+        // reconnecting client missed the authoritative
+        // `match:status { timeoutSeconds: 10 }` emit and rendered a
+        // blank / stale countdown while the server-side pick timer
+        // was running. Hoisting the channel join (and the `room:joined`
+        // ack) here makes every subsequent `io.to(code).emit(...)`
+        // observable by the reconnecting client.
+        socket.join(code);
+        socket.emit("room:joined", { roomCode: code });
+
         if (room.disconnectedPlayerId === playerId) {
           if (room.disconnectForfeitTimeout) {
             clearTimeout(room.disconnectForfeitTimeout);
@@ -315,9 +330,9 @@ export function registerRoomSocketHandlers(socket: Socket) {
           }
         }
 
-        socket.join(code);
-        socket.emit("room:joined", { roomCode: code });
-
+        // Channel join + `room:joined` ack happen ABOVE, before the
+        // reconnect block, so the conditional `startRoundTimer`
+        // emit reaches the returning socket.
         deps.emitRoomUpdate(code, room);
         deps.emitMatchState(code, room);
 
