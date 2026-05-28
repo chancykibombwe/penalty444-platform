@@ -1627,14 +1627,6 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
         r.round += 1;
         swapRoles(r);
 
-        io.to(roomCode).emit("match:status", {
-          roomCode,
-          message: "Match tied. Sudden Death begins.",
-          timeoutSeconds: 10,
-          phase: r.phase,
-          suddenDeathRound: r.suddenDeathRound,
-        });
-
         emitRoomUpdate(roomCode, r);
         emitMatchState(roomCode, r);
         // Next round is officially starting → clear resolving just before.
@@ -1642,6 +1634,7 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
         console.log(
           `[Resolve] next round armed roomCode=${roomCode} round=${r.round} phase=${r.phase}`
         );
+
         // Next-round absent-player grace (PR hotfix/next-round-absent-player-grace).
         //
         // If a player disconnected during the just-resolved round but
@@ -1654,12 +1647,20 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
         // a disconnect that happened AFTER they already acted in the
         // previous round.
         //
-        // Detect any absent player, arm the standard 39s grace
-        // (which the reconnect path in `socket/rooms.ts` already
-        // understands), and skip `startRoundTimer` for now. The
-        // reconnect path's strict-classifier will start a fresh 10s
-        // pick timer once the player is back; if they don't return,
-        // the existing forfeit-timer logic ends the match cleanly.
+        // PR #21 patch — order of operations matters: the absent-player
+        // check MUST run BEFORE any `match:status { timeoutSeconds: 10 }`
+        // emit. Previously the entry branch eagerly broadcast
+        // "Match tied. Sudden Death begins." with `timeoutSeconds: 10`,
+        // then armed the 39s grace right after, producing a client UI
+        // that flickered between a 10s pick countdown and a 39s
+        // reconnect countdown.
+        //
+        // The grace helper emits its own 39s `match:status` with
+        // `expiresAt`, so we deliberately do NOT emit a phase-transition
+        // status in the absent case — `emitRoomUpdate`/`emitMatchState`
+        // above already carry the SUDDEN_DEATH phase change, and the
+        // grace status carries the only user-facing copy that matters
+        // until reconnect.
         const absentInSuddenDeath = r.players.find((p) => !p.present);
         if (absentInSuddenDeath && r.players.length === 2) {
           startDisconnectGraceForAbsentPlayer(
@@ -1669,6 +1670,20 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
           );
           return;
         }
+
+        // Both players present → safe to announce the 10s sudden-death
+        // window AND start the pick timer. `startRoundTimer` will also
+        // emit a `match:status` with `timeoutSeconds: 10` immediately
+        // after; this entry-banner emit is kept for the explicit
+        // "Match tied. Sudden Death begins." copy.
+        io.to(roomCode).emit("match:status", {
+          roomCode,
+          message: "Match tied. Sudden Death begins.",
+          timeoutSeconds: 10,
+          phase: r.phase,
+          suddenDeathRound: r.suddenDeathRound,
+        });
+
         startRoundTimer(roomCode, r);
         return;
       }
