@@ -72,6 +72,12 @@ import {
   registerSpectatorHandlers,
 } from "./socket/spectator";
 import { bindSocketJwtVerification } from "./security/jwt";
+import {
+  logPresenceTransition,
+  logRoomStateEmit,
+  logSocketConnect,
+  logSocketDisconnect,
+} from "./diagnostics/transport";
 import { isAuthorizedInternalRequest } from "./security/internalSecret";
 import { pruneRateLimitForSocket } from "./security/rateLimit";
 import { pruneSocketEventHistory } from "./security/replayGuard";
@@ -653,6 +659,7 @@ function emitRoomUpdate(roomCode: string, room: Room) {
   };
   io.to(roomCode).emit("room:update", payload);
   mirrorToSpectators(room, "room:update", payload);
+  logRoomStateEmit("room:update", roomCode, room);
   touchRoomActivity(room);
 }
 
@@ -712,6 +719,7 @@ function emitMatchState(roomCode: string, room: Room) {
   io.to(roomCode).emit("match:update", payload);
   // Scoreboard / round / status are safe for spectators (no pick state).
   mirrorToSpectators(room, "match:update", payload);
+  logRoomStateEmit("match:update", roomCode, room);
   touchRoomActivity(room);
 }
 
@@ -1768,6 +1776,9 @@ io.on("connection", (socket) => {
     `Socket connected: ${socket.id}. Connected sockets: ${io.engine.clientsCount}`
   );
 
+  // Transport diagnostics (logs only — no behaviour change).
+  logSocketConnect(io, socket);
+
   // Sprint 2 TASK 2 + Sprint 4 TASK 3: best-effort Supabase JWT
   // verification on connect. We retain the handle on `socket.data.authPromise`
   // so async handlers can await freshness when needed. The synchronous
@@ -1937,6 +1948,23 @@ io.on("connection", (socket) => {
       `Socket disconnected: ${socket.id}. reason=${reason}. Connected sockets: ${io.engine.clientsCount}`
     );
 
+    // Transport diagnostics — record disconnect for reconnect-duration
+    // correlation. Best-effort playerId/roomCode lookup from the rooms
+    // map (read-only). Logs only.
+    {
+      let diagPlayerId: string | null = socket.data?.userId ?? null;
+      let diagRoomCode: string | null = null;
+      for (const room of rooms.values()) {
+        const p = room.players.find((rp) => rp.socketId === socket.id);
+        if (p) {
+          diagPlayerId = p.playerId;
+          diagRoomCode = room.code;
+          break;
+        }
+      }
+      logSocketDisconnect(socket, reason, diagPlayerId, diagRoomCode);
+    }
+
     unregisterSocket(socket.id);
     console.log(
       `[tournament-registry] disconnect cleanup socketId=${socket.id}`
@@ -1995,6 +2023,15 @@ io.on("connection", (socket) => {
       // below we take. The pre-start branch uses it directly via
       // `evaluateMatchStart`; the post-start branches don't read it.
       player.present = false;
+
+      // Presence diagnostics — disconnect is an "absent" transition.
+      logPresenceTransition(
+        room.code,
+        player.playerId,
+        false,
+        "disconnect",
+        socket.id
+      );
 
       // ============================================================
       // Strict disconnect/reconnect policy (PR hotfix/strict-disconnect-policy)
