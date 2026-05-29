@@ -148,6 +148,7 @@ export function clearRoomTimer(
   if (room.disconnectForfeitTimeout) {
     clearTimeout(room.disconnectForfeitTimeout);
     room.disconnectForfeitTimeout = undefined;
+    room.disconnectForfeitExpiresAt = undefined;
     // Bump generation so any in-flight forfeit callback that already
     // passed the `clearTimeout` race still no-ops against the live room.
     room.disconnectForfeitGeneration =
@@ -190,6 +191,26 @@ export function startRoundTimer(roomCode: string, room: Room) {
     );
   }
   // === end instrumentation ===
+
+  // Defensive grace guard: never start a pick timer while a disconnect
+  // forfeit grace window is still live. The authoritative resume paths
+  // (`tryResumeAfterDisconnectGrace`) clear grace BEFORE calling
+  // `startRoundTimer`, so this only blocks stray callers that would
+  // otherwise race the grace window — preventing a 10s pick timer from
+  // overwriting the 39s reconnect countdown.
+  if (
+    room.disconnectForfeitExpiresAt !== undefined &&
+    Date.now() < room.disconnectForfeitExpiresAt &&
+    room.disconnectedPlayerId !== undefined
+  ) {
+    console.warn(
+      `[diag:disconnect-grace] SKIP_START_TIMER_GRACE_ACTIVE ` +
+        `roomCode=${roomCode} disconnectedPlayerId=${room.disconnectedPlayerId} ` +
+        `round=${room.round} phase=${room.phase} ` +
+        `expiresAt=${room.disconnectForfeitExpiresAt} now=${Date.now()}`
+    );
+    return;
+  }
 
   clearPickTimer(room);
 

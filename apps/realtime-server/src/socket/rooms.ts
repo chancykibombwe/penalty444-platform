@@ -411,16 +411,35 @@ export function registerRoomSocketHandlers(socket: Socket) {
       );
 
       // Next-round / mid-round disconnect grace may still be armed when
-      // the client emits `player:present` before (or instead of) a second
-      // `room:join`. Clearing grace here keeps reconnect cleanup
-      // idempotent regardless of event ordering.
-      tryResumeAfterDisconnectGrace(
-        deps.io,
-        code,
-        room,
-        playerId,
-        deps.startRoundTimer
-      );
+      // the client emits `player:present`. We MUST NOT resume grace
+      // (which can call `startRoundTimer` → `io.to(code).emit(... timeoutSeconds: 10)`)
+      // unless THIS socket is already in the Socket.IO room channel.
+      //
+      // If `player:present` arrives before the socket has joined the
+      // room (the client emits presence on mount, and the reconnect
+      // `room:join` channel-join may not have completed yet), an
+      // `io.to(code)` timer emit would not reach the returning socket —
+      // recreating the "returned player sees a blank/stale timer and
+      // loses while the server timer runs" bug.
+      //
+      // `room:join` is the authoritative resume path: it calls
+      // `socket.join(code)` FIRST, then resumes grace. So here we only
+      // resume when the channel membership is already established;
+      // otherwise we just mark presence and defer to `room:join`.
+      if (socket.rooms.has(code)) {
+        tryResumeAfterDisconnectGrace(
+          deps.io,
+          code,
+          room,
+          playerId,
+          deps.startRoundTimer
+        );
+      } else {
+        console.log(
+          `[diag:disconnect-grace] PRESENT_RESUME_DEFERRED_NOT_IN_ROOM ` +
+            `roomCode=${code} playerId=${playerId} socketId=${socket.id}`
+        );
+      }
 
       evaluateMatchStart(code, room);
     }

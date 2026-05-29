@@ -18,6 +18,7 @@ export function clearDisconnectForfeitGrace(room: Room): void {
   }
   room.disconnectedPlayerId = undefined;
   room.disconnectedAt = undefined;
+  room.disconnectForfeitExpiresAt = undefined;
 }
 
 /**
@@ -49,6 +50,7 @@ export function armDisconnectForfeitGrace(
 
   room.disconnectedPlayerId = disconnectedPlayerId;
   room.disconnectedAt = forfeitArmedAt;
+  room.disconnectForfeitExpiresAt = forfeitExpiresAt;
 
   console.log(
     `[diag:disconnect-policy] ${logTag} ` +
