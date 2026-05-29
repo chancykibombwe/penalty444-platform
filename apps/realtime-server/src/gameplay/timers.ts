@@ -148,6 +148,10 @@ export function clearRoomTimer(
   if (room.disconnectForfeitTimeout) {
     clearTimeout(room.disconnectForfeitTimeout);
     room.disconnectForfeitTimeout = undefined;
+    // Bump generation so any in-flight forfeit callback that already
+    // passed the `clearTimeout` race still no-ops against the live room.
+    room.disconnectForfeitGeneration =
+      (room.disconnectForfeitGeneration ?? 0) + 1;
   }
   // Phase 6C — pre-match readiness timers. Safe to clear
   // unconditionally; both are only ever armed before

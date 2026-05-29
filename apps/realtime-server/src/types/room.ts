@@ -69,6 +69,13 @@ export type Room = {
   disconnectedAt?: number;
   disconnectForfeitTimeout?: NodeJS.Timeout;
   /**
+   * Monotonic counter bumped on each `armDisconnectForfeitGrace` call.
+   * The forfeit callback captures the generation at arm-time and
+   * no-ops if it no longer matches — prevents stale timers from
+   * firing after reconnect / re-arm / clearRoomTimer races.
+   */
+  disconnectForfeitGeneration?: number;
+  /**
    * Phase 6C — pre-match return window.
    *
    * Set when both player slots are filled but at least one player
