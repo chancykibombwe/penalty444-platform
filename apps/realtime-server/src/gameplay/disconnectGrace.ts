@@ -135,7 +135,8 @@ export function tryResumeAfterDisconnectGrace(
   roomCode: string,
   room: Room,
   playerId: string,
-  startRoundTimer: StartRoundTimerFn
+  startRoundTimer: StartRoundTimerFn,
+  endMatch: EndMatchFn
 ): boolean {
   if (room.disconnectedPlayerId !== playerId) {
     return false;
@@ -147,6 +148,42 @@ export function tryResumeAfterDisconnectGrace(
     `[diag:disconnect-policy] GRACE_CLEARED_ON_RECONNECT ` +
       `roomCode=${roomCode} playerId=${playerId} round=${room.round}`
   );
+
+  // Both-absent / draw case: grace may have been armed for the player
+  // who just returned, while the OTHER player is still absent (e.g.
+  // both disconnected before picking, the round resolved DRAW, and only
+  // one has reconnected so far). Starting a fresh 10s pick timer now
+  // would penalise the still-absent player — they'd get no abort
+  // countdown and could lose despite returning within the window.
+  //
+  // Re-arm grace for the remaining absent player instead. The returning
+  // player is excluded by id, so this is robust regardless of whether
+  // their `present` flag has flipped yet (room:join precedes
+  // player:present).
+  const stillAbsent = room.players.find(
+    (p) => !p.present && p.playerId !== playerId
+  );
+  if (
+    stillAbsent &&
+    room.players.length === 2 &&
+    !room.matchEnded &&
+    !room.isResolving
+  ) {
+    console.log(
+      `[diag:disconnect-grace] REARM_GRACE_OTHER_PLAYER_STILL_ABSENT ` +
+        `roomCode=${roomCode} returnedPlayerId=${playerId} ` +
+        `stillAbsentPlayerId=${stillAbsent.playerId} round=${room.round}`
+    );
+    armDisconnectForfeitGrace(
+      io,
+      roomCode,
+      room,
+      stillAbsent.playerId,
+      "NEXT_ROUND_GRACE_FOR_ABSENT",
+      endMatch
+    );
+    return true;
+  }
 
   io.to(roomCode).emit("match:status", {
     roomCode,

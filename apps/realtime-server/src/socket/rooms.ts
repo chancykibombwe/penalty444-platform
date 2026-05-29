@@ -32,6 +32,7 @@ type RoomSocketHandlerDeps = {
   emitRoomUpdate: (roomCode: string, room: Room) => void;
   emitMatchState: (roomCode: string, room: Room) => void;
   startRoundTimer: (roomCode: string, room: Room) => void;
+  endMatch: (roomCode: string, room: Room) => void;
 };
 
 let roomSocketDeps: RoomSocketHandlerDeps | null = null;
@@ -259,7 +260,8 @@ export function registerRoomSocketHandlers(socket: Socket) {
             code,
             room,
             playerId,
-            deps.startRoundTimer
+            deps.startRoundTimer,
+            deps.endMatch
           );
         }
 
@@ -432,7 +434,8 @@ export function registerRoomSocketHandlers(socket: Socket) {
           code,
           room,
           playerId,
-          deps.startRoundTimer
+          deps.startRoundTimer,
+          deps.endMatch
         );
       } else {
         console.log(
