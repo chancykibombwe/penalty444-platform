@@ -1744,6 +1744,7 @@ bindRoomSocketHandlers({
   emitRoomUpdate,
   emitMatchState,
   startRoundTimer,
+  endMatch,
 });
 
 bindMatchActionHandlers({
