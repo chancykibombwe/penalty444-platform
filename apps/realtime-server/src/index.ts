@@ -37,6 +37,9 @@ import {
   shouldEnterSuddenDeath,
 } from "./gameplay/suddenDeath";
 import {
+  armDisconnectForfeitGrace,
+} from "./gameplay/disconnectGrace";
+import {
   bindRoundTimers,
   clearPickTimer,
   clearRoomTimer,
@@ -1372,71 +1375,24 @@ const resolveRoundSeqByRoom = new Map<string, number>();
 bindResolveSeqMap(resolveRoundSeqByRoom);
 
 /**
- * Arm the 39s disconnect/forfeit grace for `absentPlayerId` against the
- * present opponent.
- *
- * Mirrors the `NO_PICK_GRACE_ARMED` branch of the disconnect handler so
- * the reconnect path in `socket/rooms.ts` (clears
- * `disconnectForfeitTimeout`, resets `disconnectedPlayerId`,
- * re-emits status, runs the strict reconnect-gate classifier) keeps
- * working unchanged.
- *
- * Idempotent: clears any prior forfeit timer / disconnect markers for
- * the room before arming a fresh one. Safe to call from the
- * resolve-continuation closure or from any other "about to start a new
- * round but a player is absent" code path.
+ * Arm next-round reconnect grace when a player is still absent after
+ * the continuation advances. Delegates to the shared disconnect-grace
+ * module so forfeit timers, generation guards, and reconnect cleanup
+ * stay consistent with the mid-round `NO_PICK_GRACE_ARMED` path.
  */
 function startDisconnectGraceForAbsentPlayer(
   roomCode: string,
   room: Room,
   absentPlayerId: string
 ): void {
-  if (room.disconnectForfeitTimeout) {
-    clearTimeout(room.disconnectForfeitTimeout);
-    room.disconnectForfeitTimeout = undefined;
-  }
-
-  const forfeitArmedAt = Date.now();
-  const forfeitExpiresAt = forfeitArmedAt + 39_000;
-
-  room.disconnectedPlayerId = absentPlayerId;
-  room.disconnectedAt = forfeitArmedAt;
-
-  console.log(
-    `[diag:disconnect-policy] NEXT_ROUND_GRACE_FOR_ABSENT ` +
-      `roomCode=${roomCode} absentPlayerId=${absentPlayerId} ` +
-      `round=${room.round} phase=${room.phase} ` +
-      `expiresAt=${forfeitExpiresAt}`
-  );
-
-  io.to(roomCode).emit("match:status", {
+  armDisconnectForfeitGrace(
+    io,
     roomCode,
-    message: "Opponent disconnected. Waiting 39 seconds for reconnect...",
-    phase: room.phase,
-    suddenDeathRound: room.suddenDeathRound,
-    expiresAt: forfeitExpiresAt,
-  });
-
-  room.disconnectForfeitTimeout = setTimeout(() => {
-    const r = rooms.get(roomCode);
-    if (!r) return;
-    if (r.matchEnded) return;
-
-    const disconnectedId = r.disconnectedPlayerId;
-    if (!disconnectedId) return;
-
-    const opponent = r.players.find((p) => p.playerId !== disconnectedId);
-    if (!opponent) return;
-
-    const maxScore = Math.max(...Object.values(r.scores || {}), 0);
-    r.scores[opponent.playerId] = maxScore + 1;
-
-    r.disconnectedPlayerId = undefined;
-    r.disconnectedAt = undefined;
-    r.disconnectForfeitTimeout = undefined;
-
-    endMatch(r.code, r);
-  }, 39_000);
+    room,
+    absentPlayerId,
+    "NEXT_ROUND_GRACE_FOR_ABSENT",
+    endMatch
+  );
 }
 
 function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
@@ -2206,48 +2162,16 @@ io.on("connection", (socket) => {
       // timer (so they don't get auto-resolved against), mark them
       // disconnected (so matchActions blocks any pre-reconnect picks
       // from a stray duplicate socket), and arm the 39s forfeit.
-      console.log(
-        `[diag:disconnect-policy] NO_PICK_GRACE_ARMED ` +
-          `roomCode=${room.code} playerId=${player.playerId} ` +
-          `round=${room.round} phase=${room.phase}`
-      );
-
       clearRoomTimer(room);
 
-      const forfeitArmedAt = Date.now();
-      const forfeitExpiresAt = forfeitArmedAt + 39_000;
-
-      room.disconnectedPlayerId = player.playerId;
-      room.disconnectedAt = forfeitArmedAt;
-
-      io.to(room.code).emit("match:status", {
-        roomCode: room.code,
-        message: "Opponent disconnected. Waiting 39 seconds for reconnect...",
-        phase: room.phase,
-        suddenDeathRound: room.suddenDeathRound,
-        expiresAt: forfeitExpiresAt,
-      });
-
-      room.disconnectForfeitTimeout = setTimeout(() => {
-        const r = rooms.get(room.code);
-        if (!r) return;
-        if (r.matchEnded) return;
-
-        const disconnectedId = r.disconnectedPlayerId;
-        if (!disconnectedId) return;
-
-        const opponent = r.players.find((p) => p.playerId !== disconnectedId);
-        if (!opponent) return;
-
-        const maxScore = Math.max(...Object.values(r.scores || {}), 0);
-        r.scores[opponent.playerId] = maxScore + 1;
-
-        r.disconnectedPlayerId = undefined;
-        r.disconnectedAt = undefined;
-        r.disconnectForfeitTimeout = undefined;
-
-        endMatch(r.code, r);
-      }, 39_000);
+      armDisconnectForfeitGrace(
+        io,
+        room.code,
+        room,
+        player.playerId,
+        "NO_PICK_GRACE_ARMED",
+        endMatch
+      );
 
       emitRoomUpdate(room.code, room);
       emitMatchState(room.code, room);

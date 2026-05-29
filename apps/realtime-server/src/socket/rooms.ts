@@ -1,4 +1,5 @@
 import type { Server, Socket } from "socket.io";
+import { tryResumeAfterDisconnectGrace } from "../gameplay/disconnectGrace";
 import { cleanUsername, normalizeRoomCode } from "../room/codes";
 import { evaluateMatchStart } from "../room/readiness";
 import {
@@ -239,31 +240,7 @@ export function registerRoomSocketHandlers(socket: Socket) {
         socket.emit("room:joined", { roomCode: code });
 
         if (room.disconnectedPlayerId === playerId) {
-          if (room.disconnectForfeitTimeout) {
-            clearTimeout(room.disconnectForfeitTimeout);
-            room.disconnectForfeitTimeout = undefined;
-          }
-
-          room.disconnectedPlayerId = undefined;
-          room.disconnectedAt = undefined;
-
-          deps.io.to(code).emit("match:status", {
-            message: "Opponent reconnected. Match continues.",
-            phase: room.phase,
-            suddenDeathRound: room.suddenDeathRound,
-          });
-
           // === Reveal-deadlock instrumentation (logs only) ===
-          //
-          // This call site is the suspected trigger for the
-          // deadlock: it unconditionally calls `startRoundTimer`
-          // when an existing player reconnects, even if the
-          // previous round was mid-resolve when they dropped. If
-          // `isResolving` is true here AND
-          // `hasContinuationTimeout` is false, we've confirmed the
-          // hypothesised race window — the continuation was
-          // dropped by the matching disconnect's `clearRoomTimer`
-          // and is never re-armed by this path.
           console.log(
             `[diag:reveal-deadlock] AUTH_DEADLOCK_TRACE_RECONNECT_RESTART_TIMER ` +
               `roomCode=${code} ` +
@@ -277,57 +254,13 @@ export function registerRoomSocketHandlers(socket: Socket) {
           );
           // === end instrumentation ===
 
-          // Strict-disconnect policy (PR hotfix/strict-disconnect-policy):
-          //
-          // Only restart the pick timer when there is genuinely a
-          // pending pick decision for the reconnecting player. The
-          // previous unconditional call could:
-          //   - re-enter `startRoundTimer` while `isResolving === true`
-          //     (the orphan-deadlock chain PR #18 fixed in
-          //      `clearRoomTimer`, but defence-in-depth here too)
-          //   - restart a 10s pick window after both picks were
-          //     already locked, racing the continuation
-          //   - replace the round's running pick timer when the
-          //     reconnecting player had already locked their pick,
-          //     which would unfairly extend the opponent's window
-          //
-          // We only restart the timer in the no-pick-yet case — the
-          // SAME state in which the disconnect handler armed the 39s
-          // grace and cleared the pick timer. The other classifier
-          // branches (resolving / own-pick-locked) intentionally
-          // never set `disconnectedPlayerId`, so reaching this block
-          // already implies no-pick-yet on disconnect — but reality
-          // may have moved on (opponent picked, round timed out,
-          // continuation fired) while the player was offline, so we
-          // re-classify on the live room state.
-          const reconnectRole = room.roles[playerId];
-          const reconnectOwnPickLocked = reconnectRole
-            ? Boolean(room.picks[reconnectRole])
-            : false;
-          const reconnectBothPicksLocked = Boolean(
-            room.picks.KICKER && room.picks.KEEPER
+          tryResumeAfterDisconnectGrace(
+            deps.io,
+            code,
+            room,
+            playerId,
+            deps.startRoundTimer
           );
-
-          if (room.matchEnded) {
-            console.log(
-              `[diag:disconnect-policy] reconnect skip startRoundTimer ` +
-                `roomCode=${code} reason=matchEnded`
-            );
-          } else if (room.isResolving || reconnectBothPicksLocked) {
-            console.log(
-              `[diag:disconnect-policy] reconnect skip startRoundTimer ` +
-                `roomCode=${code} reason=resolving ` +
-                `isResolving=${Boolean(room.isResolving)} ` +
-                `bothPicksLocked=${reconnectBothPicksLocked}`
-            );
-          } else if (reconnectOwnPickLocked) {
-            console.log(
-              `[diag:disconnect-policy] reconnect skip startRoundTimer ` +
-                `roomCode=${code} reason=ownPickLocked role=${reconnectRole}`
-            );
-          } else {
-            deps.startRoundTimer(code, room);
-          }
         }
 
         // Channel join + `room:joined` ack happen ABOVE, before the
@@ -476,6 +409,37 @@ export function registerRoomSocketHandlers(socket: Socket) {
           `playerCount=${room.players.length} ` +
           `allPresent=${room.players.every((p) => p.present)}`
       );
+
+      // Next-round / mid-round disconnect grace may still be armed when
+      // the client emits `player:present`. We MUST NOT resume grace
+      // (which can call `startRoundTimer` → `io.to(code).emit(... timeoutSeconds: 10)`)
+      // unless THIS socket is already in the Socket.IO room channel.
+      //
+      // If `player:present` arrives before the socket has joined the
+      // room (the client emits presence on mount, and the reconnect
+      // `room:join` channel-join may not have completed yet), an
+      // `io.to(code)` timer emit would not reach the returning socket —
+      // recreating the "returned player sees a blank/stale timer and
+      // loses while the server timer runs" bug.
+      //
+      // `room:join` is the authoritative resume path: it calls
+      // `socket.join(code)` FIRST, then resumes grace. So here we only
+      // resume when the channel membership is already established;
+      // otherwise we just mark presence and defer to `room:join`.
+      if (socket.rooms.has(code)) {
+        tryResumeAfterDisconnectGrace(
+          deps.io,
+          code,
+          room,
+          playerId,
+          deps.startRoundTimer
+        );
+      } else {
+        console.log(
+          `[diag:disconnect-grace] PRESENT_RESUME_DEFERRED_NOT_IN_ROOM ` +
+            `roomCode=${code} playerId=${playerId} socketId=${socket.id}`
+        );
+      }
 
       evaluateMatchStart(code, room);
     }

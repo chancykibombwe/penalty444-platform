@@ -69,6 +69,20 @@ export type Room = {
   disconnectedAt?: number;
   disconnectForfeitTimeout?: NodeJS.Timeout;
   /**
+   * Wall-clock (ms epoch) when the active disconnect/forfeit grace
+   * window expires. Set alongside `disconnectForfeitTimeout` and
+   * cleared when grace is resolved. `startRoundTimer` reads this to
+   * refuse starting a pick timer while a grace window is still live.
+   */
+  disconnectForfeitExpiresAt?: number;
+  /**
+   * Monotonic counter bumped on each `armDisconnectForfeitGrace` call.
+   * The forfeit callback captures the generation at arm-time and
+   * no-ops if it no longer matches — prevents stale timers from
+   * firing after reconnect / re-arm / clearRoomTimer races.
+   */
+  disconnectForfeitGeneration?: number;
+  /**
    * Phase 6C — pre-match return window.
    *
    * Set when both player slots are filled but at least one player
