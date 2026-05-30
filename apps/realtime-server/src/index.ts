@@ -2195,6 +2195,33 @@ io.on("connection", (socket) => {
         return;
       }
 
+      // ---------- Grace-ownership guard (second concurrent disconnect) ----------
+      // If a DIFFERENT player is already inside an active forfeit grace
+      // window, a second player disconnecting here must NOT steal it.
+      // The old behaviour called clearRoomTimer + armDisconnectForfeitGrace
+      // unconditionally, which destroyed the original owner's timer,
+      // reassigned `disconnectedPlayerId`, and reset the 39s clock — letting
+      // a refreshing/leaving second player extend or hijack the countdown.
+      // Preserve the original grace owner, timer, and expiry untouched.
+      const activeGraceOwnedByOther =
+        typeof room.disconnectedPlayerId === "string" &&
+        room.disconnectedPlayerId !== player.playerId &&
+        typeof room.disconnectForfeitExpiresAt === "number" &&
+        room.disconnectForfeitExpiresAt > Date.now();
+
+      if (activeGraceOwnedByOther) {
+        console.log(
+          `[diag:disconnect-policy] PRESERVE_EXISTING_GRACE_ON_SECOND_DISCONNECT ` +
+            `roomCode=${room.code} secondDisconnectPlayerId=${player.playerId} ` +
+            `graceOwnerPlayerId=${room.disconnectedPlayerId} ` +
+            `expiresAt=${room.disconnectForfeitExpiresAt} round=${room.round}`
+        );
+
+        emitRoomUpdate(room.code, room);
+        emitMatchState(room.code, room);
+        return;
+      }
+
       // ---------- Rule 3: no pick yet — classic 39s grace ----------
       // Disconnected player owes a pick this round. Pause the pick
       // timer (so they don't get auto-resolved against), mark them
