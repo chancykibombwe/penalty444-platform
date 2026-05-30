@@ -1067,6 +1067,19 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
       if (isReconnectForfeitCountdownStatusMessage(data.message)) {
         startDisconnectCountdownVisual(39);
+
+        // The abort countdown is the authoritative UI signal. Override
+        // any locked-pick "Waiting for opponent" / "Opponent is
+        // thinking..." copy so a player who stayed on the page (no
+        // refresh) isn't misled into thinking the match is proceeding
+        // normally. The red "Aborting match in Xs..." block carries the
+        // countdown itself; here we just clear the conflicting text.
+        // Guarded by `!revealActive` so we never clobber reveal copy
+        // (the server never arms this grace mid-reveal anyway).
+        if (!revealActive) {
+          setStatus("Opponent disconnected.");
+          setOpponentStatus("");
+        }
       }
 
       if (!revealActive) {
@@ -2745,7 +2758,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                   Pick locked
                 </p>
                 <p className="mt-1 text-lg font-black text-white">
-                  Waiting for opponent…
+                  {disconnectCountdown !== null
+                    ? "Opponent disconnected"
+                    : "Waiting for opponent…"}
                 </p>
               </div>
             </div>
@@ -2768,7 +2783,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                       ? "Guess the kicker's lane before the timer expires."
                       : "Pick LEFT, CENTER, or RIGHT before the timer expires."}
               </p>
-              {(hasSubmittedPick || myPick) && !isRevealLocked ? (
+              {(hasSubmittedPick || myPick) &&
+              !isRevealLocked &&
+              disconnectCountdown === null ? (
                 <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-emerald-200">
                   <span
                     className="inline-block h-2 w-2 rounded-full bg-emerald-300"
