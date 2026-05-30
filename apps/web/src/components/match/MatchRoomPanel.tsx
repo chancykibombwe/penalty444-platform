@@ -1467,11 +1467,13 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       // authoritative expiry so we resume from the remaining time rather
       // than restarting the clock. When grace targets the OTHER player
       // and is still live, seed the visual; otherwise leave it cleared.
-      if (
-        data.disconnectGrace?.active &&
-        typeof data.disconnectGrace.expiresAt === "number"
-      ) {
-        startDisconnectCountdownFromGrace(data.disconnectGrace.expiresAt);
+      const graceRestored =
+        Boolean(data.disconnectGrace?.active) &&
+        typeof data.disconnectGrace?.expiresAt === "number" &&
+        data.disconnectGrace.expiresAt > Date.now();
+
+      if (graceRestored) {
+        startDisconnectCountdownFromGrace(data.disconnectGrace!.expiresAt!);
       }
 
       if (typeof data.round === "number") {
@@ -1489,6 +1491,16 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           setOpponentStatus("Opponent locked their choice");
           setRevealStage("REVEALING");
           revealingStartedAtRef.current = Date.now();
+        } else if (graceRestored) {
+          // Our pick is locked, but the opponent disconnected and the
+          // backend forfeit/abort grace is still running. The red abort
+          // countdown block carries the authoritative message — do NOT
+          // claim the opponent is "thinking" / that we're merely
+          // "waiting", which would bury the abort countdown and mislead
+          // the player into thinking the match is proceeding normally.
+          setStatus(`You locked ${myPickFromServer}. Opponent disconnected.`);
+          setOpponentStatus("");
+          setRevealStage("LOCKED");
         } else {
           setStatus(
             `You locked ${myPickFromServer}. Waiting for opponent...`
