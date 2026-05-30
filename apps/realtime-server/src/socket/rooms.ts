@@ -284,6 +284,25 @@ export function registerRoomSocketHandlers(socket: Socket) {
         const myRole = room.roles[playerId];
         const opponentRole =
           myRole === "KICKER" ? "KEEPER" : myRole === "KEEPER" ? "KICKER" : null;
+        // Disconnect-grace restore: if the OPPONENT is currently inside
+        // the 39s disconnect/forfeit grace window, the rejoining player
+        // must be able to restore the "Abort in..." countdown from the
+        // authoritative server expiry. Without this, a refresh during
+        // grace dropped the visible countdown while the backend timer
+        // kept running and ended the match later (the bug this fixes).
+        //
+        // We only surface grace targeting the OTHER player. If the
+        // rejoining player were themselves the disconnected one, the
+        // reconnect path above (`tryResumeAfterDisconnectGrace`) has
+        // already cleared grace before we reach here, so this is
+        // naturally `active: false` in that case.
+        const graceActive =
+          typeof room.disconnectedPlayerId === "string" &&
+          room.disconnectedPlayerId !== playerId &&
+          typeof room.disconnectForfeitExpiresAt === "number" &&
+          room.disconnectForfeitExpiresAt > Date.now() &&
+          !room.matchEnded;
+
         const rejoinPayload = {
           roomCode: code,
           myRole: myRole ?? null,
@@ -297,6 +316,13 @@ export function registerRoomSocketHandlers(socket: Socket) {
           matchInstance: room.matchInstance ?? 1,
           matchEnded: Boolean(room.matchEnded),
           isResolving: Boolean(room.isResolving),
+          disconnectGrace: graceActive
+            ? {
+                active: true as const,
+                disconnectedPlayerId: room.disconnectedPlayerId,
+                expiresAt: room.disconnectForfeitExpiresAt,
+              }
+            : { active: false as const },
         };
         socket.emit("match:rejoinState", rejoinPayload);
         return;
