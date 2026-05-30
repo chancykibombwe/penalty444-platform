@@ -109,6 +109,11 @@ type MatchRejoinStatePayload = {
   matchInstance?: number;
   matchEnded?: boolean;
   isResolving?: boolean;
+  disconnectGrace?: {
+    active: boolean;
+    disconnectedPlayerId?: string;
+    expiresAt?: number;
+  };
 };
 
 type MatchEndPayload = {
@@ -631,6 +636,28 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         return next;
       });
     }, 1000);
+  }
+
+  /**
+   * Restore the "Abort in..." countdown from the authoritative server
+   * expiry after a refresh/rejoin. Unlike the live-message path (which
+   * always restarts from 39s), this RESUMES from the remaining time so a
+   * client that refreshes mid-grace sees the true countdown instead of a
+   * reset clock. Returns early (and clears) when grace has already
+   * elapsed.
+   */
+  function startDisconnectCountdownFromGrace(expiresAt: number) {
+    const remainingSeconds = Math.max(
+      0,
+      Math.ceil((expiresAt - Date.now()) / 1000)
+    );
+
+    if (remainingSeconds <= 0) {
+      clearDisconnectCountdownVisual();
+      return;
+    }
+
+    startDisconnectCountdownVisual(remainingSeconds);
   }
 
   const [finalScores, setFinalScores] = useState<Record<string, number> | null>(
@@ -1433,6 +1460,18 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
       if (data.matchEnded) {
         return;
+      }
+
+      // Restore the opponent-disconnect "Abort in..." countdown after a
+      // refresh during an active grace window. The server sends the
+      // authoritative expiry so we resume from the remaining time rather
+      // than restarting the clock. When grace targets the OTHER player
+      // and is still live, seed the visual; otherwise leave it cleared.
+      if (
+        data.disconnectGrace?.active &&
+        typeof data.disconnectGrace.expiresAt === "number"
+      ) {
+        startDisconnectCountdownFromGrace(data.disconnectGrace.expiresAt);
       }
 
       if (typeof data.round === "number") {
