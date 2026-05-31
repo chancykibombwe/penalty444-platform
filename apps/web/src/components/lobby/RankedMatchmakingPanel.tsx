@@ -76,7 +76,11 @@ export default function RankedMatchmakingPanel() {
         return;
       }
 
-      saveActiveMatch(code);
+      void getCurrentPlayerIdentity().then((identity) => {
+        if (identity?.playerId) {
+          saveActiveMatch(code, identity.playerId);
+        }
+      });
       setStatus("Opponent found. Entering arena…");
       router.push(`/match/${code}`);
     }
