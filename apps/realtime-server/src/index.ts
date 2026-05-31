@@ -1779,6 +1779,26 @@ io.on("connection", (socket) => {
   // Transport diagnostics (logs only — no behaviour change).
   logSocketConnect(io, socket);
 
+  // Server-authoritative active-room snapshot. The lobby's Resume Match
+  // card was previously driven only by client localStorage, which is
+  // unreliable across reconnect / refresh / cleared storage. We surface
+  // the authoritative `playerActiveRooms` tracking via a snapshot the
+  // client can consume on (re)connect. `getTrackedActiveRoom` already
+  // returns null for missing/ended rooms, so ended matches are never
+  // exposed here.
+  const emitActiveRoomSnapshot = (playerId?: string | null) => {
+    const id = typeof playerId === "string" ? playerId.trim() : "";
+    if (!id) {
+      socket.emit("activeRoom:snapshot", { roomCode: null });
+      return;
+    }
+    const roomCode = getTrackedActiveRoom(id);
+    socket.emit("activeRoom:snapshot", { roomCode: roomCode ?? null });
+    console.log(
+      `[active-room:snapshot] socketId=${socket.id} player=${id} room=${roomCode ?? "none"}`
+    );
+  };
+
   // Sprint 2 TASK 2 + Sprint 4 TASK 3: best-effort Supabase JWT
   // verification on connect. We retain the handle on `socket.data.authPromise`
   // so async handlers can await freshness when needed. The synchronous
@@ -1798,6 +1818,10 @@ io.on("connection", (socket) => {
       // offers that are sitting in the disconnect-grace window.
       // Safe + cheap when no matching offer exists.
       revivePublicOffersForPlayer(result.userId, socket.id);
+
+      // Surface the authoritative active room so the lobby can restore
+      // the Resume Match card after a reconnect/refresh.
+      emitActiveRoomSnapshot(result.userId);
     } else {
       const reason = result.reason;
       if (reason !== "no_token" && reason !== "no_backend") {
@@ -1896,6 +1920,29 @@ io.on("connection", (socket) => {
       // its playerId in the payload, and we revive their offer
       // before the 15s grace timer would otherwise wipe it.
       revivePublicOffersForPlayer(trimmed, socket.id);
+
+      // Resume Match recovery: the lobby emits `player:register` on
+      // connect/reconnect even without JWT, so this is the reliable
+      // path to restore the active-room snapshot client-side.
+      emitActiveRoomSnapshot(trimmed);
+    }
+  );
+
+  // Explicit client-initiated active-room snapshot request. The lobby
+  // can call this on socket (re)connect to recover the Resume Match
+  // card regardless of localStorage state. Prefers the JWT-verified
+  // userId; falls back to the playerId in the payload (legacy / soft
+  // mode) so the snapshot works before/without auth.
+  socket.on(
+    "activeRoom:request",
+    (payload?: { playerId?: string }) => {
+      const verifiedUserId =
+        typeof socket.data.userId === "string" && socket.data.userId.trim()
+          ? socket.data.userId.trim()
+          : null;
+      const claimed =
+        typeof payload?.playerId === "string" ? payload.playerId.trim() : "";
+      emitActiveRoomSnapshot(verifiedUserId ?? claimed);
     }
   );
 

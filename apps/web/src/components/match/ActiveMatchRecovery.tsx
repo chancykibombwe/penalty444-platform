@@ -1,19 +1,66 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { getSocket } from "../../lib/socket/client";
-import { saveActiveMatch, clearActiveMatch } from "../../lib/match/activeMatch";
+import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
+import {
+  saveActiveMatch,
+  clearActiveMatch,
+  getActiveMatch,
+} from "../../lib/match/activeMatch";
+
+// A snapshot of `roomCode: null` from the server means "no active room".
+// Because this component is mounted globally (including on the match page),
+// a freshly-saved local entry can race a snapshot request issued during
+// match creation/join. We only honour a null-clear when the local entry
+// is older than this guard window, so a just-created match is never wiped.
+const SNAPSHOT_NULL_CLEAR_GUARD_MS = 15_000;
 
 export default function ActiveMatchRecovery() {
   const router = useRouter();
+  const playerIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const socket = getSocket();
+    let cancelled = false;
+
+    // Resolve identity once so the localStorage writes below carry a
+    // playerId. Without it, `saveActiveMatch` silently no-ops (the bug
+    // that hid the Resume Match card). Also drives the snapshot request.
+    void getCurrentPlayerIdentity().then((identity) => {
+      if (cancelled) return;
+      playerIdRef.current = identity?.playerId ?? null;
+      requestActiveRoomSnapshot();
+    });
+
+    function requestActiveRoomSnapshot() {
+      socket.emit("activeRoom:request", {
+        playerId: playerIdRef.current ?? undefined,
+      });
+    }
 
     function saveRoom(roomCode?: string) {
       if (!roomCode) return;
-      saveActiveMatch(roomCode);
+      const playerId = playerIdRef.current ?? undefined;
+      // If identity hasn't resolved yet, resolve on demand so we never
+      // fall back into the no-op (missing playerId) save path.
+      if (!playerId) {
+        void getCurrentPlayerIdentity().then((identity) => {
+          if (cancelled) return;
+          playerIdRef.current = identity?.playerId ?? null;
+          if (identity?.playerId) {
+            saveActiveMatch(roomCode, identity.playerId);
+          }
+        });
+        return;
+      }
+      saveActiveMatch(roomCode, playerId);
+    }
+
+    function onConnect() {
+      // Re-sync the authoritative active room after every (re)connect.
+      requestActiveRoomSnapshot();
     }
 
     function onRoomCreated(payload: { roomCode?: string }) {
@@ -30,9 +77,27 @@ export default function ActiveMatchRecovery() {
 
     function onPublicOfferMatched(payload: { roomCode?: string }) {
       if (!payload.roomCode) return;
-
-      saveActiveMatch(payload.roomCode);
+      saveRoom(payload.roomCode);
       router.push(`/match/${payload.roomCode}`);
+    }
+
+    // Server-authoritative active-room snapshot (Resume Match recovery).
+    function onActiveRoomSnapshot(payload: { roomCode?: string | null }) {
+      const roomCode =
+        typeof payload?.roomCode === "string" ? payload.roomCode.trim() : "";
+
+      if (roomCode) {
+        saveRoom(roomCode);
+        return;
+      }
+
+      // roomCode is null/absent → server has no active room for us. Clear
+      // any stale local entry, but never a just-saved one (creation/join
+      // race guard).
+      const existing = getActiveMatch();
+      if (!existing) return;
+      if (Date.now() - existing.savedAt < SNAPSHOT_NULL_CLEAR_GUARD_MS) return;
+      clearActiveMatch();
     }
 
     function onMatchEnd() {
@@ -49,20 +114,31 @@ export default function ActiveMatchRecovery() {
       clearActiveMatch();
     }
 
+    socket.on("connect", onConnect);
     socket.on("room:created", onRoomCreated);
     socket.on("room:joined", onRoomJoined);
     socket.on("publicOffer:created", onPublicOfferCreated);
     socket.on("publicOffer:matched", onPublicOfferMatched);
     socket.on("publicOffer:cancelled", onPublicOfferCancelled);
+    socket.on("activeRoom:snapshot", onActiveRoomSnapshot);
     socket.on("match:end", onMatchEnd);
     socket.on("match:update", onMatchUpdate);
 
+    // If the socket is already connected at mount (common on the lobby),
+    // the `connect` event won't fire again — request a snapshot now.
+    if (socket.connected) {
+      requestActiveRoomSnapshot();
+    }
+
     return () => {
+      cancelled = true;
+      socket.off("connect", onConnect);
       socket.off("room:created", onRoomCreated);
       socket.off("room:joined", onRoomJoined);
       socket.off("publicOffer:created", onPublicOfferCreated);
       socket.off("publicOffer:matched", onPublicOfferMatched);
       socket.off("publicOffer:cancelled", onPublicOfferCancelled);
+      socket.off("activeRoom:snapshot", onActiveRoomSnapshot);
       socket.off("match:end", onMatchEnd);
       socket.off("match:update", onMatchUpdate);
     };

@@ -133,7 +133,12 @@ export default function PublicMatchOffersPanel() {
         return;
       }
 
-      saveActiveMatch(payload.offer.roomCode);
+      const createdRoomCode = payload.offer.roomCode;
+      void getCurrentPlayerIdentity().then((identity) => {
+        if (identity?.playerId) {
+          saveActiveMatch(createdRoomCode, identity.playerId);
+        }
+      });
       setStatus("Public match offer created. Waiting for opponent...");
       router.push(`/match/${payload.offer.roomCode}`);
     }
@@ -148,7 +153,12 @@ export default function PublicMatchOffersPanel() {
         return;
       }
 
-      saveActiveMatch(payload.roomCode);
+      const matchedRoomCode = payload.roomCode;
+      void getCurrentPlayerIdentity().then((identity) => {
+        if (identity?.playerId) {
+          saveActiveMatch(matchedRoomCode, identity.playerId);
+        }
+      });
       setStatus("Opponent found. Entering match...");
       router.push(`/match/${payload.roomCode}`);
     }
