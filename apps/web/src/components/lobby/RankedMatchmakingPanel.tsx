@@ -86,10 +86,11 @@ export default function RankedMatchmakingPanel() {
     }
 
     function onRankedError(payload: { message?: string }) {
+      console.warn("ranked:error:", payload);
       setEnqueueing(false);
       setCancelling(false);
       setInQueue(false);
-      setStatus(payload?.message || "Ranked queue error.");
+      setStatus(payload?.message || "Could not update the ranked queue. Please try again.");
     }
 
     function onRankedCancelled() {

@@ -313,6 +313,10 @@ export default async function LeaderboardPage({
   const placementPlayerCount = placementCountResult.count ?? 0;
 
   const error = statsResult.error;
+  if (error) {
+    // Keep the raw cause in server logs; the UI shows a friendly message.
+    console.error("Failed to load leaderboard stats:", error.message);
+  }
   const leaderboard = buildLeaderboard((statsResult.data ?? []) as PlayerStatsRow[]);
   const topPlayers = leaderboard.slice(0, 3);
   const hasNoActiveSeason = scope === "season" && !activeSeason;
@@ -456,7 +460,7 @@ export default async function LeaderboardPage({
 
       {error ? (
         <div className="rounded-2xl border border-red-800 bg-red-950/40 p-5 text-red-200">
-          Failed to load leaderboard: {error.message}
+          Could not load leaderboard. Please refresh.
         </div>
       ) : null}
 
