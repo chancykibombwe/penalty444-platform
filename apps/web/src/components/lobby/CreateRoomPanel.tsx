@@ -15,6 +15,7 @@ export default function CreateRoomPanel({
   challengeUsername,
 }: CreateRoomPanelProps) {
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
   const router = useRouter();
 
   async function createRoom() {
@@ -23,10 +24,12 @@ export default function CreateRoomPanel({
     const socket = getSocket();
 
     if (!socket.connected) {
-      alert("Connection lost. Try again.");
+      socket.connect();
+      setStatus("Connecting to server. Please try again in a moment.");
       return;
     }
 
+    setStatus(null);
     setLoading(true);
 
     const identity = await getCurrentPlayerIdentity();
@@ -37,13 +40,39 @@ export default function CreateRoomPanel({
       return;
     }
 
+    const onCreated = (payload: { roomCode: string }) => {
+      cleanup();
+      router.push(`/match/${payload.roomCode}`);
+    };
+
+    // Server surfaces room-create failures (auth/rate-limit) via
+    // `error:message`. Log the detail for debugging but only show the
+    // user a friendly fallback — never the raw server string.
+    const onError = (payload?: { message?: string }) => {
+      cleanup();
+      console.warn("room:create failed:", payload);
+      setLoading(false);
+      setStatus("Could not create room. Please try again.");
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      cleanup();
+      setLoading(false);
+      setStatus("Server is not responding. Please try again.");
+    }, 8000);
+
+    function cleanup() {
+      window.clearTimeout(timeoutId);
+      socket.off("room:created", onCreated);
+      socket.off("error:message", onError);
+    }
+
+    socket.on("room:created", onCreated);
+    socket.on("error:message", onError);
+
     socket.emit("room:create", {
       playerId: identity.playerId,
       username: identity.username,
-    });
-
-    socket.once("room:created", (payload: { roomCode: string }) => {
-      router.push(`/match/${payload.roomCode}`);
     });
   }
 
@@ -68,6 +97,12 @@ export default function CreateRoomPanel({
       >
         {loading ? "Creating..." : "Create Room"}
       </button>
+
+      {status ? (
+        <p className="text-sm text-amber-200/90" role="status" aria-live="polite">
+          {status}
+        </p>
+      ) : null}
     </div>
   );
 }

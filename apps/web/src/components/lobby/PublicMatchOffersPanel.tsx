@@ -168,7 +168,7 @@ export default function PublicMatchOffersPanel() {
       setCreating(false);
       setJoiningOfferId(null);
       setCancellingOfferId(null);
-      setStatus(payload.message || "Something went wrong.");
+      setStatus(payload.message || "Something went wrong. Please try again.");
       requestLatestOffers();
     }
 
@@ -307,7 +307,7 @@ export default function PublicMatchOffersPanel() {
       detachAcks();
       setCreating(false);
       setStatus(
-        "No response from server. Check backend terminal for error, then try again."
+        "Server is not responding. Please try again."
       );
     }, 8000);
 
@@ -369,7 +369,7 @@ export default function PublicMatchOffersPanel() {
       detachAcks();
       setJoiningOfferId(null);
       setStatus(
-        "No response from server. Check backend terminal for error, then try again."
+        "Server is not responding. Please try again."
       );
     }, 8000);
 
@@ -430,7 +430,7 @@ export default function PublicMatchOffersPanel() {
       detachAcks();
       setCancellingOfferId(null);
       setStatus(
-        "No response from server. Check backend terminal for error, then try again."
+        "Server is not responding. Please try again."
       );
     }, 8000);
 
