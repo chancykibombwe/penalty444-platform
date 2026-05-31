@@ -237,6 +237,11 @@ async function loadOrCreateStats(
     tier: "Placement",
   };
 
+  // NOTE: `tier` is intentionally omitted. In the live DB it is a
+  // GENERATED ALWAYS column derived from `rank_points`, so any explicit
+  // value (even on INSERT) is rejected with
+  // `column "tier" can only be updated to DEFAULT`. We write only
+  // `rank_points` and let the database derive `tier`.
   const { error } = await admin.from("player_stats").insert({
     game_id: "penalty444",
     user_id: userId,
@@ -248,7 +253,6 @@ async function loadOrCreateStats(
     goals_for: 0,
     goals_against: 0,
     rank_points: 0,
-    tier: "Placement",
   });
 
   if (error) {
@@ -326,6 +330,13 @@ async function applyProgressForPlayer(
     nextTier = "Placement";
   }
 
+  // NOTE: `tier` is intentionally omitted from the write. It is a
+  // GENERATED ALWAYS column in the live DB derived from `rank_points`;
+  // sending an explicit value fails the whole UPDATE with
+  // `column "tier" can only be updated to DEFAULT`, which previously
+  // blocked all stat persistence (matches/wins/losses/rank_points).
+  // We persist `rank_points` and the database derives `tier`.
+  // `nextTier` is retained above for in-memory return/logging only.
   const { error: updateError } = await admin
     .from("player_stats")
     .update({
@@ -337,7 +348,6 @@ async function applyProgressForPlayer(
       goals_for: nextGoalsFor,
       goals_against: nextGoalsAgainst,
       rank_points: nextRating,
-      tier: nextTier,
     })
     .eq("game_id", "penalty444")
     .eq("user_id", userId);
