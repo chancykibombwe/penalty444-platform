@@ -12,6 +12,7 @@ import RivalCard from "../../components/social/RivalCard";
 import { ViewProfileButton } from "../../components/social/SocialActions";
 import { pushNotification } from "../../components/live/NotificationBell";
 import { resolvePlayerTier } from "../../lib/player/ranks";
+import { getPlacementStatus } from "../../lib/player/progression";
 import {
   detectPromotion,
   type PromotionEvent,
@@ -71,7 +72,6 @@ type DisplayMatch = {
   result: "W" | "D" | "L";
   opponent: string;
   score: string;
-  rankPointChange: string;
   dateLabel: string;
 };
 
@@ -171,10 +171,22 @@ function mapMatchForDisplay(match: MatchResultRow, userId: string): DisplayMatch
     result,
     opponent,
     score: `${myScore} - ${opponentScore}`,
-    rankPointChange:
-      result === "W" ? "+3 RP" : result === "D" ? "+1 RP" : "-1 RP",
     dateLabel: formatMatchDate(match.created_at),
   };
+}
+
+/**
+ * Season tier label derived from rank_points via the shared rank helper —
+ * never the raw DB `tier` string. Players still in placement (season
+ * matches < threshold) are shown "Placement".
+ */
+function resolveSeasonTierLabel(season: PlayerStatsRow): string {
+  if (getPlacementStatus(season.matches).inPlacement) return "Placement";
+  return resolvePlayerTier({
+    rating: season.rank_points ?? null,
+    matchesPlayed: season.matches ?? null,
+    legacyTierName: season.tier ?? null,
+  }).label;
 }
 
 export default function AccountPage() {
@@ -531,7 +543,10 @@ export default function AccountPage() {
                   value={seasonRank ? `#${seasonRank}` : "—"}
                 />
                 <StatCard label="Season RP" value={seasonStats.rank_points} />
-                <StatCard label="Season Tier" value={seasonStats.tier} />
+                <StatCard
+                  label="Season Tier"
+                  value={resolveSeasonTierLabel(seasonStats)}
+                />
                 <StatCard label="Season Matches" value={seasonStats.matches} />
                 <StatCard label="Season Wins" value={seasonStats.wins} />
                 <StatCard label="Season Losses" value={seasonStats.losses} />
@@ -588,9 +603,6 @@ export default function AccountPage() {
                     <div className="flex items-center gap-4 text-sm sm:justify-end">
                       <span className="font-semibold text-white">
                         {match.score}
-                      </span>
-                      <span className="font-bold text-yellow-200">
-                        {match.rankPointChange}
                       </span>
                     </div>
                   </div>

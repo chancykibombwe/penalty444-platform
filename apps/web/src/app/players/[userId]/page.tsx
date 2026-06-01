@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
+import { resolvePlayerTier } from "../../../lib/player/ranks";
+import { getPlacementStatus } from "../../../lib/player/progression";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
@@ -48,7 +50,6 @@ type DisplayMatch = {
   result: "W" | "D" | "L";
   opponent: string;
   score: string;
-  rankPointChange: string;
   dateLabel: string;
 };
 
@@ -75,23 +76,6 @@ function formatSeasonCountdown(endsAt: string) {
 
   if (days > 0) return `Ends in ${days}d ${hours}h`;
   return `Ends in ${hours}h ${minutes}m`;
-}
-
-function getTierBadgeClass(tier: string) {
-  switch (tier.toLowerCase()) {
-    case "bronze":
-      return "border-amber-500/80 bg-amber-950/90 text-amber-100 shadow-[0_0_22px_rgba(180,83,9,0.22)] ring-1 ring-amber-300/10";
-    case "silver":
-      return "border-slate-300/70 bg-slate-950/90 text-slate-100 shadow-[0_0_22px_rgba(148,163,184,0.18)] ring-1 ring-white/10";
-    case "gold":
-      return "border-yellow-300/80 bg-yellow-950/90 text-yellow-100 shadow-[0_0_24px_rgba(234,179,8,0.24)] ring-1 ring-yellow-200/15";
-    case "diamond":
-      return "border-cyan-300/80 bg-cyan-950/90 text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.22)] ring-1 ring-cyan-100/15";
-    case "legend":
-      return "border-fuchsia-300/80 bg-fuchsia-950/90 text-fuchsia-100 shadow-[0_0_26px_rgba(217,70,239,0.26)] ring-1 ring-fuchsia-100/15";
-    default:
-      return "border-zinc-600 bg-zinc-900 text-zinc-300 shadow-[0_0_18px_rgba(24,24,27,0.45)] ring-1 ring-white/5";
-  }
 }
 
 function getInitials(username: string) {
@@ -150,9 +134,34 @@ function mapMatchForDisplay(match: MatchResultRow, userId: string): DisplayMatch
     result,
     opponent,
     score: `${myScore} - ${opponentScore}`,
-    rankPointChange:
-      result === "W" ? "+3 RP" : result === "D" ? "+1 RP" : "-1 RP",
     dateLabel: formatMatchDate(match.created_at),
+  };
+}
+
+/**
+ * Resolve a trustworthy tier label from rank_points using the shared rank
+ * helper — never the raw DB `tier` string. Players still in placement
+ * (matches < UNRANKED_MATCHES_THRESHOLD) are shown "Placement".
+ */
+function resolveTierDisplay(
+  rankPoints: number | null | undefined,
+  matches: number | null | undefined,
+  legacyTierName: string | null | undefined
+): { label: string; badgeClass: string } {
+  if (getPlacementStatus(matches).inPlacement) {
+    return {
+      label: "Placement",
+      badgeClass: "border-cyan-500/45 bg-cyan-950/35 text-cyan-200",
+    };
+  }
+  const tier = resolvePlayerTier({
+    rating: rankPoints ?? null,
+    matchesPlayed: matches ?? null,
+    legacyTierName: legacyTierName ?? null,
+  });
+  return {
+    label: tier.label,
+    badgeClass: `${tier.borderClass} ${tier.bgClass} ${tier.textClass}`,
   };
 }
 
@@ -308,7 +317,11 @@ export default async function PlayerProfilePage({
   );
 
   const displayName = stats.username;
-  const tier = stats.tier || "Unranked";
+  const tierDisplay = resolveTierDisplay(
+    stats.rank_points,
+    stats.matches,
+    stats.tier
+  );
   const rankPoints = stats.rank_points ?? 0;
   const seasonStatsTitle = `${activeSeason?.name ?? "Season 1"} Stats`;
 
@@ -351,11 +364,9 @@ export default async function PlayerProfilePage({
                   {displayName}
                 </h2>
                 <span
-                  className={`inline-flex rounded-full border px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide ${getTierBadgeClass(
-                    tier
-                  )}`}
+                  className={`inline-flex rounded-full border px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide ${tierDisplay.badgeClass}`}
                 >
-                  {tier}
+                  {tierDisplay.label}
                 </span>
               </div>
               <p className="mt-2 text-sm text-zinc-500">
@@ -408,7 +419,16 @@ export default async function PlayerProfilePage({
               value={seasonRank ? `#${seasonRank}` : "—"}
             />
             <StatCard label="Season RP" value={seasonStats.rank_points} />
-            <StatCard label="Season Tier" value={seasonStats.tier} />
+            <StatCard
+              label="Season Tier"
+              value={
+                resolveTierDisplay(
+                  seasonStats.rank_points,
+                  seasonStats.matches,
+                  seasonStats.tier
+                ).label
+              }
+            />
             <StatCard label="Season Wins" value={seasonStats.wins} />
             <StatCard label="Season Losses" value={seasonStats.losses} />
             <StatCard label="Season Draws" value={seasonStats.draws} />
@@ -459,9 +479,6 @@ export default async function PlayerProfilePage({
                 </div>
                 <div className="flex items-center gap-4 text-sm sm:justify-end">
                   <span className="font-semibold text-white">{match.score}</span>
-                  <span className="font-bold text-yellow-200">
-                    {match.rankPointChange}
-                  </span>
                 </div>
               </div>
             ))}
