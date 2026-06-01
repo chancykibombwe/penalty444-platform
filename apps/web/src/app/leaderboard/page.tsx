@@ -2,8 +2,8 @@ import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import RankBadge from "../../components/player/RankBadge";
 import {
-  getRankTier,
   resolvePlayerTier,
+  UNRANKED_MATCHES_THRESHOLD,
   type RankTier,
 } from "../../lib/player/ranks";
 
@@ -11,17 +11,6 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
 );
-
-type LeaderboardTab = "global" | "weekly" | "tournament" | "friends";
-
-const TAB_LABELS: Record<LeaderboardTab, string> = {
-  global: "Global",
-  weekly: "Weekly",
-  tournament: "Tournament",
-  friends: "Friends",
-};
-
-type LeaderboardScope = "season" | "all-time";
 
 type PlayerStatsRow = {
   user_id: string;
@@ -44,47 +33,14 @@ type LeaderboardPlayer = {
   draws: number;
   matches: number;
   goalsFor: number;
-  goalsAgainst: number;
   rankPoints: number;
-  tier: string;
   winRate: number;
 };
 
-type SeasonRow = {
-  id: string;
-  game_id: string;
-  season_number: number;
-  name: string;
-  starts_at: string;
-  ends_at: string;
-  is_active: boolean;
-};
-
-function formatSeasonCountdown(endsAt: string) {
-  const end = new Date(endsAt);
-  if (Number.isNaN(end.getTime())) return null;
-
-  const remaining = end.getTime() - Date.now();
-  if (remaining <= 0) return "Season ended";
-
-  const days = Math.floor(remaining / 86_400_000);
-  const hours = Math.floor((remaining % 86_400_000) / 3_600_000);
-  const minutes = Math.floor((remaining % 3_600_000) / 60_000);
-
-  if (days > 0) return `Ends in ${days}d ${hours}h`;
-  return `Ends in ${hours}h ${minutes}m`;
-}
-
 function resolveTierForRow(row: LeaderboardPlayer): RankTier {
-  // Prefer the rating-derived tier so the new ladder always wins; fall back
-  // to legacy DB string when rating is 0/null but tier name is present.
-  if (row.rankPoints > 0) {
-    return getRankTier(row.rankPoints, row.matches);
-  }
   return resolvePlayerTier({
     rating: row.rankPoints,
     matchesPlayed: row.matches,
-    legacyTierName: row.tier,
   });
 }
 
@@ -113,12 +69,6 @@ function getInitials(username: string) {
   return initials || "?";
 }
 
-function getScopeChipClass(isActive: boolean) {
-  return isActive
-    ? "rounded-xl border border-yellow-500/30 bg-yellow-950/20 px-4 py-2 text-sm font-semibold text-yellow-100 shadow-lg shadow-black/30"
-    : "rounded-xl border border-zinc-700/80 bg-black/45 px-4 py-2 text-sm font-semibold text-zinc-100 shadow-lg shadow-black/30";
-}
-
 function buildLeaderboard(rows: PlayerStatsRow[]): LeaderboardPlayer[] {
   return rows
     .map((row): LeaderboardPlayer => ({
@@ -129,9 +79,7 @@ function buildLeaderboard(rows: PlayerStatsRow[]): LeaderboardPlayer[] {
       draws: row.draws,
       matches: row.matches,
       goalsFor: row.goals_for,
-      goalsAgainst: row.goals_against,
       rankPoints: row.rank_points,
-      tier: row.tier,
       winRate: row.matches > 0 ? Math.round((row.wins / row.matches) * 100) : 0,
     }))
     .sort((a, b) => {
@@ -155,18 +103,15 @@ function parseLimit(value: string | undefined) {
 }
 
 function buildLeaderboardHref(
-  scope: LeaderboardScope,
   options: {
     search?: string;
     page?: number;
     limit?: number;
-    tab?: LeaderboardTab;
   } = {}
 ) {
   const page = options.page ?? 1;
   const limit = options.limit ?? 100;
   const params = new URLSearchParams({
-    scope,
     page: String(page),
     limit: String(limit),
   });
@@ -174,18 +119,8 @@ function buildLeaderboardHref(
   if (options.search) {
     params.set("search", options.search);
   }
-  if (options.tab && options.tab !== "global") {
-    params.set("tab", options.tab);
-  }
 
   return `/leaderboard?${params.toString()}`;
-}
-
-function parseTab(value: string | undefined): LeaderboardTab {
-  if (value === "weekly" || value === "tournament" || value === "friends") {
-    return value;
-  }
-  return "global";
 }
 
 function hasValidUserId(userId: string) {
@@ -202,8 +137,6 @@ function buildChallengeHref(userId: string, username: string) {
 }
 
 function buildPlayerProfileHref(userId: string, username?: string | null) {
-  // Phase 9: prefer the public `/profile/[username]` route. Fall back to
-  // `/players/[userId]` (still supported) when no username is available.
   const trimmed = (username ?? "").trim();
   if (trimmed.length > 0) {
     return `/profile/${encodeURIComponent(trimmed)}`;
@@ -215,23 +148,13 @@ export default async function LeaderboardPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    scope?: string;
     search?: string;
     page?: string;
     limit?: string;
-    tab?: string;
   }>;
 }) {
-  const {
-    scope: rawScope,
-    search: rawSearch,
-    page: rawPage,
-    limit: rawLimit,
-    tab: rawTab,
-  } = await searchParams;
-  const scope: LeaderboardScope =
-    rawScope === "all-time" ? "all-time" : "season";
-  const tab: LeaderboardTab = parseTab(rawTab);
+  const { search: rawSearch, page: rawPage, limit: rawLimit } =
+    await searchParams;
   const search = rawSearch?.trim() ?? "";
   const hasActiveSearch = search.length > 0;
   const page = parsePage(rawPage);
@@ -239,125 +162,61 @@ export default async function LeaderboardPage({
   const from = (page - 1) * limit;
   const to = from + limit - 1;
 
-  const seasonResult = await supabase
-    .from("seasons")
-    .select("id, game_id, season_number, name, starts_at, ends_at, is_active")
-    .eq("game_id", "penalty444")
-    .eq("is_active", true)
-    .order("season_number", { ascending: false })
-    .limit(1);
-
-  const activeSeason = !seasonResult.error
-    ? ((seasonResult.data?.[0] as SeasonRow | undefined) ?? null)
-    : null;
-  const seasonCountdown = activeSeason
-    ? formatSeasonCountdown(activeSeason.ends_at)
-    : null;
-  const seasonLabel = activeSeason?.name ?? "Season 1";
-
   const statsSelect =
     "user_id, username, matches, wins, losses, draws, goals_for, goals_against, rank_points, tier";
 
-  // Phase 6: leaderboard only shows ranked players (matches >= 10). Placement
-  // players are surfaced via a separate count badge in the header.
-  const RANKED_MATCH_FLOOR = 10;
+  // Global leaderboard: trusted player_stats only. Ranked players (matches >= 10)
+  // appear on the ladder; placement players are counted in the header badge.
+  const RANKED_MATCH_FLOOR = UNRANKED_MATCHES_THRESHOLD;
 
-  const statsResult =
-    scope === "all-time"
-      ? await (() => {
-          let query = supabase
-            .from("player_stats")
-            .select(statsSelect)
-            .eq("game_id", "penalty444")
-            .gte("matches", RANKED_MATCH_FLOOR);
-
-          if (hasActiveSearch) {
-            query = query.ilike("username", `%${search}%`);
-          }
-
-          return query
-            .order("rank_points", { ascending: false })
-            .order("wins", { ascending: false })
-            .order("matches", { ascending: false })
-            .order("goals_for", { ascending: false })
-            .range(from, to);
-        })()
-      : activeSeason
-        ? await (() => {
-            let query = supabase
-              .from("season_player_stats")
-              .select(statsSelect)
-              .eq("game_id", "penalty444")
-              .eq("season_id", activeSeason.id)
-              .gte("matches", RANKED_MATCH_FLOOR);
-
-            if (hasActiveSearch) {
-              query = query.ilike("username", `%${search}%`);
-            }
-
-            return query
-              .order("rank_points", { ascending: false })
-              .order("wins", { ascending: false })
-              .order("matches", { ascending: false })
-              .order("goals_for", { ascending: false })
-              .range(from, to);
-          })()
-        : { data: [], error: null };
-
-  const placementCountResult = await supabase
+  let statsQuery = supabase
     .from("player_stats")
-    .select("user_id", { count: "exact", head: true })
+    .select(statsSelect)
     .eq("game_id", "penalty444")
-    .lt("matches", RANKED_MATCH_FLOOR)
-    .gt("matches", 0);
+    .gte("matches", RANKED_MATCH_FLOOR);
+
+  if (hasActiveSearch) {
+    statsQuery = statsQuery.ilike("username", `%${search}%`);
+  }
+
+  const [statsResult, placementCountResult] = await Promise.all([
+    statsQuery
+      .order("rank_points", { ascending: false })
+      .order("wins", { ascending: false })
+      .order("matches", { ascending: false })
+      .order("goals_for", { ascending: false })
+      .range(from, to),
+    supabase
+      .from("player_stats")
+      .select("user_id", { count: "exact", head: true })
+      .eq("game_id", "penalty444")
+      .lt("matches", RANKED_MATCH_FLOOR)
+      .gt("matches", 0),
+  ]);
+
   const placementPlayerCount = placementCountResult.count ?? 0;
 
   const error = statsResult.error;
   if (error) {
-    // Keep the raw cause in server logs; the UI shows a friendly message.
     console.error("Failed to load leaderboard stats:", error.message);
   }
-  const leaderboard = buildLeaderboard((statsResult.data ?? []) as PlayerStatsRow[]);
+
+  const leaderboard = buildLeaderboard(
+    (statsResult.data ?? []) as PlayerStatsRow[]
+  );
   const topPlayers = leaderboard.slice(0, 3);
-  const hasNoActiveSeason = scope === "season" && !activeSeason;
-  const emptyMessage =
-    scope === "season"
-      ? `No ${activeSeason?.name ?? "Season"} matches yet.`
-      : "No completed matches yet.";
-  const hrefOptions = { search, page, limit, tab };
-  const seasonScopeHref = buildLeaderboardHref("season", hrefOptions);
-  const allTimeScopeHref = buildLeaderboardHref("all-time", hrefOptions);
-  const clearSearchHref = buildLeaderboardHref(scope, { page, limit, tab });
-  const previousPageHref = buildLeaderboardHref(scope, {
+  const clearSearchHref = buildLeaderboardHref({ page, limit });
+  const previousPageHref = buildLeaderboardHref({
     search,
     page: page - 1,
     limit,
-    tab,
   });
-  const nextPageHref = buildLeaderboardHref(scope, {
+  const nextPageHref = buildLeaderboardHref({
     search,
     page: page + 1,
     limit,
-    tab,
   });
   const showNextPage = leaderboard.length === limit;
-  const tabHrefs: Record<LeaderboardTab, string> = {
-    global: buildLeaderboardHref(scope, { search, page: 1, limit, tab: "global" }),
-    weekly: buildLeaderboardHref(scope, { search, page: 1, limit, tab: "weekly" }),
-    tournament: buildLeaderboardHref(scope, {
-      search,
-      page: 1,
-      limit,
-      tab: "tournament",
-    }),
-    friends: buildLeaderboardHref(scope, {
-      search,
-      page: 1,
-      limit,
-      tab: "friends",
-    }),
-  };
-  const isPlaceholderTab = tab !== "global";
 
   return (
     <section className="space-y-10 rounded-[2rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top,_rgba(234,179,8,0.10),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(34,211,238,0.07),_transparent_28%),linear-gradient(180deg,_#050505,_#09090b_42%,_#020202)] p-5 shadow-[0_40px_120px_rgba(0,0,0,0.65)] sm:p-7 lg:p-9">
@@ -370,13 +229,13 @@ export default async function LeaderboardPage({
             444 ARENA Rankings
           </h1>
           <p className="mt-3 max-w-2xl text-sm text-zinc-500 sm:text-base">
-            Live rankings based on saved match results.
+            Global rankings from verified Penalty444 match results.
           </p>
         </div>
 
         <div className="flex flex-wrap items-end gap-2">
-          <div className="rounded-xl border border-zinc-700/80 bg-black/45 px-4 py-2 text-sm font-semibold text-zinc-100 shadow-lg shadow-black/30">
-            Penalty444
+          <div className="rounded-xl border border-yellow-500/30 bg-yellow-950/20 px-4 py-2 text-sm font-semibold text-yellow-100 shadow-lg shadow-black/30">
+            Global · All Time
           </div>
           {placementPlayerCount > 0 ? (
             <div
@@ -391,72 +250,8 @@ export default async function LeaderboardPage({
               </span>
             </div>
           ) : null}
-          <Link
-            href={seasonScopeHref}
-            className={getScopeChipClass(scope === "season")}
-          >
-            <span>{seasonLabel}</span>
-            {scope === "season" && seasonCountdown ? (
-              <span className="mt-1 block text-xs font-medium text-yellow-200/80">
-                {seasonCountdown}
-              </span>
-            ) : null}
-          </Link>
-          <Link
-            href={allTimeScopeHref}
-            className={getScopeChipClass(scope === "all-time")}
-          >
-            All Time
-          </Link>
         </div>
       </div>
-
-      <nav
-        className="-mx-1 flex gap-2 overflow-x-auto rounded-2xl border border-zinc-800/80 bg-black/45 p-2 shadow-lg shadow-black/30"
-        aria-label="Leaderboard tabs"
-      >
-        {(Object.keys(TAB_LABELS) as LeaderboardTab[]).map((t) => {
-          const isActive = tab === t;
-          return (
-            <Link
-              key={t}
-              href={tabHrefs[t]}
-              aria-current={isActive ? "page" : undefined}
-              className={`shrink-0 rounded-xl px-4 py-2 text-sm font-black uppercase tracking-[0.18em] transition ${
-                isActive
-                  ? "border border-cyan-300/60 bg-cyan-950/40 text-cyan-100 shadow-[0_0_22px_rgba(34,211,238,0.22)]"
-                  : "border border-transparent text-zinc-400 hover:border-zinc-700 hover:text-white"
-              }`}
-            >
-              {TAB_LABELS[t]}
-            </Link>
-          );
-        })}
-      </nav>
-
-      {isPlaceholderTab ? (
-        <div className="rounded-2xl border border-zinc-800/80 bg-black/45 p-6 text-zinc-300 shadow-lg shadow-black/30">
-          <p className="text-xs font-black uppercase tracking-[0.3em] text-cyan-300/85">
-            {TAB_LABELS[tab]} leaderboard
-          </p>
-          <h2 className="mt-1 text-2xl font-black text-white sm:text-3xl">
-            Coming soon
-          </h2>
-          <p className="mt-2 max-w-xl text-sm text-zinc-500">
-            {tab === "weekly"
-              ? "Weekly resets ladder will track 7-day performance once seasonal scoring lands."
-              : tab === "tournament"
-                ? "Bracket performance points unlock when the tournament scoring system ships."
-                : "Connect with friends to see how you stack up. Friend graph coming soon."}
-          </p>
-          <Link
-            href={tabHrefs.global}
-            className="mt-4 inline-flex rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-white hover:border-zinc-500"
-          >
-            Back to Global
-          </Link>
-        </div>
-      ) : null}
 
       {error ? (
         <div className="rounded-2xl border border-red-800 bg-red-950/40 p-5 text-red-200">
@@ -464,7 +259,7 @@ export default async function LeaderboardPage({
         </div>
       ) : null}
 
-      {!isPlaceholderTab && topPlayers.length > 0 ? (
+      {!error && topPlayers.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-3 md:items-start">
           {topPlayers.map((player, index) => (
             <div
@@ -480,6 +275,7 @@ export default async function LeaderboardPage({
                 <RankBadge
                   tier={resolveTierForRow(player)}
                   rating={player.rankPoints}
+                  matchesPlayed={player.matches}
                   showRating={false}
                   variant="chip"
                 />
@@ -514,7 +310,7 @@ export default async function LeaderboardPage({
                   {player.rankPoints}
                 </div>
                 <div className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
-                  ranked points
+                  rank points
                 </div>
               </div>
 
@@ -531,13 +327,11 @@ export default async function LeaderboardPage({
         </div>
       ) : null}
 
-      {isPlaceholderTab ? null : (
       <form
         action="/leaderboard"
         method="get"
         className="flex flex-col gap-3 rounded-2xl border border-zinc-800/80 bg-black/45 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.35)] sm:flex-row sm:items-center"
       >
-        <input type="hidden" name="scope" value={scope} />
         <input type="hidden" name="page" value="1" />
         <input type="hidden" name="limit" value={limit} />
         <input
@@ -564,24 +358,20 @@ export default async function LeaderboardPage({
           ) : null}
         </div>
       </form>
-      )}
 
-      {isPlaceholderTab ? null : (
       <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_28px_80px_rgba(0,0,0,0.45)]">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1050px] text-left">
+          <table className="w-full min-w-[900px] text-left">
             <thead className="bg-black/55">
               <tr className="text-xs uppercase tracking-wide text-zinc-500">
                 <th className="px-4 py-3">Rank</th>
                 <th className="px-4 py-3">Player</th>
                 <th className="px-4 py-3">Tier</th>
-                <th className="px-4 py-3">Points</th>
+                <th className="px-4 py-3">Rank Points</th>
                 <th className="px-4 py-3">Wins</th>
                 <th className="px-4 py-3">Losses</th>
                 <th className="px-4 py-3">Draws</th>
                 <th className="px-4 py-3">Matches</th>
-                <th className="px-4 py-3">Goals For</th>
-                <th className="px-4 py-3">Goals Against</th>
                 <th className="px-4 py-3">Win Rate</th>
               </tr>
             </thead>
@@ -589,21 +379,12 @@ export default async function LeaderboardPage({
             <tbody>
               {leaderboard.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center text-zinc-400">
-                    {hasNoActiveSeason ? (
-                      <div className="space-y-2">
-                        <p className="text-base font-semibold text-zinc-300">
-                          No active season right now.
-                        </p>
-                        <p className="text-sm text-zinc-500">
-                          Season rankings will appear once a season becomes active.
-                        </p>
-                      </div>
-                    ) : hasActiveSearch ? (
+                  <td colSpan={9} className="px-4 py-8 text-center text-zinc-400">
+                    {hasActiveSearch ? (
                       <p>{`No players found for "${search}".`}</p>
                     ) : (
                       <div className="space-y-4">
-                        <p>{emptyMessage}</p>
+                        <p>No ranked players yet. Complete 10 placement matches to appear.</p>
                         <Link
                           href="/lobby"
                           className="inline-flex rounded-xl border border-zinc-700 px-4 py-3 text-sm font-semibold text-white hover:border-zinc-500"
@@ -665,6 +446,7 @@ export default async function LeaderboardPage({
                       <RankBadge
                         tier={resolveTierForRow(player)}
                         rating={player.rankPoints}
+                        matchesPlayed={player.matches}
                         showRating={false}
                         variant="chip"
                       />
@@ -676,10 +458,6 @@ export default async function LeaderboardPage({
                     <td className="px-4 py-4 text-white">{player.losses}</td>
                     <td className="px-4 py-4 text-white">{player.draws}</td>
                     <td className="px-4 py-4 text-white">{player.matches}</td>
-                    <td className="px-4 py-4 text-white">{player.goalsFor}</td>
-                    <td className="px-4 py-4 text-white">
-                      {player.goalsAgainst}
-                    </td>
                     <td className="px-4 py-4 text-white">{player.winRate}%</td>
                   </tr>
                 ))
@@ -709,7 +487,6 @@ export default async function LeaderboardPage({
           ) : null}
         </div>
       </div>
-      )}
     </section>
   );
 }
