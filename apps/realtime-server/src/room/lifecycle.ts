@@ -5,6 +5,7 @@ import type { MatchType, Room, RoomPlayer } from "../types/room";
 import { getStakeAmount } from "../wallet/stakes";
 import { generateRoomCode, normalizeRoomCode } from "./codes";
 import { evaluateMatchStart } from "./readiness";
+import { diagLog } from "../diagnostics/log";
 
 /**
  * Hardening Sprint 1 — TASK 3: stable per-match-instance id. Recomputed
@@ -35,14 +36,14 @@ export function setPlayerActiveRoom(playerId: string, roomCode: string) {
   if (!playerId || !code) return;
 
   playerActiveRooms.set(playerId, code);
-  console.log(`[active-room:set] player=${playerId} room=${code}`);
+  diagLog(`[active-room:set] player=${playerId} room=${code}`);
 }
 
 export function clearPlayerActiveRoom(playerId?: string) {
   if (!playerId) return;
 
   playerActiveRooms.delete(playerId);
-  console.log(`[active-room:clear] player=${playerId}`);
+  diagLog(`[active-room:clear] player=${playerId}`);
 }
 
 export function clearPlayersActiveRoomsForRoom(room: Room) {

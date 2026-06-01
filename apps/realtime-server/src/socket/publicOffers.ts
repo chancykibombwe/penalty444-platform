@@ -18,6 +18,7 @@ import {
   jwtEnforcementEnabled,
   jwtMatchesPlayer,
 } from "../security/jwt";
+import { diagLog } from "../diagnostics/log";
 
 /**
  * Host-disconnect grace window for public match offers.
@@ -96,7 +97,7 @@ export function emitPublicOffers(reason = "manual") {
   const { io } = getDeps();
   const payload = getPublicOffersPayload();
 
-  console.log(
+  diagLog(
     `[publicOffers:update] reason=${reason} offers=${payload.offers.length} connectedSockets=${io.engine.clientsCount}`
   );
 
@@ -114,7 +115,7 @@ export function emitPublicOffersToSocket(
 
   const payload = getPublicOffersPayload();
 
-  console.log(
+  diagLog(
     `[publicOffers:update -> socket] reason=${reason} socket=${socketId} offers=${payload.offers.length}`
   );
 
@@ -174,7 +175,7 @@ async function removeAbandonedPublicOffer(
 
   deps.clearPlayerActiveRoom(offer.hostPlayerId);
 
-  console.log(
+  diagLog(
     `[publicOffer:hostGrace] OFFER_REMOVED offerId=${offer.offerId} ` +
       `roomCode=${offer.roomCode} hostPlayerId=${offer.hostPlayerId} ` +
       `reason=${reason}`
@@ -204,7 +205,7 @@ export function scheduleHostDisconnectGrace(offerId: string): void {
   offer.hostDisconnectedAt = now;
   offer.hostExpiresAt = now + PUBLIC_OFFER_HOST_GRACE_MS;
 
-  console.log(
+  diagLog(
     `[publicOffer:hostGrace] GRACE_ARMED offerId=${offerId} ` +
       `roomCode=${offer.roomCode} hostPlayerId=${offer.hostPlayerId} ` +
       `expiresAt=${offer.hostExpiresAt}`
@@ -297,7 +298,7 @@ export function revivePublicOffersForPlayer(
     playerActiveRooms.set(playerId, offer.roomCode);
 
     revivedAny = true;
-    console.log(
+    diagLog(
       `[publicOffer:hostGrace] REVIVED offerId=${offer.offerId} ` +
         `roomCode=${offer.roomCode} hostPlayerId=${playerId} ` +
         `newSocketId=${newSocketId}`
@@ -330,7 +331,7 @@ export function registerPublicOfferHandlers(socket: Socket) {
       rounds: number;
     }) => {
       try {
-        console.log("publicOffer:create received", {
+        diagLog("publicOffer:create received", {
           playerId,
           username,
           stakeLabel,
@@ -471,7 +472,7 @@ export function registerPublicOfferHandlers(socket: Socket) {
 
         emitPublicOffers("publicOffer:create");
 
-        console.log("publicOffer:created sent", offer);
+        diagLog("publicOffer:created sent", offer);
       } catch (error) {
         console.error("publicOffer:create crashed:", error);
 
@@ -494,7 +495,7 @@ export function registerPublicOfferHandlers(socket: Socket) {
       username?: string;
     }) => {
       try {
-        console.log("publicOffer:join received", {
+        diagLog("publicOffer:join received", {
           offerId,
           playerId,
           username,
@@ -684,7 +685,7 @@ export function registerPublicOfferHandlers(socket: Socket) {
         // once both `MatchRoomPanel`s emit `player:present`.
         evaluateMatchStart(offer.roomCode, room);
 
-        console.log("publicOffer:matched sent", offer.roomCode);
+        diagLog("publicOffer:matched sent", offer.roomCode);
       } catch (error) {
         console.error("publicOffer:join crashed:", error);
 

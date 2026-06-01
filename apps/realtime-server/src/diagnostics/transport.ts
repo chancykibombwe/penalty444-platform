@@ -18,6 +18,7 @@
 
 import type { Server, Socket } from "socket.io";
 import type { Room } from "../types/room";
+import { diagLog, diagWarn } from "./log";
 
 /** Reconnect slower than this is flagged for investigation. */
 export const SLOW_RECONNECT_THRESHOLD_MS = 2000;
@@ -62,7 +63,7 @@ export function logSocketConnect(
   socket: Socket,
   playerId?: string | null
 ): void {
-  console.log(
+  diagLog(
     `[diag:transport] connect socketId=${socket.id} ` +
       `transport=${transportName(socket)} ` +
       `playerId=${playerId ?? socket.data?.userId ?? "-"} ` +
@@ -71,7 +72,7 @@ export function logSocketConnect(
 
   // Observe transport upgrades (polling → websocket) for this socket.
   socket.conn?.on("upgrade", () => {
-    console.log(
+    diagLog(
       `[diag:transport] transport_upgrade socketId=${socket.id} ` +
         `transport=${transportName(socket)}`
     );
@@ -92,7 +93,7 @@ export function logSocketDisconnect(
   if (id) {
     lastDisconnectAtByPlayer.set(id, Date.now());
   }
-  console.log(
+  diagLog(
     `[diag:transport] disconnect socketId=${socket.id} ` +
       `reason=${reason} transport=${transportName(socket)} ` +
       `playerId=${id ?? "-"} roomCode=${roomCode ?? "-"}`
@@ -111,7 +112,7 @@ export function logReconnectForPlayer(
 ): void {
   const last = lastDisconnectAtByPlayer.get(playerId);
   if (last === undefined) {
-    console.log(
+    diagLog(
       `[diag:transport] reconnect playerId=${playerId} roomCode=${roomCode} ` +
         `socketId=${socketId} reconnectDurationMs=unknown`
     );
@@ -121,13 +122,13 @@ export function logReconnectForPlayer(
   const durationMs = Date.now() - last;
   lastDisconnectAtByPlayer.delete(playerId);
 
-  console.log(
+  diagLog(
     `[diag:transport] reconnect playerId=${playerId} roomCode=${roomCode} ` +
       `socketId=${socketId} reconnectDurationMs=${durationMs}`
   );
 
   if (durationMs > SLOW_RECONNECT_THRESHOLD_MS) {
-    console.warn(
+    diagWarn(
       `[diag:transport] SLOW_RECONNECT playerId=${playerId} roomCode=${roomCode} ` +
         `durationMs=${durationMs} thresholdMs=${SLOW_RECONNECT_THRESHOLD_MS}`
     );
@@ -155,7 +156,7 @@ export function logPresenceTransition(
   const seq = ++presenceSeqCounter;
   const label = nextPresent ? "present" : "absent";
 
-  console.log(
+  diagLog(
     `[diag:presence] ${label} roomCode=${roomCode} playerId=${playerId} ` +
       `socketId=${socketId} source=${source} seq=${seq} ` +
       `prev=${prev ? (prev.present ? "present" : "absent") : "none"}`
@@ -163,7 +164,7 @@ export function logPresenceTransition(
 
   if (prev) {
     if (prev.present === nextPresent) {
-      console.warn(
+      diagWarn(
         `[diag:presence] DUPLICATE_PRESENCE_TRANSITION roomCode=${roomCode} ` +
           `playerId=${playerId} state=${label} ` +
           `prevSeq=${prev.seq} seq=${seq} sinceMs=${Date.now() - prev.at}`
@@ -178,7 +179,7 @@ export function logPresenceTransition(
       prev.socketId !== socketId &&
       Date.now() - prev.at < SLOW_RECONNECT_THRESHOLD_MS
     ) {
-      console.warn(
+      diagWarn(
         `[diag:presence] OUT_OF_ORDER_PRESENCE roomCode=${roomCode} ` +
           `playerId=${playerId} prevSocketId=${prev.socketId} ` +
           `socketId=${socketId} prevSeq=${prev.seq} seq=${seq} ` +
@@ -208,7 +209,7 @@ export function logRoomStateEmit(
   const presentCount = room.players.filter((p) => p.present).length;
   const roleCount = Object.keys(room.roles).length;
 
-  console.log(
+  diagLog(
     `[diag:roomstate] ${event} roomCode=${roomCode} ` +
       `players=${room.players.length} present=${presentCount} ` +
       `roles=${roleCount} round=${room.round} phase=${room.phase} ` +
@@ -220,7 +221,7 @@ export function logRoomStateEmit(
 
   // Mismatch: two players but role map doesn't cover both.
   if (room.players.length === 2 && roleCount < 2) {
-    console.warn(
+    diagWarn(
       `[diag:roomstate] ROOM_STATE_MISMATCH_ROLES roomCode=${roomCode} ` +
         `players=2 roleCount=${roleCount}`
     );
@@ -233,7 +234,7 @@ export function logRoomStateEmit(
     !(room.picks.KICKER && room.picks.KEEPER) &&
     !room.matchEnded
   ) {
-    console.warn(
+    diagWarn(
       `[diag:roomstate] ROOM_STATE_MISMATCH_RESOLVING roomCode=${roomCode} ` +
         `isResolving=true picksLocked={K:${Boolean(room.picks.KICKER)},` +
         `G:${Boolean(room.picks.KEEPER)}}`
@@ -245,7 +246,7 @@ export function logRoomStateEmit(
     room.disconnectedPlayerId &&
     !room.players.some((p) => p.playerId === room.disconnectedPlayerId)
   ) {
-    console.warn(
+    diagWarn(
       `[diag:roomstate] ROOM_STATE_MISMATCH_GRACE_TARGET roomCode=${roomCode} ` +
         `disconnectedPlayerId=${room.disconnectedPlayerId} not-in-room`
     );
@@ -254,14 +255,14 @@ export function logRoomStateEmit(
 
 /** Log an active-room set with the diagnostics prefix. */
 export function logActiveRoomSet(playerId: string, roomCode: string): void {
-  console.log(
+  diagLog(
     `[diag:activeroom] set playerId=${playerId} roomCode=${roomCode}`
   );
 }
 
 /** Log an active-room clear with the diagnostics prefix. */
 export function logActiveRoomClear(playerId: string): void {
-  console.log(`[diag:activeroom] clear playerId=${playerId}`);
+  diagLog(`[diag:activeroom] clear playerId=${playerId}`);
 }
 
 /**
