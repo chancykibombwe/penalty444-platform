@@ -2,12 +2,12 @@
 
 import {
   getRankProgressTowardNext,
-  resolvePlayerTier,
 } from "../../lib/player/ranks";
 import { getPlacementStatus } from "../../lib/player/progression";
 import {
   formatStreakLabel,
   formatWinRate,
+  getCompetitiveTier,
   isPlayerRanked,
   type CompetitiveStats,
 } from "../../lib/player/stats";
@@ -19,9 +19,8 @@ import StatTile from "./StatTile";
  * pages, or any future "player identity" surface (spectator lobby, etc).
  *
  * Data is read defensively — all fields are optional. When the player has
- * fewer than the qualifying number of matches, the card renders Unranked
- * state with platform-friendly copy ("Play 5 matches to qualify") instead
- * of fabricating tier data.
+ * fewer than the qualifying number of matches, the card renders placement
+ * state instead of fabricating tier data.
  */
 type Props = {
   username?: string | null;
@@ -54,11 +53,7 @@ export default function CompetitiveProfileCard({
 }: Props) {
   const ranked = isPlayerRanked(stats);
   const placement = getPlacementStatus(stats?.matches ?? 0);
-  const tier = resolvePlayerTier({
-    rating: stats?.rating ?? null,
-    matchesPlayed: stats?.matches ?? null,
-    legacyTierName: stats?.legacyTierName ?? null,
-  });
+  const tier = getCompetitiveTier(stats);
   const rating = stats?.rating ?? null;
   const wins = stats?.wins ?? 0;
   const losses = stats?.losses ?? 0;

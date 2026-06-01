@@ -5,7 +5,7 @@
  * existing competitive identity components need (stats, recent form,
  * tournament wins, achievements) from existing tables only:
  *
- *   - `player_stats`    → identity + stats + tier
+ *   - `player_stats`    → identity + stats (rank_points; tier not trusted for display)
  *   - `match_results`   → recent form, recent matches list
  *   - `tournaments`     → tournament wins count + latest crown
  *
@@ -199,7 +199,6 @@ export async function fetchPublicProfile(
     goalsFor: statsRow.goals_for ?? 0,
     goalsAgainst: statsRow.goals_against ?? 0,
     tournamentWins,
-    legacyTierName: statsRow.tier ?? null,
     recentForm,
     streak,
   };

@@ -6,7 +6,11 @@
  * service can drop in by replacing the `loadPlayerStats` query.
  */
 
-import { getRankTier, type RankTier } from "./ranks";
+import {
+  resolvePlayerTier,
+  UNRANKED_MATCHES_THRESHOLD,
+  type RankTier,
+} from "./ranks";
 
 /**
  * Generic stats shape the identity components consume. Mirrors the Supabase
@@ -78,17 +82,34 @@ export function formatRecentFormLabel(
 export function isPlayerRanked(stats: CompetitiveStats | null | undefined): boolean {
   if (!stats) return false;
   const matches = stats.matches ?? 0;
-  return matches >= 10;
+  return matches >= UNRANKED_MATCHES_THRESHOLD;
 }
 
 /**
- * Convenience wrapper: returns the resolved RankTier plus the qualifying
- * matches-played gate so a component doesn't have to thread both manually.
+ * Resolve tier from rank_points + matches — same contract as the Global
+ * leaderboard (PR #38). Does not trust raw DB `tier` strings.
  */
 export function getCompetitiveTier(
   stats: CompetitiveStats | null | undefined
 ): RankTier {
-  return getRankTier(stats?.rating ?? null, stats?.matches ?? null);
+  return resolvePlayerTier({
+    rating: stats?.rating ?? null,
+    matchesPlayed: stats?.matches ?? null,
+  });
+}
+
+/**
+ * Global rank index among ranked players only (matches >= threshold).
+ * Returns null when the player is still in placement or not on the ladder.
+ */
+export function computeGlobalRankFromRows(
+  rankRows: ReadonlyArray<{ user_id: string }>,
+  userId: string,
+  matchesPlayed: number | null | undefined
+): number | null {
+  if ((matchesPlayed ?? 0) < UNRANKED_MATCHES_THRESHOLD) return null;
+  const index = rankRows.findIndex((row) => row.user_id === userId);
+  return index >= 0 ? index + 1 : null;
 }
 
 /**

@@ -11,13 +11,14 @@ import WalletPanel from "../../components/account/WalletPanel";
 import RivalCard from "../../components/social/RivalCard";
 import { ViewProfileButton } from "../../components/social/SocialActions";
 import { pushNotification } from "../../components/live/NotificationBell";
-import { resolvePlayerTier } from "../../lib/player/ranks";
+import { resolvePlayerTier, UNRANKED_MATCHES_THRESHOLD } from "../../lib/player/ranks";
 import { getPlacementStatus } from "../../lib/player/progression";
 import {
   detectPromotion,
   type PromotionEvent,
 } from "../../lib/player/promotion";
 import {
+  computeGlobalRankFromRows,
   deriveRecentForm,
   deriveStreak,
   type CompetitiveStats,
@@ -185,7 +186,6 @@ function resolveSeasonTierLabel(season: PlayerStatsRow): string {
   return resolvePlayerTier({
     rating: season.rank_points ?? null,
     matchesPlayed: season.matches ?? null,
-    legacyTierName: season.tier ?? null,
   }).label;
 }
 
@@ -255,6 +255,7 @@ export default function AccountPage() {
             .from("player_stats")
             .select("user_id, rank_points, wins, matches, goals_for")
             .eq("game_id", "penalty444")
+            .gte("matches", UNRANKED_MATCHES_THRESHOLD)
             .order("rank_points", { ascending: false })
             .order("wins", { ascending: false })
             .order("matches", { ascending: false })
@@ -298,10 +299,15 @@ export default function AccountPage() {
 
       const currentStats = statsResult.data as PlayerStatsRow | null;
       const rankRows = (rankResult.data ?? []) as RankRow[];
-      const rankIndex = rankRows.findIndex((row) => row.user_id === userId);
 
       setStats(currentStats);
-      setGlobalRank(rankIndex >= 0 ? rankIndex + 1 : null);
+      setGlobalRank(
+        computeGlobalRankFromRows(
+          rankRows,
+          userId,
+          currentStats?.matches ?? 0
+        )
+      );
       setRecentMatches((matchesResult.data ?? []) as MatchResultRow[]);
       setTournamentWins(tournamentWinsResult.count ?? 0);
       setMatchHistoryNotice(
@@ -394,11 +400,10 @@ export default function AccountPage() {
   // localStorage and fires the toast when the player has moved up.
   useEffect(() => {
     if (!account?.id || !stats) return;
-    if ((stats.matches ?? 0) < 10) return;
+    if ((stats.matches ?? 0) < UNRANKED_MATCHES_THRESHOLD) return;
     const tier = resolvePlayerTier({
       rating: stats.rank_points ?? null,
       matchesPlayed: stats.matches ?? null,
-      legacyTierName: stats.tier ?? null,
     });
     const event = detectPromotion(account.id, tier);
     if (event) {
@@ -428,7 +433,6 @@ export default function AccountPage() {
       goalsFor: stats?.goals_for ?? 0,
       goalsAgainst: stats?.goals_against ?? 0,
       tournamentWins,
-      legacyTierName: stats?.tier ?? null,
       recentForm,
       streak: deriveStreak(recentForm),
     };
