@@ -44,6 +44,72 @@ function isTrue(name: string): boolean {
 }
 
 /**
+ * Validate that SUPABASE_URL is the project API URL, not a dashboard
+ * URL, a `/rest/v1` endpoint, or a direct-DB hostname. A wrong value
+ * here previously caused a production outage where supabase-js received
+ * an HTML dashboard page and failed to parse JSON.
+ *
+ * Accepted shape:
+ *   - a valid URL
+ *   - https:
+ *   - hostname ends with `.supabase.co`
+ *   - hostname does NOT start with `db.`
+ *   - pathname is empty or `/`
+ *
+ * Returns a problem message when invalid, or null when the shape is OK.
+ * Never logs secrets — only the (non-secret) host/path of the URL.
+ */
+function validateSupabaseUrlShape(raw: string): string | null {
+  const guidance =
+    "SUPABASE_URL must be the project API URL, e.g. " +
+    "https://<project-ref>.supabase.co. Do not use dashboard URLs or /rest/v1.";
+
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    return `SUPABASE_URL is not a valid URL. ${guidance}`;
+  }
+
+  const host = url.hostname.toLowerCase();
+  const path = url.pathname;
+  const pathIsRoot = path === "" || path === "/";
+
+  const shapeOk =
+    url.protocol === "https:" &&
+    host.endsWith(".supabase.co") &&
+    !host.startsWith("db.") &&
+    pathIsRoot;
+
+  if (!shapeOk) {
+    return (
+      `${guidance} (saw host=${host || "(none)"} path=${path || "/"})`
+    );
+  }
+
+  return null;
+}
+
+/**
+ * Non-secret description of SUPABASE_URL for the boot banner. Surfaces
+ * the host/path so a misconfiguration is obvious in logs, without ever
+ * printing the service-role key.
+ */
+function describeSupabaseUrl(): string {
+  const raw = process.env.SUPABASE_URL;
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    return "missing";
+  }
+  try {
+    const url = new URL(raw.trim());
+    const path = url.pathname === "/" ? "" : url.pathname;
+    return `${url.hostname}${path}`;
+  } catch {
+    return "present (unparseable)";
+  }
+}
+
+/**
  * Inspect every env var the realtime server needs. Returns an ordered
  * list of problems. Caller decides whether to log, exit, or both.
  */
@@ -59,6 +125,19 @@ export function inspectRealtimeServerEnv(): EnvProblem[] {
         "SUPABASE_URL is missing. Database-backed flows (settlement, " +
         "progression, tournaments) will be inert until set.",
     });
+  } else {
+    // Present → validate its shape. A dashboard URL / `/rest/v1` /
+    // db-hostname here is just as broken as a missing one (it silently
+    // returns HTML to supabase-js), so it carries the same severity.
+    const shapeProblem = validateSupabaseUrlShape(
+      process.env.SUPABASE_URL as string
+    );
+    if (shapeProblem) {
+      problems.push({
+        severity: prod ? "fatal" : "warn",
+        message: shapeProblem,
+      });
+    }
   }
   if (presence("SUPABASE_SERVICE_ROLE_KEY") === "missing") {
     problems.push({
@@ -126,7 +205,7 @@ export function printEnvSummary(): void {
   const policy = describeOriginPolicy();
   const summary = {
     NODE_ENV: process.env.NODE_ENV ?? "(unset)",
-    SUPABASE_URL: presence("SUPABASE_URL"),
+    SUPABASE_URL: describeSupabaseUrl(),
     SUPABASE_SERVICE_ROLE_KEY: presence("SUPABASE_SERVICE_ROLE_KEY"),
     REALTIME_INTERNAL_SECRET: presence("REALTIME_INTERNAL_SECRET"),
     ALLOWED_ORIGINS: policy.count > 0 ? `${policy.count} entries` : "(empty)",
