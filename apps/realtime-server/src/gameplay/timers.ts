@@ -2,6 +2,7 @@ import type { Server } from "socket.io";
 import { PICK_TIMEOUT_MS } from "../config";
 import { rooms } from "../state/stores";
 import type { Room } from "../types/room";
+import { diagLog, diagWarn } from "../diagnostics/log";
 
 type RoundTimerDeps = {
   io: Server;
@@ -85,7 +86,7 @@ export function clearRoomTimer(
   const hadWaitingForReturnTimeout = Boolean(room.waitingForReturnTimeout);
   const hadStagingCountdownTimeout = Boolean(room.stagingCountdownTimeout);
 
-  console.log(
+  diagLog(
     `[diag:reveal-deadlock] clearRoomTimer ` +
       `roomCode=${room.code} ` +
       `preserveResolution=${preserveResolution} ` +
@@ -101,7 +102,7 @@ export function clearRoomTimer(
   );
 
   if (hadResolveContinuationTimeout && room.isResolving && !preserveResolution) {
-    console.warn(
+    diagWarn(
       `[diag:reveal-deadlock] AUTH_DEADLOCK_CANDIDATE_CLEARING_CONTINUATION ` +
         `roomCode=${room.code} ` +
         `round=${room.round} ` +
@@ -135,7 +136,7 @@ export function clearRoomTimer(
     // the orphaned resolution state here so reconnect cannot restart into
     // a poisoned `isResolving === true` room.
     if (room.isResolving) {
-      console.warn(
+      diagWarn(
         `[diag:reveal-deadlock] RESETTING_ORPHANED_RESOLUTION_STATE ` +
           `roomCode=${room.code} ` +
           `round=${room.round} ` +
@@ -180,7 +181,7 @@ export function startRoundTimer(roomCode: string, room: Room) {
   // this is where we'd see the bogus pick-timer arm that ultimately
   // expires into a `resolveRound` skip.
   if (room.isResolving) {
-    console.warn(
+    diagWarn(
       `[diag:reveal-deadlock] AUTH_DEADLOCK_CANDIDATE_START_TIMER_WHILE_RESOLVING ` +
         `roomCode=${roomCode} ` +
         `round=${room.round} ` +
@@ -203,7 +204,7 @@ export function startRoundTimer(roomCode: string, room: Room) {
     Date.now() < room.disconnectForfeitExpiresAt &&
     room.disconnectedPlayerId !== undefined
   ) {
-    console.warn(
+    diagWarn(
       `[diag:disconnect-grace] SKIP_START_TIMER_GRACE_ACTIVE ` +
         `roomCode=${roomCode} disconnectedPlayerId=${room.disconnectedPlayerId} ` +
         `round=${room.round} phase=${room.phase} ` +

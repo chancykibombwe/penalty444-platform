@@ -1,6 +1,7 @@
 import type { Server } from "socket.io";
 import { rooms } from "../state/stores";
 import type { Room } from "../types/room";
+import { diagLog } from "../diagnostics/log";
 
 export const DISCONNECT_FORFEIT_MS = 39_000;
 
@@ -52,7 +53,7 @@ export function armDisconnectForfeitGrace(
   room.disconnectedAt = forfeitArmedAt;
   room.disconnectForfeitExpiresAt = forfeitExpiresAt;
 
-  console.log(
+  diagLog(
     `[diag:disconnect-policy] ${logTag} ` +
       `roomCode=${roomCode} disconnectedPlayerId=${disconnectedPlayerId} ` +
       `round=${room.round} phase=${room.phase} generation=${generation} ` +
@@ -73,7 +74,7 @@ export function armDisconnectForfeitGrace(
     if (r.matchEnded) return;
 
     if (r.disconnectForfeitGeneration !== generation) {
-      console.log(
+      diagLog(
         `[diag:disconnect-policy] FORFEIT_SKIPPED_STALE_GENERATION ` +
           `roomCode=${roomCode} armedGen=${generation} ` +
           `liveGen=${r.disconnectForfeitGeneration ?? 0}`
@@ -144,7 +145,7 @@ export function tryResumeAfterDisconnectGrace(
 
   clearDisconnectForfeitGrace(room);
 
-  console.log(
+  diagLog(
     `[diag:disconnect-policy] GRACE_CLEARED_ON_RECONNECT ` +
       `roomCode=${roomCode} playerId=${playerId} round=${room.round}`
   );
@@ -169,7 +170,7 @@ export function tryResumeAfterDisconnectGrace(
     !room.matchEnded &&
     !room.isResolving
   ) {
-    console.log(
+    diagLog(
       `[diag:disconnect-grace] REARM_GRACE_OTHER_PLAYER_STILL_ABSENT ` +
         `roomCode=${roomCode} returnedPlayerId=${playerId} ` +
         `stillAbsentPlayerId=${stillAbsent.playerId} round=${room.round}`
@@ -195,7 +196,7 @@ export function tryResumeAfterDisconnectGrace(
   if (shouldRestartPickTimerOnReconnect(room, playerId)) {
     startRoundTimer(roomCode, room);
   } else {
-    console.log(
+    diagLog(
       `[diag:disconnect-policy] reconnect skip startRoundTimer after grace clear ` +
         `roomCode=${roomCode} playerId=${playerId} ` +
         `isResolving=${Boolean(room.isResolving)} ` +

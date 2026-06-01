@@ -9,6 +9,7 @@ import {
 import { allowSocketAction } from "../security/rateLimit";
 import { rooms } from "../state/stores";
 import type { MatchType, Room, RoomPlayer } from "../types/room";
+import { diagLog } from "../diagnostics/log";
 
 type CreateRoomWithPlayersFn = (
   players: RoomPlayer[],
@@ -242,7 +243,7 @@ export function registerRoomSocketHandlers(socket: Socket) {
 
         if (room.disconnectedPlayerId === playerId) {
           // === Reveal-deadlock instrumentation (logs only) ===
-          console.log(
+          diagLog(
             `[diag:reveal-deadlock] AUTH_DEADLOCK_TRACE_RECONNECT_RESTART_TIMER ` +
               `roomCode=${code} ` +
               `playerId=${playerId} ` +
@@ -464,7 +465,7 @@ export function registerRoomSocketHandlers(socket: Socket) {
           deps.endMatch
         );
       } else {
-        console.log(
+        diagLog(
           `[diag:disconnect-grace] PRESENT_RESUME_DEFERRED_NOT_IN_ROOM ` +
             `roomCode=${code} playerId=${playerId} socketId=${socket.id}`
         );

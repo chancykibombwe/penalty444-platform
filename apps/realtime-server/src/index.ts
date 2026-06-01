@@ -78,6 +78,7 @@ import {
   logSocketConnect,
   logSocketDisconnect,
 } from "./diagnostics/transport";
+import { diagLog, diagWarn } from "./diagnostics/log";
 import { isAuthorizedInternalRequest } from "./security/internalSecret";
 import { pruneRateLimitForSocket } from "./security/rateLimit";
 import { pruneSocketEventHistory } from "./security/replayGuard";
@@ -1251,7 +1252,7 @@ function endMatch(roomCode: string, room: Room) {
   room.rematchVotes = [];
   room.picks = {};
 
-  console.log("[END MATCH CLEAR]", {
+  diagLog("[END MATCH CLEAR]", {
     roomCode,
     players: room.players.map((p) => p.playerId),
     activeMap: Array.from(playerActiveRooms.entries()),
@@ -1265,7 +1266,7 @@ function endMatch(roomCode: string, room: Room) {
     }
   });
 
-  console.log("[AFTER CLEAR]", {
+  diagLog("[AFTER CLEAR]", {
     activeMap: Array.from(playerActiveRooms.entries()),
   });
 
@@ -1418,7 +1419,7 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
     // Includes the live continuation-timer presence so we can tell
     // whether the round is actually mid-resolve (legitimate skip)
     // or stuck (deadlock).
-    console.warn(
+    diagWarn(
       `[diag:reveal-deadlock] AUTH_DEADLOCK_CANDIDATE_RESOLVE_SKIPPED_ALREADY_RESOLVING ` +
         `roomCode=${roomCode} ` +
         `round=${room.round} ` +
@@ -1794,7 +1795,7 @@ io.on("connection", (socket) => {
     }
     const roomCode = getTrackedActiveRoom(id);
     socket.emit("activeRoom:snapshot", { roomCode: roomCode ?? null });
-    console.log(
+    diagLog(
       `[active-room:snapshot] socketId=${socket.id} player=${id} room=${roomCode ?? "none"}`
     );
   };
@@ -2106,7 +2107,7 @@ io.on("connection", (socket) => {
       // bail. Crucially, do NOT emit "Opponent disconnected. Waiting
       // for reconnect..." — there is no reconnect window to wait for.
       if (room.matchEnded) {
-        console.log(
+        diagLog(
           `[diag:disconnect-policy] MATCH_ENDED_NO_ACTION ` +
             `roomCode=${room.code} playerId=${player.playerId}`
         );
@@ -2156,7 +2157,7 @@ io.on("connection", (socket) => {
 
       // Existing reveal-deadlock instrumentation — kept verbatim per
       // PR #17 contract. Augmented with the classifier outcome.
-      console.log(
+      diagLog(
         `[diag:reveal-deadlock] AUTH_DEADLOCK_TRACE_DISCONNECT_DURING_MATCH ` +
           `roomCode=${room.code} ` +
           `playerId=${player.playerId} ` +
@@ -2183,7 +2184,7 @@ io.on("connection", (socket) => {
       // so any phantom waitingForReturn / staging handles get cleaned,
       // but the continuation block is left strictly intact.
       if (isResolving || bothPicksLocked) {
-        console.log(
+        diagLog(
           `[diag:disconnect-policy] PRESERVE_RESOLUTION ` +
             `roomCode=${room.code} playerId=${player.playerId} ` +
             `isResolving=${isResolving} bothPicksLocked=${bothPicksLocked}`
@@ -2224,7 +2225,7 @@ io.on("connection", (socket) => {
       // pick-timer or opponent's pick, and subsequent rounds will
       // time out naturally for the absent player.
       if (ownPickLocked) {
-        console.log(
+        diagLog(
           `[diag:disconnect-policy] OWN_PICK_LOCKED_NO_FORFEIT ` +
             `roomCode=${room.code} playerId=${player.playerId} ` +
             `role=${role} round=${room.round}`
@@ -2257,7 +2258,7 @@ io.on("connection", (socket) => {
         room.disconnectForfeitExpiresAt > Date.now();
 
       if (activeGraceOwnedByOther) {
-        console.log(
+        diagLog(
           `[diag:disconnect-policy] PRESERVE_EXISTING_GRACE_ON_SECOND_DISCONNECT ` +
             `roomCode=${room.code} secondDisconnectPlayerId=${player.playerId} ` +
             `graceOwnerPlayerId=${room.disconnectedPlayerId} ` +
