@@ -166,6 +166,11 @@ type MatchStatusPayload = {
   phase?: MatchPhase;
   suddenDeathRound?: number;
   suddenRound?: number;
+  // Authoritative forfeit-grace expiry carried by the server's
+  // "Opponent disconnected. Waiting 39 seconds for reconnect..."
+  // status. Used to resume the abort countdown from the true remaining
+  // time and to know whether grace is still live.
+  expiresAt?: number;
 };
 
 function getLaneButtonClass(
@@ -492,6 +497,14 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   );
   const disconnectCountdownRef = useRef<number | null>(null);
   const disconnectCountdownTickIntervalRef = useRef<number | null>(null);
+  // Authoritative grace expiry (epoch ms) for the active opponent-
+  // disconnect window. Tracked independently of the ticking visual so
+  // that a deferred round-advance match:update (replayed after the
+  // reveal hold) cannot tear down a countdown whose backend grace is
+  // still running. Cleared by `clearDisconnectCountdownVisual`, so the
+  // genuine grace-end events (reconnect / fresh timer / end / abort)
+  // reset it naturally.
+  const disconnectGraceExpiresAtRef = useRef<number | null>(null);
 
   const normalizedRoomCode = roomCode.trim().toUpperCase();
 
@@ -609,7 +622,21 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       disconnectCountdownTickIntervalRef.current = null;
     }
     disconnectCountdownRef.current = null;
+    disconnectGraceExpiresAtRef.current = null;
     setDisconnectCountdown(null);
+  }
+
+  /**
+   * True while the server's opponent-disconnect grace is still running
+   * (we hold an authoritative future expiry). Used to protect the
+   * visible abort countdown from being cleared by an unrelated
+   * round-advance match:update during active grace.
+   */
+  function isDisconnectGraceStillActive() {
+    return (
+      disconnectGraceExpiresAtRef.current !== null &&
+      Date.now() < disconnectGraceExpiresAtRef.current
+    );
   }
 
   function startDisconnectCountdownVisual(seconds: number) {
@@ -657,6 +684,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       return;
     }
 
+    disconnectGraceExpiresAtRef.current = expiresAt;
     startDisconnectCountdownVisual(remainingSeconds);
   }
 
@@ -960,7 +988,19 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
         clearMatchResultRevealTimeout();
 
-        if (disconnectCountdownRef.current !== null) {
+        // Do NOT tear down an active opponent-disconnect grace countdown
+        // just because the round advanced. In the
+        // NEXT_ROUND_GRACE_FOR_ABSENT path the round-advance match:update
+        // is deferred behind the reveal hold and replayed here AFTER the
+        // grace match:status has already armed the countdown — clearing
+        // unconditionally silently killed the visible "Aborting in Xs..."
+        // block while the backend grace kept running to forfeit. Genuine
+        // grace-end events (opponent reconnected / fresh round timer /
+        // match end / abort) still clear it via their own paths.
+        if (
+          disconnectCountdownRef.current !== null &&
+          !isDisconnectGraceStillActive()
+        ) {
           clearDisconnectCountdownVisual();
         }
 
@@ -1066,7 +1106,16 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       }
 
       if (isReconnectForfeitCountdownStatusMessage(data.message)) {
-        startDisconnectCountdownVisual(39);
+        // Resume from the authoritative server expiry when present so the
+        // grace ref reflects the true remaining time; fall back to a full
+        // 39s window if the payload omitted it. `startDisconnectCountdownFromGrace`
+        // sets `disconnectGraceExpiresAtRef`, which protects the countdown
+        // from a deferred round-advance match:update during active grace.
+        const graceExpiresAt =
+          typeof data.expiresAt === "number" && data.expiresAt > Date.now()
+            ? data.expiresAt
+            : Date.now() + 39_000;
+        startDisconnectCountdownFromGrace(graceExpiresAt);
 
         // The abort countdown is the authoritative UI signal. Override
         // any locked-pick "Waiting for opponent" / "Opponent is
@@ -2228,8 +2277,16 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     setHasSubmittedPick(true);
     setMyPick(lane);
     setRevealStage("LOCKED");
-    setOpponentStatus("Opponent is thinking...");
-    setStatus(`You locked ${lane}. Waiting for opponent...`);
+    // If the opponent is disconnected and the abort grace is still
+    // running, the red countdown is the authoritative signal — don't
+    // claim we're merely "waiting" / that the opponent is "thinking".
+    if (isDisconnectGraceStillActive()) {
+      setOpponentStatus("");
+      setStatus(`You locked ${lane}. Opponent disconnected.`);
+    } else {
+      setOpponentStatus("Opponent is thinking...");
+      setStatus(`You locked ${lane}. Waiting for opponent...`);
+    }
   }
 
   function requestRematch() {
