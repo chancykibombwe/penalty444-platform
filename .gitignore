@@ -51,3 +51,6 @@ supabase/.temp/
 .env.*
 !.env.example
 !**/.env.example
+
+# Claude Code session data (local settings, agent worktrees)
+.claude/
