@@ -158,6 +158,7 @@ export default function PlayerProfilePage() {
       <CompetitiveProfileCard
         username={profile.username}
         stats={profile.stats}
+        globalRank={profile.globalRank}
         subline={isSelf ? "Your competitive identity" : "Competitor"}
       />
 

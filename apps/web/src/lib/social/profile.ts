@@ -16,10 +16,12 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  computeGlobalRankFromRows,
   deriveRecentForm,
   deriveStreak,
   type CompetitiveStats,
 } from "../player/stats";
+import { UNRANKED_MATCHES_THRESHOLD } from "../player/ranks";
 
 type FormOutcome = "W" | "L" | "D";
 
@@ -46,6 +48,8 @@ export type PublicProfile = {
   userId: string;
   username: string;
   stats: CompetitiveStats;
+  /** Global rank among ranked players (matches >= threshold). Null for placement. */
+  globalRank: number | null;
   recentForm: FormOutcome[];
   recentMatches: ProfileRecentMatch[];
   championships: ProfileChampionTournament[];
@@ -82,6 +86,10 @@ type TournamentChampRow = {
   id: string;
   name: string | null;
   updated_at: string | null;
+};
+
+type RankRow = {
+  user_id: string;
 };
 
 const RECENT_MATCH_LIMIT = 10;
@@ -128,9 +136,9 @@ export async function fetchPublicProfile(
   const userId = statsRow.user_id;
   const username = (statsRow.username ?? rawUsername).trim();
 
-  // Recent matches + tournament wins in parallel. We over-fetch matches to
-  // build BOTH `recentForm` (last 5) and `recentMatches` (last 10).
-  const [matchesResult, tournamentsResult] = await Promise.all([
+  // Recent matches, tournament wins, and global rank pool in parallel.
+  // Over-fetch matches to build BOTH `recentForm` (last 5) and `recentMatches` (last 10).
+  const [matchesResult, tournamentsResult, rankResult] = await Promise.all([
     client
       .from("match_results")
       .select(
@@ -147,10 +155,25 @@ export async function fetchPublicProfile(
       .eq("winner_id", userId)
       .order("updated_at", { ascending: false })
       .limit(5),
+    client
+      .from("player_stats")
+      .select("user_id, rank_points, wins, matches, goals_for")
+      .eq("game_id", "penalty444")
+      .gte("matches", UNRANKED_MATCHES_THRESHOLD)
+      .order("rank_points", { ascending: false })
+      .order("wins", { ascending: false })
+      .order("matches", { ascending: false })
+      .order("goals_for", { ascending: false }),
   ]);
 
   const matchRows = (matchesResult.data ?? []) as MatchResultRow[];
   const championRows = (tournamentsResult.data ?? []) as TournamentChampRow[];
+  const rankRows = (rankResult.data ?? []) as RankRow[];
+  const globalRank = computeGlobalRankFromRows(
+    rankRows,
+    userId,
+    statsRow.matches ?? 0
+  );
 
   const recentForm = deriveRecentForm(
     matchRows,
@@ -207,6 +230,7 @@ export async function fetchPublicProfile(
     userId,
     username,
     stats,
+    globalRank,
     recentForm,
     recentMatches,
     championships: championRows.map((row) => ({
