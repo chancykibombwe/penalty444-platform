@@ -20,9 +20,7 @@ type PlayerStatsRow = {
   losses: number;
   draws: number;
   goals_for: number;
-  goals_against: number;
   rank_points: number;
-  tier: string;
 };
 
 type LeaderboardPlayer = {
@@ -163,7 +161,7 @@ export default async function LeaderboardPage({
   const to = from + limit - 1;
 
   const statsSelect =
-    "user_id, username, matches, wins, losses, draws, goals_for, goals_against, rank_points, tier";
+    "user_id, username, matches, wins, losses, draws, goals_for, rank_points";
 
   // Global leaderboard: trusted player_stats only. Ranked players (matches >= 10)
   // appear on the ladder; placement players are counted in the header badge.
