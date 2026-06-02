@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
-import { resolvePlayerTier } from "../../../lib/player/ranks";
+import { resolvePlayerTier, UNRANKED_MATCHES_THRESHOLD } from "../../../lib/player/ranks";
 import { getPlacementStatus } from "../../../lib/player/progression";
+import { computeGlobalRankFromRows } from "../../../lib/player/stats";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
@@ -145,8 +146,7 @@ function mapMatchForDisplay(match: MatchResultRow, userId: string): DisplayMatch
  */
 function resolveTierDisplay(
   rankPoints: number | null | undefined,
-  matches: number | null | undefined,
-  legacyTierName: string | null | undefined
+  matches: number | null | undefined
 ): { label: string; badgeClass: string } {
   if (getPlacementStatus(matches).inPlacement) {
     return {
@@ -157,7 +157,6 @@ function resolveTierDisplay(
   const tier = resolvePlayerTier({
     rating: rankPoints ?? null,
     matchesPlayed: matches ?? null,
-    legacyTierName: legacyTierName ?? null,
   });
   return {
     label: tier.label,
@@ -235,6 +234,7 @@ export default async function PlayerProfilePage({
         .from("player_stats")
         .select("user_id, rank_points, wins, matches, goals_for")
         .eq("game_id", "penalty444")
+        .gte("matches", UNRANKED_MATCHES_THRESHOLD)
         .order("rank_points", { ascending: false })
         .order("wins", { ascending: false })
         .order("matches", { ascending: false })
@@ -264,8 +264,11 @@ export default async function PlayerProfilePage({
 
   const stats = statsResult.data as PlayerStatsRow;
   const rankRows = (rankResult.data ?? []) as RankRow[];
-  const rankIndex = rankRows.findIndex((row) => row.user_id === userId);
-  const globalRank = rankIndex >= 0 ? rankIndex + 1 : null;
+  const globalRank = computeGlobalRankFromRows(
+    rankRows,
+    userId,
+    stats.matches
+  );
 
   const activeSeason = !seasonResult.error
     ? ((seasonResult.data?.[0] as SeasonRow | undefined) ?? null)
@@ -317,11 +320,7 @@ export default async function PlayerProfilePage({
   );
 
   const displayName = stats.username;
-  const tierDisplay = resolveTierDisplay(
-    stats.rank_points,
-    stats.matches,
-    stats.tier
-  );
+  const tierDisplay = resolveTierDisplay(stats.rank_points, stats.matches);
   const rankPoints = stats.rank_points ?? 0;
   const seasonStatsTitle = `${activeSeason?.name ?? "Season 1"} Stats`;
 
@@ -424,8 +423,7 @@ export default async function PlayerProfilePage({
               value={
                 resolveTierDisplay(
                   seasonStats.rank_points,
-                  seasonStats.matches,
-                  seasonStats.tier
+                  seasonStats.matches
                 ).label
               }
             />
