@@ -12,7 +12,6 @@ import RivalCard from "../../components/social/RivalCard";
 import { ViewProfileButton } from "../../components/social/SocialActions";
 import { pushNotification } from "../../components/live/NotificationBell";
 import { resolvePlayerTier, UNRANKED_MATCHES_THRESHOLD } from "../../lib/player/ranks";
-import { getPlacementStatus } from "../../lib/player/progression";
 import {
   detectPromotion,
   type PromotionEvent,
@@ -176,18 +175,6 @@ function mapMatchForDisplay(match: MatchResultRow, userId: string): DisplayMatch
   };
 }
 
-/**
- * Season tier label derived from rank_points via the shared rank helper —
- * never the raw DB `tier` string. Players still in placement (season
- * matches < threshold) are shown "Placement".
- */
-function resolveSeasonTierLabel(season: PlayerStatsRow): string {
-  if (getPlacementStatus(season.matches).inPlacement) return "Placement";
-  return resolvePlayerTier({
-    rating: season.rank_points ?? null,
-    matchesPlayed: season.matches ?? null,
-  }).label;
-}
 
 export default function AccountPage() {
   const router = useRouter();
@@ -202,8 +189,6 @@ export default function AccountPage() {
   const [matchHistoryNotice, setMatchHistoryNotice] = useState("");
   const [activeSeason, setActiveSeason] = useState<SeasonRow | null>(null);
   const [seasonCountdown, setSeasonCountdown] = useState<string | null>(null);
-  const [seasonStats, setSeasonStats] = useState<PlayerStatsRow | null>(null);
-  const [seasonRank, setSeasonRank] = useState<number | null>(null);
   const [tournamentWins, setTournamentWins] = useState<number>(0);
   const [promotionEvent, setPromotionEvent] = useState<PromotionEvent | null>(
     null
@@ -222,8 +207,6 @@ export default function AccountPage() {
     async function loadAccount() {
       setLoading(true);
       setMessage("Loading account...");
-      setSeasonStats(null);
-      setSeasonRank(null);
 
       const {
         data: { session },
@@ -324,42 +307,6 @@ export default function AccountPage() {
         season ? formatSeasonCountdown(season.ends_at) : null
       );
 
-      if (season) {
-        const [seasonStatsResult, seasonRankResult] = await Promise.all([
-          supabase
-            .from("season_player_stats")
-            .select(
-              "user_id, username, matches, wins, losses, draws, goals_for, goals_against, rank_points, tier"
-            )
-            .eq("game_id", "penalty444")
-            .eq("season_id", season.id)
-            .eq("user_id", userId)
-            .maybeSingle(),
-          supabase
-            .from("season_player_stats")
-            .select("user_id, rank_points, wins, matches, goals_for")
-            .eq("game_id", "penalty444")
-            .eq("season_id", season.id)
-            .order("rank_points", { ascending: false })
-            .order("wins", { ascending: false })
-            .order("matches", { ascending: false })
-            .order("goals_for", { ascending: false }),
-        ]);
-
-        if (cancelled) return;
-
-        const currentSeasonStats = !seasonStatsResult.error
-          ? (seasonStatsResult.data as PlayerStatsRow | null)
-          : null;
-        const seasonRankRows = (seasonRankResult.data ?? []) as RankRow[];
-        const seasonRankIndex = seasonRankRows.findIndex(
-          (row) => row.user_id === userId
-        );
-
-        setSeasonStats(currentSeasonStats);
-        setSeasonRank(seasonRankIndex >= 0 ? seasonRankIndex + 1 : null);
-      }
-
       setMessage(
         rankResult.error
           ? `Could not calculate global rank: ${rankResult.error.message}`
@@ -394,7 +341,6 @@ export default function AccountPage() {
   const displayedMatches = account
     ? recentMatches.map((match) => mapMatchForDisplay(match, account.id))
     : [];
-  const seasonStatsTitle = `${activeSeason?.name ?? "Season 1"} Stats`;
 
   // Phase 6: promotion detection. Compares current tier vs last-seen tier in
   // localStorage and fires the toast when the player has moved up.
@@ -533,39 +479,11 @@ export default function AccountPage() {
             </div>
           ) : null}
 
-          <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
-            <div className="border-b border-zinc-800/80 px-5 py-4">
-              <h2 className="text-lg font-black text-white">{seasonStatsTitle}</h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                Your current season performance in Penalty444.
-              </p>
-            </div>
-            {seasonStats ? (
-              <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3">
-                <StatCard
-                  label="Season Rank"
-                  value={seasonRank ? `#${seasonRank}` : "—"}
-                />
-                <StatCard label="Season RP" value={seasonStats.rank_points} />
-                <StatCard
-                  label="Season Tier"
-                  value={resolveSeasonTierLabel(seasonStats)}
-                />
-                <StatCard label="Season Matches" value={seasonStats.matches} />
-                <StatCard label="Season Wins" value={seasonStats.wins} />
-                <StatCard label="Season Losses" value={seasonStats.losses} />
-                <StatCard label="Season Draws" value={seasonStats.draws} />
-                <StatCard label="Season Goals For" value={seasonStats.goals_for} />
-                <StatCard
-                  label="Season Goals Against"
-                  value={seasonStats.goals_against}
-                />
-              </div>
-            ) : (
-              <p className="px-5 py-6 text-sm text-zinc-500">
-                No Season 1 matches yet.
-              </p>
-            )}
+          <div className="inline-flex items-center gap-2.5 rounded-xl border border-zinc-800/80 bg-black/45 px-4 py-3">
+            <span className="text-sm font-semibold text-zinc-400">Season Rankings</span>
+            <span className="rounded-full border border-zinc-700/80 bg-zinc-900/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+              Coming soon
+            </span>
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
