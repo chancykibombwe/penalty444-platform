@@ -277,40 +277,6 @@ export default async function PlayerProfilePage({
     ? formatSeasonCountdown(activeSeason.ends_at)
     : null;
 
-  let seasonStats: PlayerStatsRow | null = null;
-  let seasonRank: number | null = null;
-
-  if (activeSeason) {
-    const [seasonStatsResult, seasonRankResult] = await Promise.all([
-      supabase
-        .from("season_player_stats")
-        .select(statsSelect)
-        .eq("game_id", "penalty444")
-        .eq("season_id", activeSeason.id)
-        .eq("user_id", userId)
-        .maybeSingle(),
-      supabase
-        .from("season_player_stats")
-        .select("user_id, rank_points, wins, matches, goals_for")
-        .eq("game_id", "penalty444")
-        .eq("season_id", activeSeason.id)
-        .order("rank_points", { ascending: false })
-        .order("wins", { ascending: false })
-        .order("matches", { ascending: false })
-        .order("goals_for", { ascending: false }),
-    ]);
-
-    if (!seasonStatsResult.error) {
-      seasonStats = seasonStatsResult.data as PlayerStatsRow | null;
-    }
-
-    const seasonRankRows = (seasonRankResult.data ?? []) as RankRow[];
-    const seasonRankIndex = seasonRankRows.findIndex(
-      (row) => row.user_id === userId
-    );
-    seasonRank = seasonRankIndex >= 0 ? seasonRankIndex + 1 : null;
-  }
-
   const matchHistoryUnavailable = Boolean(matchesResult.error);
   const recentMatches = matchHistoryUnavailable
     ? []
@@ -322,7 +288,6 @@ export default async function PlayerProfilePage({
   const displayName = stats.username;
   const tierDisplay = resolveTierDisplay(stats.rank_points, stats.matches);
   const rankPoints = stats.rank_points ?? 0;
-  const seasonStatsTitle = `${activeSeason?.name ?? "Season 1"} Stats`;
 
   return (
     <section className="space-y-8 rounded-[2rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top,_rgba(234,179,8,0.10),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(34,211,238,0.07),_transparent_28%),linear-gradient(180deg,_#050505,_#09090b_42%,_#020202)] p-5 shadow-[0_40px_120px_rgba(0,0,0,0.65)] sm:p-7 lg:p-9">
@@ -404,40 +369,11 @@ export default async function PlayerProfilePage({
         <StatCard label="Goals Against" value={stats.goals_against} />
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
-        <div className="border-b border-zinc-800/80 px-5 py-4">
-          <h2 className="text-lg font-black text-white">{seasonStatsTitle}</h2>
-          <p className="mt-1 text-sm text-zinc-500">
-            Current season performance in Penalty444.
-          </p>
-        </div>
-        {seasonStats ? (
-          <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3">
-            <StatCard
-              label="Season Rank"
-              value={seasonRank ? `#${seasonRank}` : "—"}
-            />
-            <StatCard label="Season RP" value={seasonStats.rank_points} />
-            <StatCard
-              label="Season Tier"
-              value={
-                resolveTierDisplay(
-                  seasonStats.rank_points,
-                  seasonStats.matches
-                ).label
-              }
-            />
-            <StatCard label="Season Wins" value={seasonStats.wins} />
-            <StatCard label="Season Losses" value={seasonStats.losses} />
-            <StatCard label="Season Draws" value={seasonStats.draws} />
-          </div>
-        ) : (
-          <p className="px-5 py-6 text-sm text-zinc-500">
-            {activeSeason
-              ? "No season matches yet."
-              : "No active season right now."}
-          </p>
-        )}
+      <div className="inline-flex items-center gap-2.5 rounded-xl border border-zinc-800/80 bg-black/45 px-4 py-3">
+        <span className="text-sm font-semibold text-zinc-400">Season Rankings</span>
+        <span className="rounded-full border border-zinc-700/80 bg-zinc-900/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+          Coming soon
+        </span>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
