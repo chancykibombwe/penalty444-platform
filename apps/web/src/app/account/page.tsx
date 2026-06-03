@@ -35,7 +35,6 @@ type PlayerStatsRow = {
   goals_for: number;
   goals_against: number;
   rank_points: number;
-  tier: string;
 };
 
 type RankRow = {
@@ -98,19 +97,6 @@ function formatSeasonCountdown(endsAt: string) {
 
   if (days > 0) return `Ends in ${days}d ${hours}h`;
   return `Ends in ${hours}h ${minutes}m`;
-}
-
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-2xl border border-zinc-800/80 bg-black/45 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
-      <p className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
-        {label}
-      </p>
-      <p className="mt-3 text-3xl font-black tracking-tight text-white">
-        {value}
-      </p>
-    </div>
-  );
 }
 
 function SettingRow({ title, description }: { title: string; description: string }) {
@@ -229,7 +215,7 @@ export default function AccountPage() {
           supabase
             .from("player_stats")
             .select(
-              "user_id, username, matches, wins, losses, draws, goals_for, goals_against, rank_points, tier"
+              "user_id, username, matches, wins, losses, draws, goals_for, goals_against, rank_points"
             )
             .eq("game_id", "penalty444")
             .eq("user_id", userId)
@@ -337,13 +323,11 @@ export default function AccountPage() {
     };
   }, [activeSeason]);
 
-  const displayName = stats?.username || account?.email || "Player";
+  const displayName = stats?.username || "Arena Player";
   const displayedMatches = account
     ? recentMatches.map((match) => mapMatchForDisplay(match, account.id))
     : [];
 
-  // Phase 6: promotion detection. Compares current tier vs last-seen tier in
-  // localStorage and fires the toast when the player has moved up.
   useEffect(() => {
     if (!account?.id || !stats) return;
     if ((stats.matches ?? 0) < UNRANKED_MATCHES_THRESHOLD) return;
@@ -354,8 +338,6 @@ export default function AccountPage() {
     const event = detectPromotion(account.id, tier);
     if (event) {
       setPromotionEvent(event);
-      // Phase 7: surface the promotion in the navbar bell as well so it's
-      // discoverable from other parts of the platform after dismissal.
       pushNotification({
         kind: "promotion",
         tone: event.to.id === "champion" ? "champion" : "promotion",
@@ -385,31 +367,22 @@ export default function AccountPage() {
   }, [account, stats, recentMatches, tournamentWins]);
 
   return (
-    <section className="space-y-8 rounded-[2rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top,_rgba(234,179,8,0.10),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(34,211,238,0.07),_transparent_28%),linear-gradient(180deg,_#050505,_#09090b_42%,_#020202)] p-5 shadow-[0_40px_120px_rgba(0,0,0,0.65)] sm:p-7 lg:p-9">
+    <div className="space-y-6 pb-24 sm:pb-6">
       <PromotionToast event={promotionEvent} />
-      <div>
-        <p className="text-xs font-bold uppercase tracking-[0.34em] text-yellow-300/70">
-          Player Profile
-        </p>
-        <h1 className="mt-2 text-4xl font-black tracking-tight text-white sm:text-5xl">
-          444 ARENA Account
-        </h1>
-        <p className="mt-3 max-w-2xl text-sm text-zinc-500 sm:text-base">
-          Your Penalty444 ranked profile and lifetime arena stats.
-        </p>
-        {activeSeason ? (
-          <div className="mt-4 inline-flex flex-col rounded-xl border border-yellow-500/30 bg-yellow-950/20 px-4 py-3 shadow-lg shadow-black/30">
-            <p className="text-sm font-semibold text-yellow-100">
-              {activeSeason.name} · Active
-            </p>
-            {seasonCountdown ? (
-              <p className="mt-1 text-xs font-medium text-yellow-200/80">
-                {seasonCountdown}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
+
+      {activeSeason ? (
+        <div className="inline-flex items-center gap-2 rounded-full border border-yellow-500/35 bg-yellow-950/20 px-3 py-1.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-yellow-400" aria-hidden />
+          <span className="text-xs font-bold text-yellow-100">
+            {activeSeason.name}
+          </span>
+          {seasonCountdown ? (
+            <span className="text-xs font-medium text-yellow-200/70">
+              · {seasonCountdown}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       {loading ? (
         <div className="rounded-2xl border border-zinc-800/80 bg-black/45 p-6 text-zinc-300">
@@ -427,64 +400,11 @@ export default function AccountPage() {
         <>
           <CompetitiveProfileCard
             username={displayName}
-            subline={account?.email ?? null}
             stats={competitiveStats}
             globalRank={globalRank}
           />
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            <div className="lg:col-span-2">
-              <AchievementGrid stats={competitiveStats} />
-            </div>
-            <RecentForm form={competitiveStats?.recentForm ?? []} />
-          </div>
-
-          <TrophiesPreview count={tournamentWins} />
-
-          <WalletPanel userId={account?.id ?? null} />
-
-          {stats?.username ? (
-            <section
-              className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-cyan-400/30 bg-cyan-500/5 px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.35)] sm:px-5"
-              aria-label="Public profile share"
-            >
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-cyan-200">
-                  Public profile
-                </p>
-                <p className="mt-0.5 truncate text-sm font-bold text-white">
-                  /profile/{stats.username}
-                </p>
-              </div>
-              <ViewProfileButton
-                username={stats.username}
-                size="md"
-                variant="primary"
-                label="Open public profile"
-              />
-            </section>
-          ) : null}
-
-          <RivalCard viewerUserId={account?.id ?? null} />
-
-          {!stats ? (
-            <div className="rounded-2xl border border-zinc-800/80 bg-black/45 p-6 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
-              <h2 className="text-2xl font-black text-white">
-                No ranked matches yet
-              </h2>
-              <p className="mt-2 max-w-2xl text-zinc-500">
-                Play a completed Penalty444 ranked match to create your arena
-                stats row and appear on the leaderboard.
-              </p>
-            </div>
-          ) : null}
-
-          <div className="inline-flex items-center gap-2.5 rounded-xl border border-zinc-800/80 bg-black/45 px-4 py-3">
-            <span className="text-sm font-semibold text-zinc-400">Season Rankings</span>
-            <span className="rounded-full border border-zinc-700/80 bg-zinc-900/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-              Coming soon
-            </span>
-          </div>
+          <RecentForm form={competitiveStats?.recentForm ?? []} />
 
           <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
             <div className="border-b border-zinc-800/80 px-5 py-4">
@@ -537,6 +457,43 @@ export default function AccountPage() {
             )}
           </div>
 
+          <AchievementGrid stats={competitiveStats} />
+
+          <TrophiesPreview count={tournamentWins} />
+
+          <div className="inline-flex items-center gap-2.5 rounded-xl border border-zinc-800/80 bg-black/45 px-4 py-3">
+            <span className="text-sm font-semibold text-zinc-400">Season Rankings</span>
+            <span className="rounded-full border border-zinc-700/80 bg-zinc-900/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+              Coming soon
+            </span>
+          </div>
+
+          <WalletPanel userId={account?.id ?? null} />
+
+          {stats?.username ? (
+            <section
+              className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-cyan-400/30 bg-cyan-500/5 px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.35)] sm:px-5"
+              aria-label="Public profile share"
+            >
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-cyan-200">
+                  Public profile
+                </p>
+                <p className="mt-0.5 truncate text-sm font-bold text-white">
+                  /profile/{stats.username}
+                </p>
+              </div>
+              <ViewProfileButton
+                username={stats.username}
+                size="md"
+                variant="primary"
+                label="Open public profile"
+              />
+            </section>
+          ) : null}
+
+          <RivalCard viewerUserId={account?.id ?? null} />
+
           <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
             <div className="border-b border-zinc-800/80 px-5 py-4">
               <h2 className="text-lg font-black text-white">Settings</h2>
@@ -574,6 +531,6 @@ export default function AccountPage() {
           </div>
         </>
       ) : null}
-    </section>
+    </div>
   );
 }
