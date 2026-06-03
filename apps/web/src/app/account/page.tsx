@@ -323,7 +323,7 @@ export default function AccountPage() {
     };
   }, [activeSeason]);
 
-  const displayName = stats?.username || account?.email || "Player";
+  const displayName = stats?.username || "Arena Player";
   const displayedMatches = account
     ? recentMatches.map((match) => mapMatchForDisplay(match, account.id))
     : [];
