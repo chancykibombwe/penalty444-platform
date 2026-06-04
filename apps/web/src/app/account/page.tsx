@@ -101,7 +101,7 @@ function formatSeasonCountdown(endsAt: string) {
 
 function SettingRow({ title, description }: { title: string; description: string }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-t border-zinc-800/80 px-5 py-4 first:border-t-0">
+    <div className="flex items-center justify-between gap-4 border-t border-zinc-800/60 px-4 py-3.5 first:border-t-0">
       <div>
         <p className="font-semibold text-white">{title}</p>
         <p className="mt-1 text-sm text-zinc-500">{description}</p>
@@ -453,14 +453,20 @@ export default function AccountPage() {
             )}
           </div>
 
-          <AchievementGrid stats={competitiveStats} />
+          <AchievementGrid
+            stats={competitiveStats}
+            className="!bg-zinc-950/80 !shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+          />
 
-          <TrophiesPreview count={tournamentWins} />
+          <TrophiesPreview
+            count={tournamentWins}
+            className="!bg-zinc-950/80 !shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+          />
 
-          <div className="inline-flex items-center gap-2.5 rounded-xl border border-zinc-800/80 bg-black/45 px-4 py-3">
-            <span className="text-sm font-semibold text-zinc-400">Season Rankings</span>
-            <span className="rounded-full border border-zinc-700/80 bg-zinc-900/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-              Coming soon
+          <div className="inline-flex items-center gap-2 rounded-full border border-zinc-800/50 px-3 py-1.5">
+            <span className="text-xs font-semibold text-zinc-500">Season Rankings</span>
+            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-600">
+              · Coming soon
             </span>
           </div>
 
@@ -468,14 +474,14 @@ export default function AccountPage() {
 
           {stats?.username ? (
             <section
-              className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-cyan-400/30 bg-cyan-500/5 px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.35)] sm:px-5"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-700/50 bg-zinc-900/40 px-4 py-3 sm:px-5"
               aria-label="Public profile share"
             >
               <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-cyan-200">
+                <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-zinc-500">
                   Public profile
                 </p>
-                <p className="mt-0.5 truncate text-sm font-bold text-white">
+                <p className="mt-0.5 truncate text-sm font-semibold text-zinc-200">
                   /profile/{stats.username}
                 </p>
               </div>
@@ -490,8 +496,8 @@ export default function AccountPage() {
 
           <RivalCard viewerUserId={account?.id ?? null} />
 
-          <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950/80 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
-            <div className="border-b border-zinc-800/80 px-4 py-3">
+          <div className="overflow-hidden rounded-2xl border border-zinc-800/60 bg-zinc-950/80 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+            <div className="border-b border-zinc-800/60 px-4 py-3">
               <h2 className="text-sm font-black uppercase tracking-widest text-white">
                 Settings
               </h2>

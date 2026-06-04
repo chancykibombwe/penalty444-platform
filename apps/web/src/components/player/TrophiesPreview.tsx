@@ -19,14 +19,15 @@ type Props = {
   count: number;
   /** Optional rich list (rendered when present, otherwise a count summary). */
   trophies?: ReadonlyArray<Trophy>;
+  className?: string;
 };
 
-export default function TrophiesPreview({ count, trophies }: Props) {
+export default function TrophiesPreview({ count, trophies, className }: Props) {
   const hasAny = count > 0;
 
   return (
     <section
-      className="rounded-2xl border border-zinc-800/80 bg-black/45 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.35)] sm:p-6"
+      className={`rounded-2xl border border-zinc-800/80 bg-black/45 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.35)] sm:p-6 ${className ?? ""}`}
       aria-label="Tournament trophies"
     >
       <div className="flex items-end justify-between gap-3">

@@ -22,6 +22,7 @@ type Props = {
   showHeader?: boolean;
   /** Optional href for a "See all" button. */
   seeAllHref?: string;
+  className?: string;
 };
 
 export default function AchievementGrid({
@@ -29,6 +30,7 @@ export default function AchievementGrid({
   limit,
   showHeader = true,
   seeAllHref,
+  className,
 }: Props) {
   const all = getAllAchievementProgress(stats);
   const items = typeof limit === "number" ? all.slice(0, limit) : all;
@@ -36,7 +38,7 @@ export default function AchievementGrid({
 
   return (
     <section
-      className="rounded-2xl border border-zinc-800/80 bg-black/45 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.35)] sm:p-6"
+      className={`rounded-2xl border border-zinc-800/80 bg-black/45 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.35)] sm:p-6 ${className ?? ""}`}
       aria-label="Achievements"
     >
       {showHeader ? (
