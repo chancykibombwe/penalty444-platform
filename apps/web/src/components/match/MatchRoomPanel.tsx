@@ -3214,7 +3214,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               </button>
             ) : null}
 
-            {opponentName && opponentName !== "Opponent" ? (
+            {opponentName.trim().length > 0 && opponentName !== "Opponent" ? (
               <Link
                 href={`/profile/${encodeURIComponent(opponentName)}`}
                 className="inline-flex items-center gap-1.5 rounded-2xl border border-zinc-700 bg-black/40 px-5 py-4 text-center text-sm font-black uppercase tracking-wider text-zinc-200 transition-colors hover:border-cyan-400/55 hover:text-cyan-100"
@@ -3225,7 +3225,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             ) : null}
 
             {!isTournamentMatch &&
-            opponentName &&
+            opponentName.trim().length > 0 &&
             opponentName !== "Opponent" ? (
               <Link
                 href={`/lobby?challenge=${encodeURIComponent(opponentName)}`}
