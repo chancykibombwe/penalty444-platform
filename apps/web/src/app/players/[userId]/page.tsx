@@ -1,8 +1,16 @@
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
-import { resolvePlayerTier, UNRANKED_MATCHES_THRESHOLD } from "../../../lib/player/ranks";
-import { getPlacementStatus } from "../../../lib/player/progression";
-import { computeGlobalRankFromRows } from "../../../lib/player/stats";
+import { UNRANKED_MATCHES_THRESHOLD } from "../../../lib/player/ranks";
+import {
+  computeGlobalRankFromRows,
+  deriveRecentForm,
+  deriveStreak,
+  type CompetitiveStats,
+} from "../../../lib/player/stats";
+import CompetitiveProfileCard from "../../../components/player/CompetitiveProfileCard";
+import AchievementGrid from "../../../components/player/AchievementGrid";
+import TrophiesPreview from "../../../components/player/TrophiesPreview";
+import RecentForm from "../../../components/player/RecentForm";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
@@ -49,6 +57,7 @@ type DisplayMatch = {
   key: string;
   result: "W" | "D" | "L";
   opponent: string;
+  opponentUsername: string;
   score: string;
   dateLabel: string;
 };
@@ -78,18 +87,6 @@ function formatSeasonCountdown(endsAt: string) {
   return `Ends in ${hours}h ${minutes}m`;
 }
 
-function getInitials(username: string) {
-  const initials = username
-    .trim()
-    .split(/\s+/)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
-  return initials || "?";
-}
-
 function getResultBadgeClass(result: DisplayMatch["result"]) {
   switch (result) {
     case "W":
@@ -103,10 +100,8 @@ function getResultBadgeClass(result: DisplayMatch["result"]) {
 
 function formatMatchDate(createdAt: string | null) {
   if (!createdAt) return "—";
-
   const date = new Date(createdAt);
   if (Number.isNaN(date.getTime())) return "—";
-
   return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -121,7 +116,7 @@ function mapMatchForDisplay(match: MatchResultRow, userId: string): DisplayMatch
       ? "W"
       : "L";
   const isPlayerOne = userId === match.player_one_id;
-  const opponent = isPlayerOne
+  const rawOpponent = isPlayerOne
     ? match.player_two_username
     : match.player_one_username;
   const myScore = isPlayerOne ? match.player_one_score : match.player_two_score;
@@ -132,77 +127,34 @@ function mapMatchForDisplay(match: MatchResultRow, userId: string): DisplayMatch
   return {
     key: `${match.room_code}-${match.match_instance}`,
     result,
-    opponent,
+    opponent: rawOpponent || "Opponent",
+    opponentUsername: (rawOpponent ?? "").trim(),
     score: `${myScore} - ${opponentScore}`,
     dateLabel: formatMatchDate(match.created_at),
   };
 }
 
-/**
- * Resolve a trustworthy tier label from rank_points using the shared rank
- * helper — never the raw DB `tier` string. Players still in placement
- * (matches < UNRANKED_MATCHES_THRESHOLD) are shown "Placement".
- */
-function resolveTierDisplay(
-  rankPoints: number | null | undefined,
-  matches: number | null | undefined
-): { label: string; badgeClass: string } {
-  if (getPlacementStatus(matches).inPlacement) {
-    return {
-      label: "Placement",
-      badgeClass: "border-cyan-500/45 bg-cyan-950/35 text-cyan-200",
-    };
-  }
-  const tier = resolvePlayerTier({
-    rating: rankPoints ?? null,
-    matchesPlayed: matches ?? null,
-  });
-  return {
-    label: tier.label,
-    badgeClass: `${tier.borderClass} ${tier.bgClass} ${tier.textClass}`,
-  };
-}
-
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-2xl border border-zinc-800/80 bg-black/45 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
-      <p className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
-        {label}
-      </p>
-      <p className="mt-3 text-3xl font-black tracking-tight text-white">
-        {value}
-      </p>
-    </div>
-  );
-}
-
 function PlayerNotFound() {
   return (
-    <section className="space-y-8 rounded-[2rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top,_rgba(234,179,8,0.10),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(34,211,238,0.07),_transparent_28%),linear-gradient(180deg,_#050505,_#09090b_42%,_#020202)] p-5 shadow-[0_40px_120px_rgba(0,0,0,0.65)] sm:p-7 lg:p-9">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-[0.34em] text-yellow-300/70">
+    <div className="mx-auto max-w-4xl">
+      <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/80 p-8 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
           Player Profile
         </p>
-        <h1 className="mt-2 text-4xl font-black tracking-tight text-white sm:text-5xl">
+        <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">
           Player not found
         </h1>
-        <p className="mt-3 max-w-2xl text-sm text-zinc-500 sm:text-base">
+        <p className="mt-2 text-sm text-zinc-400">
           This player does not have a Penalty444 ranked profile yet.
-        </p>
-      </div>
-
-      <div className="rounded-2xl border border-zinc-800/80 bg-black/45 p-6 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
-        <p className="text-zinc-400">
-          Check the spelling or browse the leaderboard for active competitors.
         </p>
         <Link
           href="/leaderboard"
-          className="mt-4 inline-flex rounded-xl border border-zinc-700 px-4 py-3 text-sm font-semibold text-white hover:border-zinc-500"
+          className="mt-5 inline-flex rounded-xl border border-zinc-700 px-4 py-2.5 text-sm font-semibold text-white hover:border-zinc-500"
         >
           View Leaderboard
         </Link>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -221,7 +173,7 @@ export default async function PlayerProfilePage({
   const statsSelect =
     "user_id, username, matches, wins, losses, draws, goals_for, goals_against, rank_points";
 
-  const [statsResult, rankResult, seasonResult, matchesResult] =
+  const [statsResult, rankResult, seasonResult, matchesResult, tournamentsResult] =
     await Promise.all([
       supabase
         .from("player_stats")
@@ -255,6 +207,12 @@ export default async function PlayerProfilePage({
         .or(`player_one_id.eq.${userId},player_two_id.eq.${userId}`)
         .order("created_at", { ascending: false })
         .limit(10),
+      supabase
+        .from("tournaments")
+        .select("id")
+        .eq("game_id", "penalty444")
+        .eq("status", "completed")
+        .eq("winner_id", userId),
     ]);
 
   if (statsResult.error || !statsResult.data) {
@@ -263,11 +221,7 @@ export default async function PlayerProfilePage({
 
   const stats = statsResult.data as PlayerStatsRow;
   const rankRows = (rankResult.data ?? []) as RankRow[];
-  const globalRank = computeGlobalRankFromRows(
-    rankRows,
-    userId,
-    stats.matches
-  );
+  const globalRank = computeGlobalRankFromRows(rankRows, userId, stats.matches);
 
   const activeSeason = !seasonResult.error
     ? ((seasonResult.data?.[0] as SeasonRow | undefined) ?? null)
@@ -284,144 +238,118 @@ export default async function PlayerProfilePage({
     mapMatchForDisplay(match, userId)
   );
 
-  const displayName = stats.username;
-  const tierDisplay = resolveTierDisplay(stats.rank_points, stats.matches);
-  const rankPoints = stats.rank_points ?? 0;
+  const recentForm = deriveRecentForm(recentMatches, userId, 5);
+  const streak = deriveStreak(recentForm);
+  const tournamentWins = tournamentsResult.error
+    ? 0
+    : (tournamentsResult.data?.length ?? 0);
+
+  const competitiveStats: CompetitiveStats = {
+    username: stats.username,
+    rating: stats.rank_points,
+    wins: stats.wins,
+    losses: stats.losses,
+    draws: stats.draws,
+    matches: stats.matches,
+    goalsFor: stats.goals_for,
+    goalsAgainst: stats.goals_against,
+    tournamentWins,
+    streak,
+    recentForm,
+  };
 
   return (
-    <section className="space-y-8 rounded-[2rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top,_rgba(234,179,8,0.10),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(34,211,238,0.07),_transparent_28%),linear-gradient(180deg,_#050505,_#09090b_42%,_#020202)] p-5 shadow-[0_40px_120px_rgba(0,0,0,0.65)] sm:p-7 lg:p-9">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-[0.34em] text-yellow-300/70">
-          Player Profile
-        </p>
-        <h1 className="mt-2 text-4xl font-black tracking-tight text-white sm:text-5xl">
-          {displayName}
-        </h1>
-        <p className="mt-3 max-w-2xl text-sm text-zinc-500 sm:text-base">
-          Public Penalty444 ranked profile and arena stats.
-        </p>
-        {activeSeason ? (
-          <div className="mt-4 inline-flex flex-col rounded-xl border border-yellow-500/30 bg-yellow-950/20 px-4 py-3 shadow-lg shadow-black/30">
-            <p className="text-sm font-semibold text-yellow-100">
-              {activeSeason.name} · Active
-            </p>
-            {seasonCountdown ? (
-              <p className="mt-1 text-xs font-medium text-yellow-200/80">
-                {seasonCountdown}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="rounded-[1.75rem] border border-zinc-800/80 bg-black/45 p-6 shadow-[0_28px_80px_rgba(0,0,0,0.45)] sm:p-8">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-            <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/70 text-3xl font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_45px_rgba(0,0,0,0.45)]">
-              {getInitials(displayName)}
-            </div>
-
-            <div>
-              <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-3xl font-black tracking-tight text-white sm:text-4xl">
-                  {displayName}
-                </h2>
-                <span
-                  className={`inline-flex rounded-full border px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide ${tierDisplay.badgeClass}`}
-                >
-                  {tierDisplay.label}
-                </span>
-              </div>
-              <p className="mt-2 text-sm text-zinc-500">
-                Penalty444 ranked competitor
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 lg:min-w-[320px]">
-            <div className="rounded-2xl border border-yellow-300/20 bg-yellow-950/10 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-yellow-300/70">
-                Rank Points
-              </p>
-              <p className="mt-2 text-4xl font-black tracking-tighter text-yellow-100">
-                {rankPoints}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-zinc-700/80 bg-black/35 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
-                Global Rank
-              </p>
-              <p className="mt-2 text-4xl font-black tracking-tighter text-white">
-                {globalRank ? `#${globalRank}` : "—"}
-              </p>
-            </div>
-          </div>
+    <div className="mx-auto max-w-4xl space-y-5 pb-24 sm:pb-6">
+      {activeSeason ? (
+        <div className="inline-flex items-center gap-2 rounded-full border border-yellow-500/35 bg-yellow-950/20 px-3 py-1.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-yellow-400" aria-hidden />
+          <span className="text-xs font-bold text-yellow-100">
+            {activeSeason.name}
+          </span>
+          {seasonCountdown ? (
+            <span className="text-xs font-medium text-yellow-200/70">
+              · {seasonCountdown}
+            </span>
+          ) : null}
         </div>
-      </div>
+      ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Matches" value={stats.matches} />
-        <StatCard label="Wins" value={stats.wins} />
-        <StatCard label="Losses" value={stats.losses} />
-        <StatCard label="Draws" value={stats.draws} />
-        <StatCard label="Goals For" value={stats.goals_for} />
-        <StatCard label="Goals Against" value={stats.goals_against} />
-      </div>
+      <CompetitiveProfileCard
+        username={stats.username}
+        subline="Competitor"
+        stats={competitiveStats}
+        globalRank={globalRank}
+      />
 
-      <div className="inline-flex items-center gap-2.5 rounded-xl border border-zinc-800/80 bg-black/45 px-4 py-3">
-        <span className="text-sm font-semibold text-zinc-400">Season Rankings</span>
-        <span className="rounded-full border border-zinc-700/80 bg-zinc-900/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-          Coming soon
-        </span>
-      </div>
+      <RecentForm form={recentForm} />
 
-      <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
-        <div className="border-b border-zinc-800/80 px-5 py-4">
-          <h2 className="text-lg font-black text-white">Recent Matches</h2>
-          <p className="mt-1 text-sm text-zinc-500">
-            Latest Penalty444 arena results.
-          </p>
+      <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950/80 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+        <div className="flex items-center justify-between border-b border-zinc-800/80 px-4 py-3">
+          <h2 className="text-sm font-black uppercase tracking-widest text-white">
+            Recent Matches
+          </h2>
+          {displayedMatches.length > 0 ? (
+            <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-zinc-500">
+              Last {displayedMatches.length}
+            </span>
+          ) : null}
         </div>
-        {matchHistoryUnavailable ? (
-          <p className="px-5 py-6 text-sm text-zinc-500">
-            Match history unavailable.
-          </p>
-        ) : displayedMatches.length > 0 ? (
-          <div>
-            {displayedMatches.map((match) => (
-              <div
+        <ul>
+          {matchHistoryUnavailable ? (
+            <li className="px-4 py-6 text-sm text-zinc-500">
+              Match history unavailable.
+            </li>
+          ) : displayedMatches.length > 0 ? (
+            displayedMatches.map((match) => (
+              <li
                 key={match.key}
-                className="flex flex-col gap-3 border-t border-zinc-800/80 px-5 py-4 first:border-t-0 sm:flex-row sm:items-center sm:justify-between"
+                className="flex items-center gap-3 border-t border-zinc-800/80 px-4 py-3 first:border-t-0"
               >
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-sm font-black ${getResultBadgeClass(
-                      match.result
-                    )}`}
-                  >
-                    {match.result}
-                  </span>
-                  <div>
-                    <p className="font-semibold text-white">
+                <span
+                  className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-xs font-black ${getResultBadgeClass(match.result)}`}
+                >
+                  {match.result}
+                </span>
+                <div className="min-w-0 flex-1">
+                  {match.opponentUsername.length > 0 ? (
+                    <Link
+                      href={`/profile/${encodeURIComponent(match.opponentUsername)}`}
+                      className="block truncate text-sm font-semibold text-white hover:text-cyan-200"
+                    >
+                      vs {match.opponent}
+                    </Link>
+                  ) : (
+                    <p className="truncate text-sm font-semibold text-white">
                       vs {match.opponent}
                     </p>
-                    <p className="mt-1 text-sm text-zinc-500">
-                      {match.dateLabel}
-                    </p>
-                  </div>
+                  )}
+                  <p className="text-[11px] text-zinc-500">{match.dateLabel}</p>
                 </div>
-                <div className="flex items-center gap-4 text-sm sm:justify-end">
-                  <span className="font-semibold text-white">{match.score}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="px-5 py-6 text-sm text-zinc-500">
-            No match history yet.
-          </p>
-        )}
+                <span className="shrink-0 text-sm font-black tabular-nums text-zinc-300">
+                  {match.score}
+                </span>
+              </li>
+            ))
+          ) : (
+            <li className="px-4 py-6 text-sm text-zinc-500">
+              No match history yet.
+            </li>
+          )}
+        </ul>
       </div>
-    </section>
+
+      <AchievementGrid stats={competitiveStats} />
+
+      <TrophiesPreview count={tournamentWins} />
+
+      <div className="inline-flex items-center gap-2 rounded-full border border-zinc-800/50 px-3 py-1.5">
+        <span className="text-xs font-semibold text-zinc-500">
+          Season Rankings
+        </span>
+        <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-600">
+          · Coming soon
+        </span>
+      </div>
+    </div>
   );
 }
