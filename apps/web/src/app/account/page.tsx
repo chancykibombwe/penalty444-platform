@@ -367,7 +367,7 @@ export default function AccountPage() {
   }, [account, stats, recentMatches, tournamentWins]);
 
   return (
-    <div className="space-y-6 pb-24 sm:pb-6">
+    <div className="mx-auto max-w-4xl space-y-5 pb-24 sm:pb-6">
       <PromotionToast event={promotionEvent} />
 
       {activeSeason ? (
@@ -385,7 +385,7 @@ export default function AccountPage() {
       ) : null}
 
       {loading ? (
-        <div className="rounded-2xl border border-zinc-800/80 bg-black/45 p-6 text-zinc-300">
+        <div className="rounded-2xl border border-zinc-800/80 bg-black/45 p-5 text-zinc-400">
           {message}
         </div>
       ) : null}
@@ -404,54 +404,50 @@ export default function AccountPage() {
             globalRank={globalRank}
           />
 
-          <RecentForm form={competitiveStats?.recentForm ?? []} />
+          <RecentForm form={competitiveStats?.recentForm ?? []} className="!p-4" />
 
-          <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
-            <div className="border-b border-zinc-800/80 px-5 py-4">
-              <h2 className="text-lg font-black text-white">Recent Matches</h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                Your latest Penalty444 arena results.
-              </p>
+          <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950/80 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+            <div className="flex items-center justify-between border-b border-zinc-800/80 px-4 py-3">
+              <h2 className="text-sm font-black uppercase tracking-widest text-white">
+                Recent Matches
+              </h2>
+              {displayedMatches.length > 0 ? (
+                <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-zinc-500">
+                  Last {displayedMatches.length}
+                </span>
+              ) : null}
             </div>
             {matchHistoryNotice ? (
-              <p className="border-b border-zinc-800/80 px-5 py-3 text-sm text-zinc-500">
+              <p className="border-b border-zinc-800/80 px-4 py-3 text-xs text-zinc-500">
                 {matchHistoryNotice}
               </p>
             ) : null}
             {displayedMatches.length > 0 ? (
-              <div>
+              <ul>
                 {displayedMatches.map((match) => (
-                  <div
+                  <li
                     key={match.key}
-                    className="flex flex-col gap-3 border-t border-zinc-800/80 px-5 py-4 first:border-t-0 sm:flex-row sm:items-center sm:justify-between"
+                    className="flex items-center gap-3 border-t border-zinc-800/80 px-4 py-3 first:border-t-0"
                   >
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-sm font-black ${getResultBadgeClass(
-                          match.result
-                        )}`}
-                      >
-                        {match.result}
-                      </span>
-                      <div>
-                        <p className="font-semibold text-white">
-                          vs {match.opponent}
-                        </p>
-                        <p className="mt-1 text-sm text-zinc-500">
-                          {match.dateLabel}
-                        </p>
-                      </div>
+                    <span
+                      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-xs font-black ${getResultBadgeClass(match.result)}`}
+                    >
+                      {match.result}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-white">
+                        vs {match.opponent}
+                      </p>
+                      <p className="text-[11px] text-zinc-500">{match.dateLabel}</p>
                     </div>
-                    <div className="flex items-center gap-4 text-sm sm:justify-end">
-                      <span className="font-semibold text-white">
-                        {match.score}
-                      </span>
-                    </div>
-                  </div>
+                    <span className="shrink-0 text-sm font-black tabular-nums text-zinc-300">
+                      {match.score}
+                    </span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             ) : (
-              <p className="px-5 py-6 text-sm text-zinc-500">
+              <p className="px-4 py-6 text-sm text-zinc-500">
                 No match history yet.
               </p>
             )}
@@ -494,12 +490,11 @@ export default function AccountPage() {
 
           <RivalCard viewerUserId={account?.id ?? null} />
 
-          <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
-            <div className="border-b border-zinc-800/80 px-5 py-4">
-              <h2 className="text-lg font-black text-white">Settings</h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                Account controls and preferences will appear here.
-              </p>
+          <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950/80 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+            <div className="border-b border-zinc-800/80 px-4 py-3">
+              <h2 className="text-sm font-black uppercase tracking-widest text-white">
+                Settings
+              </h2>
             </div>
             <SettingRow
               title="Account Settings"
@@ -519,12 +514,12 @@ export default function AccountPage() {
             />
           </div>
 
-          <div className="pt-2">
+          <div className="pt-1">
             <button
               type="button"
               onClick={() => void handleLogout()}
               disabled={loggingOut}
-              className="w-full rounded-xl border border-zinc-700 px-4 py-3 font-semibold text-white hover:border-zinc-500 disabled:opacity-50 sm:w-auto"
+              className="rounded-xl border border-zinc-700/80 px-5 py-2.5 text-sm font-semibold text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white disabled:opacity-50"
             >
               {loggingOut ? "Logging out..." : "Logout"}
             </button>
