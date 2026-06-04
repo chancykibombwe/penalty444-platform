@@ -19,7 +19,6 @@ type PlayerStatsRow = {
   goals_for: number;
   goals_against: number;
   rank_points: number;
-  tier: string;
 };
 
 type RankRow = {
@@ -220,7 +219,7 @@ export default async function PlayerProfilePage({
   }
 
   const statsSelect =
-    "user_id, username, matches, wins, losses, draws, goals_for, goals_against, rank_points, tier";
+    "user_id, username, matches, wins, losses, draws, goals_for, goals_against, rank_points";
 
   const [statsResult, rankResult, seasonResult, matchesResult] =
     await Promise.all([

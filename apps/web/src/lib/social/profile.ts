@@ -65,7 +65,6 @@ type PlayerStatsRow = {
   goals_for: number | null;
   goals_against: number | null;
   rank_points: number | null;
-  tier: string | null;
 };
 
 type MatchResultRow = {
@@ -110,7 +109,7 @@ export async function resolveUsernameToStats(
     const result = await client
       .from("player_stats")
       .select(
-        "user_id, username, matches, wins, losses, draws, goals_for, goals_against, rank_points, tier"
+        "user_id, username, matches, wins, losses, draws, goals_for, goals_against, rank_points"
       )
       .eq("game_id", "penalty444")
       .ilike("username", username)
