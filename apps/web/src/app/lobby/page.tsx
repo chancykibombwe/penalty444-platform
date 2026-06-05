@@ -19,60 +19,78 @@ function LobbyPageContent() {
   return (
     <RequireAuth>
       <LobbyConnectionProvider>
-        <div className="relative mx-auto max-w-4xl space-y-6 pb-24 sm:pb-6">
+        {/*
+          Full-screen arena shell.
+          globals.css sets `background: var(--background)` on body which is
+          #ffffff in light mode, overriding the layout's bg-zinc-950 class.
+          This wrapper forces a dark canvas at the page level.
+          -mx-6 -mt-6 cancels the main's p-6 padding so the dark bg fills
+          all the way to the viewport edges.
+        */}
+        <div className="relative -mx-6 -mt-6 min-h-screen overflow-x-hidden bg-zinc-950 pb-28 md:pb-6">
 
-          {/* Page header */}
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
-              444 ARENA · Penalty444
-            </p>
-            <h1 className="mt-1 text-3xl font-black tracking-tight text-white sm:text-4xl">
-              Match Hub
-            </h1>
-            <p className="mt-2 text-sm text-zinc-400">
-              Find a ranked opponent, create a private room, or join an open
-              challenge.
-            </p>
+          {/* Atmospheric background layers */}
+          <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+            <div className="absolute left-1/2 top-0 h-[500px] w-full max-w-3xl -translate-x-1/2 rounded-full bg-violet-700/10 blur-[160px]" />
+            <div className="absolute -right-24 top-40 h-72 w-72 rounded-full bg-fuchsia-700/8 blur-[100px]" />
+            <div className="absolute -left-24 bottom-1/3 h-56 w-56 rounded-full bg-cyan-900/5 blur-[80px]" />
           </div>
 
-          {/* Challenge context banner */}
-          {hasChallengeContext ? (
-            <div className="inline-flex items-start gap-3 rounded-2xl border border-cyan-500/30 bg-cyan-950/20 px-4 py-3 shadow-[0_0_20px_rgba(34,211,238,0.07)]">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" aria-hidden />
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-cyan-100">
-                  Challenging {challengeUsername}
-                </p>
-                <p className="mt-0.5 text-xs text-cyan-200/65">
-                  Create a private room and share the code with this player.
-                </p>
+          {/* Page content */}
+          <div className="relative mx-auto max-w-4xl space-y-8 px-6 pt-6">
+
+            {/* Page header */}
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
+                444 ARENA · Penalty444
+              </p>
+              <h1 className="mt-1 text-4xl font-black tracking-tight text-white sm:text-5xl">
+                Match Hub
+              </h1>
+              <p className="mt-2 text-sm text-zinc-400">
+                Find a ranked opponent, create a private room, or join an open
+                challenge.
+              </p>
+            </div>
+
+            {/* Challenge context banner */}
+            {hasChallengeContext ? (
+              <div className="inline-flex items-start gap-3 rounded-2xl border border-cyan-500/30 bg-cyan-950/20 px-4 py-3 shadow-[0_0_20px_rgba(34,211,238,0.07)]">
+                <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" aria-hidden />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-cyan-100">
+                    Challenging {challengeUsername}
+                  </p>
+                  <p className="mt-0.5 text-xs text-cyan-200/65">
+                    Create a private room and share the code with this player.
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Ranked matchmaking — primary action */}
+            <RankedMatchmakingPanel />
+
+            {/* Public match offers */}
+            <PublicMatchOffersPanel />
+
+            {/* Private rooms */}
+            <div>
+              <p className="mb-3 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
+                Private Rooms
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <CreateRoomPanel
+                  challengeUserId={hasChallengeContext ? challengeUserId : undefined}
+                  challengeUsername={
+                    hasChallengeContext ? challengeUsername : undefined
+                  }
+                />
+                <JoinRoomPanel />
               </div>
             </div>
-          ) : null}
 
-          {/* Ranked matchmaking — primary action */}
-          <RankedMatchmakingPanel />
-
-          {/* Public match offers */}
-          <PublicMatchOffersPanel />
-
-          {/* Private rooms */}
-          <div>
-            <p className="mb-3 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
-              Private Rooms
-            </p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <CreateRoomPanel
-                challengeUserId={hasChallengeContext ? challengeUserId : undefined}
-                challengeUsername={
-                  hasChallengeContext ? challengeUsername : undefined
-                }
-              />
-              <JoinRoomPanel />
-            </div>
           </div>
-
-          <div aria-hidden className="pointer-events-none absolute left-1/2 top-0 h-72 w-[600px] -translate-x-1/2 rounded-full bg-violet-600/10 blur-[100px]" />
         </div>
       </LobbyConnectionProvider>
     </RequireAuth>
@@ -81,15 +99,17 @@ function LobbyPageContent() {
 
 function LobbyPageShell() {
   return (
-    <div className="mx-auto max-w-4xl space-y-6 pb-24 sm:pb-6">
-      <div>
-        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
-          444 ARENA · Penalty444
-        </p>
-        <h1 className="mt-1 text-3xl font-black tracking-tight text-white sm:text-4xl">
-          Match Hub
-        </h1>
-        <p className="mt-2 text-sm text-zinc-400">Loading match hub…</p>
+    <div className="relative -mx-6 -mt-6 min-h-screen overflow-x-hidden bg-zinc-950 pb-28 md:pb-6">
+      <div className="relative mx-auto max-w-4xl px-6 pt-6">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
+            444 ARENA · Penalty444
+          </p>
+          <h1 className="mt-1 text-4xl font-black tracking-tight text-white sm:text-5xl">
+            Match Hub
+          </h1>
+          <p className="mt-2 text-sm text-zinc-400">Loading match hub…</p>
+        </div>
       </div>
     </div>
   );
