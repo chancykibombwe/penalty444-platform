@@ -183,81 +183,107 @@ export default function RankedMatchmakingPanel() {
   }
 
   return (
-    <section className="relative space-y-5 overflow-hidden rounded-3xl border border-violet-500/30 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 shadow-[0_0_40px_rgba(139,92,246,0.12),0_8px_32px_rgba(0,0,0,0.5)] sm:p-7">
-      <div aria-hidden className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-violet-600/15 blur-[60px]" />
-      <div aria-hidden className="pointer-events-none absolute -bottom-8 left-8 h-32 w-32 rounded-full bg-fuchsia-600/10 blur-[40px]" />
+    <section className="relative overflow-hidden rounded-3xl border border-violet-500/30 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 shadow-[0_0_60px_rgba(139,92,246,0.15),0_8px_32px_rgba(0,0,0,0.5)] sm:p-8 md:p-10">
+      <div aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-violet-600/15 blur-[80px]" />
+      <div aria-hidden className="pointer-events-none absolute -bottom-12 left-4 h-48 w-48 rounded-full bg-fuchsia-600/10 blur-[60px]" />
 
-      <div>
-        <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-2xl bg-violet-500/20 ring-1 ring-violet-500/30">
-          <svg className="h-5 w-5 text-violet-300" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M14.615 1.595a.75.75 0 01.359.852L12.982 9.75h7.268a.75.75 0 01.548 1.262l-10.5 11.25a.75.75 0 01-1.272-.71l1.992-7.302H3.818a.75.75 0 01-.548-1.262l10.5-11.25a.75.75 0 01.845-.143z" />
-          </svg>
-        </div>
+      {/* Two-zone layout: left content + right decorative arena art */}
+      <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:gap-10">
 
-        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-violet-300/70">
-          Ranked Arena
-        </p>
+        {/* Left zone — all interactive content */}
+        <div className="min-w-0 flex-1 space-y-5">
+          <div>
+            <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-2xl bg-violet-500/20 ring-1 ring-violet-500/30">
+              <svg className="h-5 w-5 text-violet-300" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M14.615 1.595a.75.75 0 01.359.852L12.982 9.75h7.268a.75.75 0 01.548 1.262l-10.5 11.25a.75.75 0 01-1.272-.71l1.992-7.302H3.818a.75.75 0 01-.548-1.262l10.5-11.25a.75.75 0 01.845-.143z" />
+              </svg>
+            </div>
 
-        <h2 className="mt-0.5 text-3xl font-black tracking-tight text-white sm:text-4xl">
-          Quick Match
-        </h2>
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-violet-300/70">
+              Ranked Arena
+            </p>
 
-        <p className="text-sm font-semibold text-violet-300/70">
-          Ranked Matchmaking
-        </p>
+            <h2 className="mt-0.5 text-3xl font-black tracking-tight text-white sm:text-4xl">
+              Quick Match
+            </h2>
 
-        <p className="mt-3 text-sm text-zinc-400">
-          You will be paired with the next available player in the queue.
-        </p>
+            <p className="text-sm font-semibold text-violet-300/70">
+              Ranked Matchmaking
+            </p>
 
-        <p className="mt-3 text-xs text-zinc-500">
-          Realtime:{" "}
-          <span className={connected ? "text-emerald-400" : "text-red-400"}>
-            {connected ? "Connected" : "Disconnected"}
-          </span>
-        </p>
-      </div>
+            <p className="mt-3 text-sm text-zinc-400">
+              You will be paired with the next available player in the queue.
+            </p>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-        <button
-          type="button"
-          onClick={findRankedMatch}
-          disabled={!connected || enqueueing || inQueue}
-          className="rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-600 px-8 py-4 text-sm font-black text-white shadow-[0_0_24px_rgba(139,92,246,0.4)] transition-all hover:shadow-[0_0_32px_rgba(139,92,246,0.5)] disabled:opacity-50"
-        >
-          {enqueueing && !inQueue ? "Joining…" : "Find Ranked Match"}
-        </button>
-
-        <button
-          type="button"
-          onClick={cancelQueue}
-          disabled={!connected || cancelling || (!inQueue && !enqueueing)}
-          className="rounded-xl border border-zinc-700 bg-zinc-950/80 px-5 py-4 text-sm font-semibold text-zinc-300 transition-colors hover:border-violet-500/40 hover:text-zinc-100 disabled:opacity-50"
-        >
-          {cancelling ? "Leaving…" : "Cancel Queue"}
-        </button>
-      </div>
-
-      {inQueue ? (
-        <div className="rounded-2xl border border-violet-500/30 bg-violet-950/20 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-violet-400" />
-            <p className="text-sm font-black text-violet-100">
-              Searching for a ranked opponent…
+            <p className="mt-3 text-xs text-zinc-500">
+              Realtime:{" "}
+              <span className={connected ? "text-emerald-400" : "text-red-400"}>
+                {connected ? "Connected" : "Disconnected"}
+              </span>
             </p>
           </div>
-          <p className="mt-1 text-xs text-violet-200/70">
-            Stay on this page. You will enter the arena automatically when a
-            match is found.
-          </p>
-        </div>
-      ) : null}
 
-      {status ? (
-        <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-400">
-          {status}
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            <button
+              type="button"
+              onClick={findRankedMatch}
+              disabled={!connected || enqueueing || inQueue}
+              className="rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-600 px-8 py-4 text-sm font-black text-white shadow-[0_0_24px_rgba(139,92,246,0.4)] transition-all hover:shadow-[0_0_32px_rgba(139,92,246,0.5)] disabled:opacity-50"
+            >
+              {enqueueing && !inQueue ? "Joining…" : "Find Ranked Match"}
+            </button>
+
+            <button
+              type="button"
+              onClick={cancelQueue}
+              disabled={!connected || cancelling || (!inQueue && !enqueueing)}
+              className="rounded-xl border border-zinc-700 bg-zinc-950/80 px-5 py-4 text-sm font-semibold text-zinc-300 transition-colors hover:border-violet-500/40 hover:text-zinc-100 disabled:opacity-50"
+            >
+              {cancelling ? "Leaving…" : "Cancel Queue"}
+            </button>
+          </div>
+
+          {inQueue ? (
+            <div className="rounded-2xl border border-violet-500/30 bg-violet-950/20 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-violet-400" />
+                <p className="text-sm font-black text-violet-100">
+                  Searching for a ranked opponent…
+                </p>
+              </div>
+              <p className="mt-1 text-xs text-violet-200/70">
+                Stay on this page. You will enter the arena automatically when a
+                match is found.
+              </p>
+            </div>
+          ) : null}
+
+          {status ? (
+            <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-400">
+              {status}
+            </div>
+          ) : null}
         </div>
-      ) : null}
+
+        {/* Right zone — purely decorative arena art, desktop only */}
+        <div aria-hidden className="pointer-events-none hidden shrink-0 sm:flex sm:w-40 sm:items-center sm:justify-center md:w-48">
+          <div className="relative flex h-40 w-40 items-center justify-center md:h-48 md:w-48">
+            <div className="absolute inset-0 rounded-full border border-violet-500/15" />
+            <div className="absolute inset-5 rounded-full border border-violet-400/10" />
+            <div className="absolute inset-10 rounded-full border border-violet-400/8" />
+            <div className="absolute inset-0 rounded-full bg-violet-700/8 blur-2xl" />
+            <svg
+              className="relative h-16 w-16 text-violet-300/25 md:h-20 md:w-20"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <path d="M14.615 1.595a.75.75 0 01.359.852L12.982 9.75h7.268a.75.75 0 01.548 1.262l-10.5 11.25a.75.75 0 01-1.272-.71l1.992-7.302H3.818a.75.75 0 01-.548-1.262l10.5-11.25a.75.75 0 01.845-.143z" />
+            </svg>
+          </div>
+        </div>
+
+      </div>
     </section>
   );
 }
