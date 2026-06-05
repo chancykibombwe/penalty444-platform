@@ -483,17 +483,17 @@ export default function PublicMatchOffersPanel() {
   }
 
   return (
-    <section className="space-y-6 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+    <section className="space-y-5 overflow-hidden rounded-3xl border border-zinc-800/80 bg-zinc-950/80 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5)] sm:p-7">
       <div>
-        <p className="text-sm font-medium uppercase tracking-wide text-zinc-500">
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
           Public Challenges
         </p>
 
-        <h2 className="mt-2 text-2xl font-bold text-white">
+        <h2 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl">
           Public Match Offers
         </h2>
 
-        <p className="mt-2 text-zinc-400">
+        <p className="mt-2 text-sm text-zinc-400">
           Create a visible challenge or join another player’s open match.
         </p>
 
@@ -507,15 +507,15 @@ export default function PublicMatchOffersPanel() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <div>
-          <label className="mb-2 block text-sm text-zinc-300">
-            Stake Label
+          <label className="mb-2 block text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
+            Stake
           </label>
 
           <select
             value={stakeLabel}
             onChange={(event) => setStakeLabel(event.target.value)}
             disabled={creating || Boolean(cancellingOfferId)}
-            className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none disabled:opacity-50"
+            className="w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-3 text-sm text-white outline-none transition-colors focus:border-zinc-500 disabled:opacity-50"
           >
             <option value="Free">Free</option>
             <option value="K10">K10</option>
@@ -525,13 +525,15 @@ export default function PublicMatchOffersPanel() {
         </div>
 
         <div>
-          <label className="mb-2 block text-sm text-zinc-300">Rounds</label>
+          <label className="mb-2 block text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
+            Rounds
+          </label>
 
           <select
             value={rounds}
             onChange={(event) => setRounds(Number(event.target.value))}
             disabled={creating || Boolean(cancellingOfferId)}
-            className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none disabled:opacity-50"
+            className="w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-3 text-sm text-white outline-none transition-colors focus:border-zinc-500 disabled:opacity-50"
           >
             <option value={3}>3 rounds</option>
             <option value={5}>5 rounds</option>
@@ -543,42 +545,44 @@ export default function PublicMatchOffersPanel() {
             type="button"
             onClick={createOffer}
             disabled={creating || !connected || Boolean(cancellingOfferId)}
-            className="w-full rounded-xl bg-white px-4 py-3 font-semibold text-zinc-950 disabled:opacity-50"
+            className="w-full rounded-xl bg-white px-4 py-3 text-sm font-black text-zinc-950 transition-opacity disabled:opacity-50"
           >
             {creating ? "Creating..." : "Create Public Offer"}
           </button>
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 md:flex-row">
+      <div className="flex flex-wrap items-center gap-5 border-t border-zinc-800/80 pt-4">
         <button
           type="button"
           onClick={clearSavedMatch}
-          className="rounded-xl border border-zinc-700 px-4 py-3 text-sm font-semibold text-white hover:border-zinc-500"
+          className="text-xs font-semibold text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline"
         >
-          Clear Saved Match
+          Clear saved match
         </button>
 
         <button
           type="button"
           onClick={refreshLobby}
-          className="rounded-xl border border-zinc-700 px-4 py-3 text-sm font-semibold text-white hover:border-zinc-500"
+          className="text-xs font-semibold text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline"
         >
-          Refresh Lobby
+          Refresh lobby
         </button>
       </div>
 
       {status ? (
-        <div className="rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-300">
+        <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-400">
           {status}
         </div>
       ) : null}
 
       <div className="space-y-3">
-        <h3 className="text-lg font-semibold text-white">Open Offers</h3>
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
+          Open Offers
+        </p>
 
         {offers.length === 0 ? (
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5 text-zinc-400">
+          <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/80 px-5 py-6 text-sm text-zinc-500">
             No public offers yet.
           </div>
         ) : (
@@ -589,30 +593,30 @@ export default function PublicMatchOffersPanel() {
             return (
               <div
                 key={offer.offerId}
-                className={`flex flex-col gap-4 rounded-2xl border p-5 md:flex-row md:items-center md:justify-between ${
+                className={`flex flex-col gap-3 rounded-2xl border px-4 py-4 sm:flex-row sm:items-center sm:justify-between ${
                   isHostWaitingOffer
                     ? "border-cyan-500/30 bg-cyan-950/15 shadow-[0_0_24px_rgba(34,211,238,0.06)]"
-                    : "border-zinc-800 bg-zinc-950"
+                    : "border-zinc-800/80 bg-zinc-950/80"
                 }`}
               >
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-lg font-semibold text-white">
+                    <p className="text-sm font-black text-white">
                       {offer.hostUsername}
                     </p>
                     {isHostWaitingOffer ? (
-                      <span className="rounded-full border border-cyan-400/40 bg-cyan-950/40 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-cyan-200">
+                      <span className="rounded-full border border-cyan-400/40 bg-cyan-950/40 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">
                         Your offer
                       </span>
                     ) : null}
                   </div>
 
-                  <p className="mt-1 text-sm text-zinc-400">
-                    Stake: {offer.stakeLabel} • Rounds: {offer.rounds}
+                  <p className="mt-1 text-xs text-zinc-400">
+                    Stake: {offer.stakeLabel} · Rounds: {offer.rounds}
                   </p>
 
-                  <p className="mt-1 text-xs text-zinc-500">
-                    Room: {offer.roomCode}
+                  <p className="mt-1 text-[11px] font-mono text-zinc-600">
+                    {offer.roomCode}
                   </p>
 
                   {isHostWaitingOffer ? (
@@ -630,7 +634,7 @@ export default function PublicMatchOffersPanel() {
                     disabled={
                       cancellingOfferId === offer.offerId || !connected
                     }
-                    className="rounded-xl border border-red-500/40 bg-red-950/30 px-4 py-3 font-semibold text-red-100 hover:border-red-400/60 hover:bg-red-950/50 disabled:opacity-50"
+                    className="rounded-xl border border-red-500/40 bg-red-950/30 px-4 py-2.5 text-sm font-semibold text-red-100 hover:border-red-400/60 hover:bg-red-950/50 disabled:opacity-50"
                   >
                     {cancellingOfferId === offer.offerId
                       ? "Cancelling..."
@@ -645,7 +649,7 @@ export default function PublicMatchOffersPanel() {
                       Boolean(cancellingOfferId) ||
                       !connected
                     }
-                    className="rounded-xl border border-zinc-700 px-4 py-3 font-semibold text-white hover:border-zinc-500 disabled:opacity-50"
+                    className="rounded-xl border border-zinc-700/80 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:border-zinc-500 disabled:opacity-50"
                   >
                     {joiningOfferId === offer.offerId
                       ? "Joining..."

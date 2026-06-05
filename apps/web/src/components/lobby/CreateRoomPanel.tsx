@@ -77,23 +77,31 @@ export default function CreateRoomPanel({
   }
 
   return (
-    <div className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
-      <h2 className="text-xl font-semibold text-white">Create Private Room</h2>
+    <div className="space-y-4 overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950/80 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
+          Private Room
+        </p>
+        <h2 className="mt-1 text-lg font-black text-white">Create Room</h2>
+      </div>
 
-      <p className="text-zinc-400">
+      <p className="text-sm text-zinc-400">
         Start a match and share the room code with your opponent.
       </p>
 
       {challengeUsername ? (
-        <p className="text-sm text-cyan-100/80">
-          Challenge target: {challengeUsername}
-        </p>
+        <div className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/25 bg-cyan-950/20 px-3 py-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" aria-hidden />
+          <p className="text-xs font-semibold text-cyan-100">
+            Challenging {challengeUsername}
+          </p>
+        </div>
       ) : null}
 
       <button
         onClick={createRoom}
         disabled={loading}
-        className="w-full rounded-xl bg-white px-4 py-3 font-semibold text-zinc-950 disabled:opacity-50"
+        className="w-full rounded-xl bg-white px-4 py-3 text-sm font-black text-zinc-950 transition-opacity disabled:opacity-50"
       >
         {loading ? "Creating..." : "Create Room"}
       </button>
