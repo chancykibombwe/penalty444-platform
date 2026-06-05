@@ -19,7 +19,7 @@ function LobbyPageContent() {
   return (
     <RequireAuth>
       <LobbyConnectionProvider>
-        <div className="mx-auto max-w-4xl space-y-6 pb-24 sm:pb-6">
+        <div className="relative mx-auto max-w-4xl space-y-6 pb-24 sm:pb-6">
 
           {/* Page header */}
           <div>
@@ -72,6 +72,7 @@ function LobbyPageContent() {
             </div>
           </div>
 
+          <div aria-hidden className="pointer-events-none absolute left-1/2 top-0 h-72 w-[600px] -translate-x-1/2 rounded-full bg-violet-600/10 blur-[100px]" />
         </div>
       </LobbyConnectionProvider>
     </RequireAuth>
