@@ -92,9 +92,11 @@ export function registerRoomSocketHandlers(socket: Socket) {
     ({
       playerId,
       username,
+      rounds,
     }: {
       playerId: string;
       username?: string;
+      rounds?: unknown;
     }) => {
       if (
         !allowSocketAction(socket.id, "room:create", { playerId })
@@ -128,6 +130,9 @@ export function registerRoomSocketHandlers(socket: Socket) {
         return;
       }
 
+      // Only 3 or 5 rounds are valid; default to 3.
+      const safeRounds = rounds === 5 ? 5 : 3;
+
       const playerName = cleanUsername(username);
 
       const { code } = deps.createRoomWithPlayers(
@@ -142,9 +147,9 @@ export function registerRoomSocketHandlers(socket: Socket) {
             present: false,
           },
         ],
-        3,
+        safeRounds,
         "private",
-        "Free"
+        "Free" // stakeLabel is always Free for private rooms in this version
       );
 
       deps.setPlayerActiveRoom(playerId, code);
@@ -156,6 +161,103 @@ export function registerRoomSocketHandlers(socket: Socket) {
       socket.emit("room:joined", {
         roomCode: code,
       });
+    }
+  );
+
+  socket.on(
+    "room:cancel",
+    ({
+      playerId,
+      roomCode,
+    }: {
+      playerId?: string;
+      roomCode?: string;
+    }) => {
+      if (!allowSocketAction(socket.id, "room:cancel", { playerId, roomCode })) {
+        socket.emit("error:message", {
+          message: "Too many cancel attempts. Please wait.",
+        });
+        return;
+      }
+
+      const normalizedPlayerId =
+        typeof playerId === "string" ? playerId.trim() : "";
+
+      if (!normalizedPlayerId) {
+        socket.emit("error:message", { message: "Player ID is required." });
+        return;
+      }
+
+      const code = normalizeRoomCode(roomCode);
+
+      if (!code) {
+        socket.emit("error:message", { message: "Room code is required." });
+        return;
+      }
+
+      const room = rooms.get(code);
+
+      if (!room || room.matchEnded) {
+        // Room is already gone or the match already ended — treat as success
+        // so the client can cleanly exit the waiting state.
+        socket.leave(code);
+        socket.emit("room:cancelled", { roomCode: code });
+        return;
+      }
+
+      if (room.matchType !== "private") {
+        socket.emit("error:message", {
+          message: "Only private rooms can be cancelled this way.",
+        });
+        return;
+      }
+
+      if (room.matchStartedAt !== undefined) {
+        socket.emit("error:message", {
+          message:
+            "Match has already started and cannot be cancelled from the lobby.",
+        });
+        return;
+      }
+
+      if (room.players.length > 1) {
+        socket.emit("error:message", {
+          message: "Cannot cancel: an opponent has already joined the room.",
+        });
+        return;
+      }
+
+      const creator = room.players[0];
+
+      if (!creator || creator.playerId !== normalizedPlayerId) {
+        socket.emit("error:message", {
+          message: "Only the room creator can cancel this room.",
+        });
+        return;
+      }
+
+      if (!jwtMatchesPlayer(socket, normalizedPlayerId)) {
+        if (jwtEnforcementEnabled()) {
+          console.warn(
+            `[Security] room:cancel jwt_player_mismatch socketId=${socket.id} ` +
+              `playerId=${normalizedPlayerId} verifiedUserId=${socket.data.userId ?? "—"}`
+          );
+          socket.emit("error:message", {
+            message: "Authentication mismatch. Please sign in again.",
+          });
+          return;
+        }
+      }
+
+      socket.leave(code);
+      deps.clearPlayerActiveRoom(normalizedPlayerId);
+      rooms.delete(code);
+
+      console.log(
+        `[room:cancel] host cancelled private room roomCode=${code} playerId=${normalizedPlayerId}`
+      );
+
+      socket.emit("room:cancelled", { roomCode: code });
     }
   );
 
