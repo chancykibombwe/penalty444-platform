@@ -183,17 +183,19 @@ export default function RankedMatchmakingPanel() {
   }
 
   return (
-    <section className="space-y-6 rounded-3xl border border-violet-500/25 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 shadow-[0_0_40px_rgba(139,92,246,0.08)]">
+    <section className="space-y-5 overflow-hidden rounded-3xl border border-violet-500/30 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 shadow-[0_0_40px_rgba(139,92,246,0.12),0_8px_32px_rgba(0,0,0,0.5)] sm:p-7">
       <div>
-        <p className="text-sm font-medium uppercase tracking-wide text-violet-300/80">
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-violet-300/70">
           Ranked Arena
         </p>
 
-        <h2 className="mt-2 text-2xl font-bold text-white">Ranked Matchmaking</h2>
+        <h2 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl">
+          Ranked Matchmaking
+        </h2>
 
-        <p className="mt-2 text-zinc-400">
-          Free 3-round match. You will be paired with the next available player in
-          the queue.
+        <p className="mt-2 text-sm text-zinc-400">
+          Free match. You will be paired with the next available player in the
+          queue.
         </p>
 
         <p className="mt-3 text-xs text-zinc-500">
@@ -209,7 +211,7 @@ export default function RankedMatchmakingPanel() {
           type="button"
           onClick={findRankedMatch}
           disabled={!connected || enqueueing || inQueue}
-          className="rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-600 px-5 py-3.5 font-bold text-white shadow-lg shadow-violet-900/40 disabled:opacity-50"
+          className="rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-600 px-6 py-3.5 text-sm font-black text-white shadow-lg shadow-violet-900/40 transition-opacity disabled:opacity-50"
         >
           {enqueueing && !inQueue ? "Joining…" : "Find Ranked Match"}
         </button>
@@ -218,26 +220,26 @@ export default function RankedMatchmakingPanel() {
           type="button"
           onClick={cancelQueue}
           disabled={!connected || cancelling || (!inQueue && !enqueueing)}
-          className="rounded-xl border border-zinc-600 bg-zinc-950/80 px-5 py-3.5 font-semibold text-zinc-100 hover:border-violet-500/50 hover:bg-zinc-900 disabled:opacity-50"
+          className="rounded-xl border border-zinc-700 bg-zinc-950/80 px-5 py-3.5 text-sm font-semibold text-zinc-300 transition-colors hover:border-violet-500/40 hover:text-zinc-100 disabled:opacity-50"
         >
           {cancelling ? "Leaving…" : "Cancel Queue"}
         </button>
       </div>
 
       {inQueue ? (
-        <div className="rounded-xl border border-violet-500/30 bg-violet-950/20 px-4 py-3">
-          <p className="text-sm font-semibold text-violet-100">
+        <div className="rounded-2xl border border-violet-500/30 bg-violet-950/20 px-4 py-3">
+          <p className="text-sm font-black text-violet-100">
             Searching for a ranked opponent…
           </p>
           <p className="mt-1 text-xs text-violet-200/70">
-            Stay on this page. You will enter the arena automatically when a match
-            is found.
+            Stay on this page. You will enter the arena automatically when a
+            match is found.
           </p>
         </div>
       ) : null}
 
       {status ? (
-        <div className="rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-300">
+        <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-400">
           {status}
         </div>
       ) : null}
