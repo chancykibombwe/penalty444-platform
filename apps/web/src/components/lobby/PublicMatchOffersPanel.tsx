@@ -490,7 +490,7 @@ export default function PublicMatchOffersPanel() {
         </p>
 
         <h2 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl">
-          Public Match Offers
+          Open Challenges
         </h2>
 
         <p className="mt-2 text-sm text-zinc-400">
@@ -505,7 +505,7 @@ export default function PublicMatchOffersPanel() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-4 md:grid-cols-3">
         <div>
           <label className="mb-2 block text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
             Stake
@@ -593,10 +593,10 @@ export default function PublicMatchOffersPanel() {
             return (
               <div
                 key={offer.offerId}
-                className={`flex flex-col gap-3 rounded-2xl border px-4 py-4 sm:flex-row sm:items-center sm:justify-between ${
+                className={`flex flex-col gap-3 rounded-2xl border border-l-2 py-3 pl-5 pr-4 sm:flex-row sm:items-center sm:justify-between ${
                   isHostWaitingOffer
-                    ? "border-cyan-500/30 bg-cyan-950/15 shadow-[0_0_24px_rgba(34,211,238,0.06)]"
-                    : "border-zinc-800/80 bg-zinc-950/80"
+                    ? "border-cyan-500/30 border-l-cyan-400/60 bg-cyan-950/15 shadow-[0_0_24px_rgba(34,211,238,0.06)]"
+                    : "border-zinc-800/60 border-l-violet-500/40 bg-zinc-900/40"
                 }`}
               >
                 <div>
