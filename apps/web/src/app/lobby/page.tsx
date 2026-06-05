@@ -21,13 +21,14 @@ function LobbyPageContent() {
       <LobbyConnectionProvider>
         {/*
           Full-screen arena shell.
-          globals.css sets `background: var(--background)` on body which is
-          #ffffff in light mode, overriding the layout's bg-zinc-950 class.
-          This wrapper forces a dark canvas at the page level.
-          -mx-6 -mt-6 cancels the main's p-6 padding so the dark bg fills
-          all the way to the viewport edges.
+          globals.css sets `background: var(--background)` on both html and
+          body (#ffffff in light mode), which overrides the layout's
+          bg-zinc-950. Using left-1/2 w-screen -translate-x-1/2 instead of
+          negative margins: this sets width to 100vw (viewport-absolute) and
+          centers the shell, so the dark bg covers the full viewport regardless
+          of any parent container width or overflow-x: hidden interaction.
         */}
-        <div className="relative -mx-6 -mt-6 min-h-screen overflow-x-hidden bg-zinc-950 pb-28 md:pb-6">
+        <div className="relative left-1/2 -mt-6 min-h-screen w-screen -translate-x-1/2 overflow-x-hidden bg-zinc-950 pb-28 md:pb-6">
 
           {/* Atmospheric background layers */}
           <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -99,7 +100,7 @@ function LobbyPageContent() {
 
 function LobbyPageShell() {
   return (
-    <div className="relative -mx-6 -mt-6 min-h-screen overflow-x-hidden bg-zinc-950 pb-28 md:pb-6">
+    <div className="relative left-1/2 -mt-6 min-h-screen w-screen -translate-x-1/2 overflow-x-hidden bg-zinc-950 pb-28 md:pb-6">
       <div className="relative mx-auto max-w-4xl px-6 pt-6">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
