@@ -1,5 +1,6 @@
 import type { Server, Socket } from "socket.io";
 import { tryResumeAfterDisconnectGrace } from "../gameplay/disconnectGrace";
+import { clearRoomTimer } from "../gameplay/timers";
 import { cleanUsername, normalizeRoomCode } from "../room/codes";
 import { evaluateMatchStart } from "../room/readiness";
 import {
@@ -249,6 +250,7 @@ export function registerRoomSocketHandlers(socket: Socket) {
         }
       }
 
+      clearRoomTimer(room);
       socket.leave(code);
       deps.clearPlayerActiveRoom(normalizedPlayerId);
       rooms.delete(code);

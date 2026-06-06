@@ -126,13 +126,15 @@ export default function CreateRoomPanel({
     const socket = getSocket();
 
     if (!socket.connected) {
-      // Socket is gone — clear locally without waiting for server ack.
-      clearActiveMatch();
-      setWaitingRoom(null);
+      // Cannot cancel safely without a live connection: the server-side
+      // room and playerActiveRooms mapping may still be alive. Keep the
+      // waiting card visible so the host can retry after reconnecting.
+      setStatus("Reconnect required before cancelling this room.");
       return;
     }
 
     setCancelling(true);
+    setStatus(null);
 
     try {
       const identity = await getCurrentPlayerIdentity();
@@ -142,20 +144,41 @@ export default function CreateRoomPanel({
         return;
       }
 
+      const targetCode = waitingRoom.roomCode;
+
+      // Scoped listeners — cleaned up on success, error, or timeout.
+      const onCancelled = ({ roomCode }: { roomCode?: string }) => {
+        if (roomCode?.trim().toUpperCase() !== targetCode) return;
+        cleanupCancel();
+        // The useEffect room:cancelled listener handles setWaitingRoom(null)
+        // and clearActiveMatch() — both paths are idempotent.
+      };
+
+      const onCancelError = (payload?: { message?: string }) => {
+        cleanupCancel();
+        setCancelling(false);
+        setStatus(payload?.message || "Could not cancel room. Please try again.");
+      };
+
+      const cancelTimeoutId = window.setTimeout(() => {
+        cleanupCancel();
+        setCancelling(false);
+        setStatus("Cancel timed out. Please try again.");
+      }, 5000);
+
+      function cleanupCancel() {
+        window.clearTimeout(cancelTimeoutId);
+        socket.off("room:cancelled", onCancelled);
+        socket.off("error:message", onCancelError);
+      }
+
+      socket.on("room:cancelled", onCancelled);
+      socket.on("error:message", onCancelError);
+
       socket.emit("room:cancel", {
         playerId: identity.playerId,
-        roomCode: waitingRoom.roomCode,
+        roomCode: targetCode,
       });
-
-      // If the server doesn't confirm within 5s, surface a retry prompt.
-      window.setTimeout(() => {
-        setCancelling((prev) => {
-          if (prev) {
-            setStatus("Cancel timed out. Please try again.");
-          }
-          return false;
-        });
-      }, 5000);
     } catch {
       setCancelling(false);
       setStatus("Could not cancel room.");
