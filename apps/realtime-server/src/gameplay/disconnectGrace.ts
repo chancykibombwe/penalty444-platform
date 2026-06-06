@@ -1,7 +1,9 @@
 import type { Server } from "socket.io";
+import { PICK_TIMEOUT_MS } from "../config";
 import { rooms } from "../state/stores";
 import type { Room } from "../types/room";
 import { diagLog } from "../diagnostics/log";
+import { resumePickTimer } from "./timers";
 
 export const DISCONNECT_FORFEIT_MS = 39_000;
 
@@ -194,10 +196,23 @@ export function tryResumeAfterDisconnectGrace(
   });
 
   if (shouldRestartPickTimerOnReconnect(room, playerId)) {
-    startRoundTimer(roomCode, room);
+    // Preserve the remaining pick window rather than giving a fresh 10 seconds.
+    // This prevents the disconnect/reconnect timer-reset exploit where a player
+    // disconnects at 1s remaining, reconnects, and gets a full new window.
+    const elapsed = Date.now() - (room.pickWindowStartedAt ?? Date.now());
+    const remainingMs = PICK_TIMEOUT_MS - elapsed;
+
+    diagLog(
+      `[diag:disconnect-policy] RECONNECT_RESUME_REMAINING_TIME ` +
+        `roomCode=${roomCode} playerId=${playerId} round=${room.round} ` +
+        `pickWindowStartedAt=${room.pickWindowStartedAt ?? "—"} ` +
+        `elapsed=${elapsed} remainingMs=${remainingMs}`
+    );
+
+    resumePickTimer(roomCode, room, remainingMs);
   } else {
     diagLog(
-      `[diag:disconnect-policy] reconnect skip startRoundTimer after grace clear ` +
+      `[diag:disconnect-policy] reconnect skip resumePickTimer after grace clear ` +
         `roomCode=${roomCode} playerId=${playerId} ` +
         `isResolving=${Boolean(room.isResolving)} ` +
         `matchEnded=${Boolean(room.matchEnded)}`
