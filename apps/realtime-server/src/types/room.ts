@@ -83,6 +83,17 @@ export type Room = {
    */
   disconnectForfeitGeneration?: number;
   /**
+   * Wall-clock epoch (ms) when the current round's pick window opened.
+   * Set by `startRoundTimer` and preserved across disconnect/reconnect so
+   * `resumePickTimer` can give the player only the time they had left,
+   * not a fresh full window.
+   *
+   * Not cleared by `clearPickTimer` — intentionally survives the NO_PICK_YET
+   * disconnect path so the remaining-time calculation stays accurate on
+   * reconnect. Overwritten on the next `startRoundTimer` call (new round).
+   */
+  pickWindowStartedAt?: number;
+  /**
    * Phase 6C — pre-match return window.
    *
    * Set when both player slots are filled but at least one player

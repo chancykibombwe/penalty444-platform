@@ -235,6 +235,8 @@ export function startRoundTimer(roomCode: string, room: Room) {
   });
 
   const pickEpoch = bumpPickTimerEpoch(roomCode);
+  // Record the wall-clock start so resumePickTimer can compute remaining time.
+  room.pickWindowStartedAt = Date.now();
 
   room.timeout = setTimeout(() => {
     const liveRoom = rooms.get(roomCode);
@@ -248,4 +250,83 @@ export function startRoundTimer(roomCode: string, room: Room) {
 
     resolveRound(roomCode, liveRoom, true);
   }, PICK_TIMEOUT_MS);
+}
+
+/**
+ * Minimum pick window given to a reconnecting player, in milliseconds.
+ *
+ * Prevents an instant-timeout UX when a player had only a few ms remaining
+ * and their socket reconnected before they could render the UI. The floor is
+ * intentionally short — it does not restore the full pick window; it only
+ * avoids a jarring immediate forfeit for a genuine fast reconnect.
+ */
+const RESUME_FLOOR_MS = 1500;
+
+/**
+ * Resume the pick window after a disconnect/reconnect with only the time
+ * that was left when the player disconnected.
+ *
+ * Replaces the `startRoundTimer` call in the reconnect-resume path so that
+ * disconnecting and reconnecting cannot reset the clock to a fresh 10 seconds.
+ *
+ * Behaviour:
+ *   remainingMs <= 0  →  the window already expired; resolve as timeout now.
+ *   remainingMs > 0   →  arm pick timer for `max(remainingMs, RESUME_FLOOR_MS)`.
+ *
+ * The same epoch-invalidation and stale-timer protections used by
+ * `startRoundTimer` apply here.
+ */
+export function resumePickTimer(
+  roomCode: string,
+  room: Room,
+  remainingMs: number
+): void {
+  const { io, resolveRound } = getTimerDeps();
+
+  if (remainingMs <= 0) {
+    // Pick window already expired while the player was disconnected.
+    // Resolve exactly as the normal pick-timer timeout would have.
+    const liveRoom = rooms.get(roomCode);
+    if (liveRoom && !liveRoom.matchEnded && !liveRoom.isResolving) {
+      diagLog(
+        `[diag:disconnect-policy] RESUME_EXPIRED_RESOLVING_AS_TIMEOUT ` +
+          `roomCode=${roomCode} round=${room.round} remainingMs=${remainingMs}`
+      );
+      resolveRound(roomCode, liveRoom, true);
+    }
+    return;
+  }
+
+  clearPickTimer(room);
+
+  if (room.matchEnded) return;
+  if (room.players.length < 2) return;
+
+  const effectiveMs = Math.max(RESUME_FLOOR_MS, remainingMs);
+  const timeoutSeconds = Math.ceil(effectiveMs / 1000);
+
+  diagLog(
+    `[diag:disconnect-policy] RESUME_PICK_TIMER ` +
+      `roomCode=${roomCode} round=${room.round} ` +
+      `remainingMs=${remainingMs} effectiveMs=${effectiveMs} timeoutSeconds=${timeoutSeconds}`
+  );
+
+  io.to(roomCode).emit("match:status", {
+    message:
+      room.phase === "SUDDEN_DEATH"
+        ? `Sudden Death ${room.suddenDeathRound}. ${timeoutSeconds} second${timeoutSeconds === 1 ? "" : "s"} remaining.`
+        : `Round continues. ${timeoutSeconds} second${timeoutSeconds === 1 ? "" : "s"} remaining.`,
+    timeoutSeconds,
+    phase: room.phase,
+    suddenDeathRound: room.suddenDeathRound,
+  });
+
+  const pickEpoch = bumpPickTimerEpoch(roomCode);
+
+  room.timeout = setTimeout(() => {
+    const liveRoom = rooms.get(roomCode);
+    if (!liveRoom) return;
+    if (pickTimerEpochByRoomCode.get(roomCode) !== pickEpoch) return;
+    resolveRound(roomCode, liveRoom, true);
+  }, effectiveMs);
 }
