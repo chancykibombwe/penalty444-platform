@@ -97,7 +97,7 @@ export default function RankedMatchmakingPanel() {
       setEnqueueing(false);
       setCancelling(false);
       setInQueue(false);
-      setStatus("Left ranked queue.");
+      setStatus("Left the queue. You can rejoin any time.");
     }
 
     socket.on("connect_error", onConnectError);
@@ -212,7 +212,11 @@ export default function RankedMatchmakingPanel() {
             </p>
 
             <p className="mt-3 text-sm text-zinc-400">
-              You will be paired with the next available player in the queue.
+              Ranked Free Match · 3 rounds. You&apos;ll be paired with the next
+              available player.
+            </p>
+            <p className="mt-1 text-xs text-zinc-500">
+              Results count toward your global stats and rank.
             </p>
 
             <p className="mt-3 text-xs text-zinc-500">
