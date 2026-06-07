@@ -114,12 +114,24 @@ export default function ActiveMatchRecovery() {
       clearActiveMatch();
     }
 
+    // Clear active match when a private room is cancelled. Uses roomCode-aware
+    // matching so a player in a different room is never affected. Falls back to
+    // an unconditional clear when the payload carries no roomCode (defensive).
+    function onRoomCancelled(payload: { roomCode?: string }) {
+      const existing = getActiveMatch();
+      if (!existing) return;
+      const code = payload?.roomCode?.trim().toUpperCase();
+      if (code && existing.roomCode !== code) return;
+      clearActiveMatch();
+    }
+
     socket.on("connect", onConnect);
     socket.on("room:created", onRoomCreated);
     socket.on("room:joined", onRoomJoined);
     socket.on("publicOffer:created", onPublicOfferCreated);
     socket.on("publicOffer:matched", onPublicOfferMatched);
     socket.on("publicOffer:cancelled", onPublicOfferCancelled);
+    socket.on("room:cancelled", onRoomCancelled);
     socket.on("activeRoom:snapshot", onActiveRoomSnapshot);
     socket.on("match:end", onMatchEnd);
     socket.on("match:update", onMatchUpdate);
@@ -138,6 +150,7 @@ export default function ActiveMatchRecovery() {
       socket.off("publicOffer:created", onPublicOfferCreated);
       socket.off("publicOffer:matched", onPublicOfferMatched);
       socket.off("publicOffer:cancelled", onPublicOfferCancelled);
+      socket.off("room:cancelled", onRoomCancelled);
       socket.off("activeRoom:snapshot", onActiveRoomSnapshot);
       socket.off("match:end", onMatchEnd);
       socket.off("match:update", onMatchUpdate);
