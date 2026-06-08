@@ -27,7 +27,6 @@ export default function PublicMatchOffersPanel() {
 
   const [offers, setOffers] = useState<PublicMatchOffer[]>([]);
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
-  const [stakeLabel, setStakeLabel] = useState("Free");
   const [rounds, setRounds] = useState(3);
   const [status, setStatus] = useState("");
   const [creating, setCreating] = useState(false);
@@ -314,7 +313,7 @@ export default function PublicMatchOffersPanel() {
     socket.emit("publicOffer:create", {
       playerId: identity.playerId,
       username: identity.username,
-      stakeLabel,
+      stakeLabel: "Free",
       rounds,
     });
   }
@@ -510,18 +509,10 @@ export default function PublicMatchOffersPanel() {
           <label className="mb-2 block text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
             Stake
           </label>
-
-          <select
-            value={stakeLabel}
-            onChange={(event) => setStakeLabel(event.target.value)}
-            disabled={creating || Boolean(cancellingOfferId)}
-            className="w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-3 text-sm text-white outline-none transition-colors focus:border-zinc-500 disabled:opacity-50"
-          >
-            <option value="Free">Free</option>
-            <option value="K10">K10</option>
-            <option value="K50">K50</option>
-            <option value="K100">K100</option>
-          </select>
+          <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+            <span className="text-sm font-black text-emerald-300">Free</span>
+            <span className="text-xs text-zinc-600">— Paid stakes coming soon.</span>
+          </div>
         </div>
 
         <div>
