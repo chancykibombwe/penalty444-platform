@@ -1590,6 +1590,11 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
         r.phase = "SUDDEN_DEATH";
         r.suddenDeathRound = 1;
         r.picks = {};
+        // Invalidate the previous round's pick-window timestamp before the
+        // absent-player-grace branch (below) can skip `startRoundTimer` and
+        // leave it stale — see RECONNECT_FRESH_TIMER_NO_PICK_WINDOW in
+        // disconnectGrace.ts.
+        r.pickWindowStartedAt = undefined;
         r.round += 1;
         swapRoles(r);
 
@@ -1674,6 +1679,11 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
     swapRoles(r);
 
     r.picks = {};
+    // Invalidate the previous round's pick-window timestamp before the
+    // absent-player-grace branch (below) can skip `startRoundTimer` and
+    // leave it stale — see RECONNECT_FRESH_TIMER_NO_PICK_WINDOW in
+    // disconnectGrace.ts.
+    r.pickWindowStartedAt = undefined;
     r.round += 1;
 
     emitRoomUpdate(roomCode, r);
