@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { supabase } from "../../lib/supabase/client";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
+import { getPublicEconomyMode } from "../../lib/economy/mode";
 import {
   lockTournamentEntry,
   refundTournamentEntry,
@@ -82,13 +83,24 @@ export default function TournamentEntryActions({
         return;
       }
 
-      // Phase 11 TASK 4: try to lock the tournament entry escrow first.
-      // For free tournaments / economy off, the server returns
-      // `skipped: true` and we proceed normally.
-      const lock = await lockTournamentEntry(tournament.id);
-      if (lock.ok === false) {
-        setMessage(`Could not reserve entry fee: ${lock.error}`);
-        return;
+      // Beta policy: tournaments are Free Entry and the economy is off
+      // by default. Skip the internal escrow reservation entirely in
+      // that case — calling it would hit the realtime server's internal
+      // secret gate and surface a confusing "Could not reserve entry
+      // fee" error for a path that was never meant to charge anyone.
+      const economyOff = getPublicEconomyMode() === "off";
+      let lockSkipped = true;
+
+      if (!economyOff) {
+        // Phase 11 TASK 4: try to lock the tournament entry escrow first.
+        // For free tournaments, the server returns `skipped: true` and
+        // we proceed normally.
+        const lock = await lockTournamentEntry(tournament.id);
+        if (lock.ok === false) {
+          setMessage(`Could not reserve entry fee: ${lock.error}`);
+          return;
+        }
+        lockSkipped = lock.skipped === true;
       }
 
       const { error } = await supabase.from("tournament_entries").insert({
@@ -100,7 +112,7 @@ export default function TournamentEntryActions({
 
       if (error) {
         // Roll back the escrow if registration failed.
-        if (lock.skipped !== true) {
+        if (!lockSkipped) {
           await refundTournamentEntry(tournament.id);
         }
         setMessage(error.message);
@@ -220,9 +232,14 @@ export default function TournamentEntryActions({
         return;
       }
 
-      // Phase 11 TASK 4: refund any locked entry escrow. Safe even
-      // when none exists (server returns skipped=true).
-      await refundTournamentEntry(tournament.id);
+      // Beta policy: skip the refund call entirely when the economy is
+      // off — there is nothing to refund, and calling it would hit the
+      // same internal-secret gate as the lock path.
+      if (getPublicEconomyMode() !== "off") {
+        // Phase 11 TASK 4: refund any locked entry escrow. Safe even
+        // when none exists (server returns skipped=true).
+        await refundTournamentEntry(tournament.id);
+      }
 
       setMessage("You have withdrawn from this tournament.");
       onUpdated();
