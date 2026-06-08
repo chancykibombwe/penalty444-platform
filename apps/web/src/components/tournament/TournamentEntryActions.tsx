@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { supabase } from "../../lib/supabase/client";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
@@ -25,6 +26,12 @@ type TournamentEntryActionsProps = {
   onUpdated: () => void;
   /** List cards: short host hint + link to detail. Detail page omits this. */
   showHostStrip?: boolean;
+  /**
+   * List/card context only: after a successful join, send the player to the
+   * tournament detail page (the Tournament Lobby) instead of leaving them on
+   * the list. The detail page already lives there, so it omits this.
+   */
+  redirectToLobbyOnJoin?: boolean;
 };
 
 export default function TournamentEntryActions({
@@ -34,7 +41,9 @@ export default function TournamentEntryActions({
   registeredCount,
   onUpdated,
   showHostStrip = false,
+  redirectToLobbyOnJoin = false,
 }: TournamentEntryActionsProps) {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -121,6 +130,10 @@ export default function TournamentEntryActions({
 
       setMessage("Registered successfully.");
       onUpdated();
+
+      if (redirectToLobbyOnJoin) {
+        router.push(`/tournaments/${tournament.id}`);
+      }
     } catch {
       setMessage("Failed to join tournament.");
     } finally {
@@ -307,8 +320,16 @@ export default function TournamentEntryActions({
       </>
     );
   } else if (myEntry) {
+    const isActiveEntry =
+      myEntry.status === "registered" || myEntry.status === "checked_in";
+
     participantContent = (
       <>
+        {isActiveEntry && isOpen ? (
+          <p className="text-sm font-bold text-amber-100">
+            You&apos;re in — waiting for the host to start the tournament.
+          </p>
+        ) : null}
         <p className="text-xs font-semibold uppercase tracking-wide text-amber-200/80">
           Your status:{" "}
           <span className="text-amber-100">

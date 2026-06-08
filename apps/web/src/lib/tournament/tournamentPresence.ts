@@ -192,7 +192,7 @@ export function getPresenceExplanation(
         : "You are currently in a match.";
     case "WAITING":
       if (tournamentStatus === "registration") {
-        return "Registered — waiting for the host to open ready phase.";
+        return "You're in — waiting for the host to start the tournament.";
       }
       if (tournamentStatus === "check_in") {
         return "Ready phase open — mark yourself ready before kickoff.";

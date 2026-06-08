@@ -1100,30 +1100,32 @@ export default function TournamentListPanel({
                       ) : isActiveParticipant ? (
                         <div className="space-y-2 rounded-xl border border-amber-500/35 bg-amber-950/25 px-3 py-3">
                           <p className="text-sm font-bold text-amber-100">
-                            You&apos;re in this tournament
+                            You&apos;re in — Tournament Lobby
                           </p>
                           <p className="text-xs text-amber-100/80">
-                            {myEntry?.status === "checked_in"
-                              ? "You&apos;re ready. The bracket opens when the host starts it."
-                              : "Mark yourself ready before the bracket opens."}
+                            You&apos;re registered. Waiting for the host to
+                            start the tournament.
                           </p>
                           <Link
                             href={`/tournaments/${tournament.id}`}
                             className="inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-3 text-sm font-black text-zinc-950 hover:from-amber-400 hover:to-orange-500 sm:w-auto sm:py-2"
                           >
-                            Resume Tournament →
+                            Enter Tournament Lobby →
                           </Link>
                         </div>
                       ) : null}
 
-                      <TournamentEntryActions
-                        tournament={tournament}
-                        currentUserId={currentUserId}
-                        myEntry={myEntry}
-                        registeredCount={registeredCount}
-                        onUpdated={refresh}
-                        showHostStrip={isHost && !isLive}
-                      />
+                      {showLiveAccess || !isActiveParticipant ? (
+                        <TournamentEntryActions
+                          tournament={tournament}
+                          currentUserId={currentUserId}
+                          myEntry={myEntry}
+                          registeredCount={registeredCount}
+                          onUpdated={refresh}
+                          showHostStrip={isHost && !isLive}
+                          redirectToLobbyOnJoin
+                        />
+                      ) : null}
                     </div>
                   )}
                 </div>
