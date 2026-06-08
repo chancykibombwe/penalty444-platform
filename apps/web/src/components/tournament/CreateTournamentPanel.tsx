@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase/client";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
 
@@ -60,6 +61,7 @@ function formatDatetimeLocalInput(date: Date): string {
 export default function CreateTournamentPanel({
   onCreated,
 }: CreateTournamentPanelProps) {
+  const router = useRouter();
   const [name, setName] = useState("");
   const [maxPlayers, setMaxPlayers] = useState<number>(8);
   const [roundsPerMatch, setRoundsPerMatch] = useState(3);
@@ -121,16 +123,20 @@ export default function CreateTournamentPanel({
         });
       }
 
-      const { error } = await supabase.from("tournaments").insert({
-        game_id: "penalty444",
-        name: trimmedName,
-        status: "registration",
-        format: "single_elimination",
-        max_players: maxPlayers,
-        rounds_per_match: roundsPerMatch,
-        created_by: identity.playerId,
-        starts_at: startsAtIso,
-      });
+      const { data: created, error } = await supabase
+        .from("tournaments")
+        .insert({
+          game_id: "penalty444",
+          name: trimmedName,
+          status: "registration",
+          format: "single_elimination",
+          max_players: maxPlayers,
+          rounds_per_match: roundsPerMatch,
+          created_by: identity.playerId,
+          starts_at: startsAtIso,
+        })
+        .select("id")
+        .single();
 
       if (error) {
         setStatus(error.message);
@@ -140,8 +146,19 @@ export default function CreateTournamentPanel({
 
       setName("");
       setStartsAt("");
-      setStatus("Tournament created. Players can register now.");
+      // Beta UX: the host is the creator (`created_by`), not automatically a
+      // participant — that requires a separate `tournament_entries` row via
+      // the existing Join Tournament flow. Send the host straight to the
+      // detail page, which already shows host status and a Join Tournament
+      // action so they can decide whether to also play.
+      setStatus(
+        "Tournament created. You are hosting this event. Join as a player from the tournament page if you want to compete."
+      );
       onCreated?.();
+
+      if (created?.id) {
+        router.push(`/tournaments/${created.id}`);
+      }
     } catch {
       setStatus("Failed to create tournament.");
     } finally {
