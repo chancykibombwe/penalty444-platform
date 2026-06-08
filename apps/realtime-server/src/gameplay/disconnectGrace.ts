@@ -196,20 +196,36 @@ export function tryResumeAfterDisconnectGrace(
   });
 
   if (shouldRestartPickTimerOnReconnect(room, playerId)) {
-    // Preserve the remaining pick window rather than giving a fresh 10 seconds.
-    // This prevents the disconnect/reconnect timer-reset exploit where a player
-    // disconnects at 1s remaining, reconnects, and gets a full new window.
-    const elapsed = Date.now() - (room.pickWindowStartedAt ?? Date.now());
-    const remainingMs = PICK_TIMEOUT_MS - elapsed;
+    if (room.pickWindowStartedAt !== undefined) {
+      // Preserve the remaining pick window rather than giving a fresh 10
+      // seconds. This prevents the disconnect/reconnect timer-reset exploit
+      // where a player disconnects at 1s remaining, reconnects, and gets a
+      // full new window. (PR #60 — must not be weakened.)
+      const elapsed = Date.now() - room.pickWindowStartedAt;
+      const remainingMs = PICK_TIMEOUT_MS - elapsed;
 
-    diagLog(
-      `[diag:disconnect-policy] RECONNECT_RESUME_REMAINING_TIME ` +
-        `roomCode=${roomCode} playerId=${playerId} round=${room.round} ` +
-        `pickWindowStartedAt=${room.pickWindowStartedAt ?? "—"} ` +
-        `elapsed=${elapsed} remainingMs=${remainingMs}`
-    );
+      diagLog(
+        `[diag:disconnect-policy] RECONNECT_RESUME_REMAINING_TIME ` +
+          `roomCode=${roomCode} playerId=${playerId} round=${room.round} ` +
+          `pickWindowStartedAt=${room.pickWindowStartedAt} ` +
+          `elapsed=${elapsed} remainingMs=${remainingMs}`
+      );
 
-    resumePickTimer(roomCode, room, remainingMs);
+      resumePickTimer(roomCode, room, remainingMs);
+    } else {
+      // No pick window has opened for the CURRENT round yet — the round
+      // advanced via the absent-player-grace branch in `resolveContinuationTimeout`,
+      // which intentionally skips `startRoundTimer` while the opponent is
+      // still away. There is no genuine "remaining time" to preserve here;
+      // computing it would reuse a stale timestamp from the previous round
+      // (the ~4s bug). Arm a full fresh pick window instead.
+      diagLog(
+        `[diag:disconnect-policy] RECONNECT_FRESH_TIMER_NO_PICK_WINDOW ` +
+          `roomCode=${roomCode} playerId=${playerId} round=${room.round}`
+      );
+
+      startRoundTimer(roomCode, room);
+    }
   } else {
     diagLog(
       `[diag:disconnect-policy] reconnect skip resumePickTimer after grace clear ` +
