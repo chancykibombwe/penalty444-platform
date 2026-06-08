@@ -36,8 +36,6 @@ export default function TournamentAdminActions({
     null
   );
 
-  const readyCount = checkedInEntries.length;
-
   useEffect(() => {
     let cancelled = false;
 
@@ -164,7 +162,7 @@ export default function TournamentAdminActions({
     if (busy || !canCancel) return;
 
     const confirmed = window.confirm(
-      "Cancel this tournament? Players will no longer be able to join or mark Ready."
+      "Cancel this tournament? Players will no longer be able to join."
     );
 
     if (!confirmed) return;
@@ -222,47 +220,33 @@ export default function TournamentAdminActions({
           <span className="font-semibold text-white">
             {registeredEntryCount === null ? "…" : activeCount}
           </span>
-          <span className="mx-1.5 text-zinc-600">·</span>
-          <span className="text-zinc-500">Ready</span>{" "}
-          <span className="font-semibold text-white">{readyCount}</span>
-          <span className="text-zinc-500"> (optional)</span>
+          <span className="mx-1.5 text-zinc-600">/</span>
+          <span className="font-semibold text-zinc-400">
+            {tournament.max_players}
+          </span>
         </p>
       </div>
 
       {hasScheduledStart ? (
-        <div className="mt-3 space-y-1 rounded-lg border border-amber-500/25 bg-amber-950/20 px-3 py-2.5">
-          <p className="text-sm font-medium text-amber-100">
-            This tournament starts automatically at{" "}
-            {formatScheduledStart(tournament.starts_at!)}.
-          </p>
-          <p className="text-xs text-zinc-400">
-            Players can register until it begins.
-          </p>
-        </div>
+        <p className="mt-3 rounded-lg border border-amber-500/25 bg-amber-950/20 px-3 py-2.5 text-sm text-amber-100">
+          Scheduled for {formatScheduledStart(tournament.starts_at!)}. Start
+          manually when your players are ready.
+        </p>
       ) : (
         <p className="mt-3 rounded-lg border border-amber-600/40 bg-amber-950/30 px-3 py-2.5 text-sm text-amber-100">
-          No start time set. This tournament cannot auto-start.
+          No start time set. Start manually when your players are ready.
         </p>
       )}
 
-      {!hasScheduledStart ? (
-        <p className="mt-2 text-xs text-zinc-500">
-          Use Start Tournament below when you are ready to open the bracket
-          manually.
-        </p>
-      ) : null}
-
-      <div className="mt-3 flex flex-wrap gap-2">
-        {!hasScheduledStart ? (
-          <button
-            type="button"
-            onClick={handleStartTournament}
-            disabled={busy || !canStart}
-            className="rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2 text-sm font-bold text-zinc-950 disabled:opacity-50"
-          >
-            {busy ? "Working…" : "Start Tournament"}
-          </button>
-        ) : null}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={handleStartTournament}
+          disabled={busy || !canStart}
+          className="rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2 text-sm font-bold text-zinc-950 disabled:opacity-50"
+        >
+          {busy ? "Working…" : "Start Tournament"}
+        </button>
 
         {canCancel ? (
           <button
@@ -276,30 +260,16 @@ export default function TournamentAdminActions({
         ) : null}
       </div>
 
-      {hasScheduledStart ? (
-        <details className="mt-3 group">
-          <summary className="cursor-pointer text-xs font-medium text-zinc-500 hover:text-zinc-400">
-            Manual start (override)
-          </summary>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={handleStartTournament}
-              disabled={busy || !canStart}
-              className="rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:border-zinc-500 disabled:opacity-50"
-            >
-              {busy ? "Working…" : "Start now"}
-            </button>
-            {registeredEntryCount !== null && activeCount < 2 ? (
-              <span className="text-xs text-red-300">Need at least 2 registered</span>
-            ) : null}
-            {registeredEntryCount !== null && activeCount > 0 && !withinCapacity ? (
-              <span className="text-xs text-red-300">
-                Over max {tournament.max_players} players
-              </span>
-            ) : null}
-          </div>
-        </details>
+      {registeredEntryCount !== null && activeCount < 2 ? (
+        <p className="mt-2 text-xs text-red-300">
+          Need at least 2 registered players to start.
+        </p>
+      ) : null}
+      {registeredEntryCount !== null && activeCount > 0 && !withinCapacity ? (
+        <p className="mt-2 text-xs text-red-300">
+          Over max {tournament.max_players} players — some must withdraw before
+          starting.
+        </p>
       ) : null}
 
       {message ? <p className="mt-2 text-xs text-zinc-400">{message}</p> : null}
