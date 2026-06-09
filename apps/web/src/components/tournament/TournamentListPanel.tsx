@@ -125,7 +125,7 @@ export function formatTournamentStatus(status: string): string {
     case "registration":
       return "Registration";
     case "check_in":
-      return "Ready Phase";
+      return "Starting soon";
     case "in_progress":
       return "Live";
     case "completed":
@@ -294,7 +294,7 @@ function getSectionCopy(filter: TournamentListFilter) {
       return {
         eyebrow: "Events",
         title: "Upcoming",
-        description: "Registration open or ready phase opening soon.",
+        description: "Registration is open — join now before the host starts.",
       };
     case "completed":
       return {

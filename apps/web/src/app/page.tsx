@@ -234,7 +234,7 @@ export default function HomePage() {
         title: activeTournament.tournamentName,
         subtitle: isLive
           ? "Resume to play your next bracket match."
-          : "Head back when ready phase opens — keep your seat warm.",
+          : "Tournament hasn't started yet. The host will begin when ready.",
         href: `/tournaments/${activeTournament.tournamentId}`,
         cta: "Resume Tournament",
         icon: "🏆",

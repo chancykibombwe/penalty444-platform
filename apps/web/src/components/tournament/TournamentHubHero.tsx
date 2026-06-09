@@ -71,7 +71,7 @@ export default function TournamentHubHero({
       value: stats.upcoming,
       hint:
         stats.upcoming > 0
-          ? "Registration / ready phase"
+          ? "Registration open"
           : "Lobby is quiet — host one",
       tone: "amber",
       ariaLabel: "Starting soon",
