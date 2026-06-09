@@ -6,7 +6,7 @@
   "crons": [
     {
       "path": "/api/internal/tournaments/tick",
-      "schedule": "* * * * *"
+      "schedule": "*/5 * * * *"h
     }
   ]
 }
