@@ -268,7 +268,7 @@ export default function TournamentEntryActions({
       <div className="space-y-2 border-b border-zinc-800 pb-3">
         <p className="text-xs text-amber-200/80">
           {isOpen
-            ? "Hosting — join and mark Ready below. Open the tournament page to start the bracket."
+            ? "Hosting — join as a player below. Open the tournament page to start the bracket."
             : tournament.status === "in_progress"
               ? "Hosting — play your bracket matches on the tournament page."
               : "Hosting — open the tournament page for details."}
@@ -375,7 +375,7 @@ export default function TournamentEntryActions({
   } else if (tournament.status === "check_in") {
     participantContent = (
       <p className="text-xs text-zinc-500">
-        Ready Phase is open but you are not registered.
+        Registration is closed for this event.
       </p>
     );
   } else {

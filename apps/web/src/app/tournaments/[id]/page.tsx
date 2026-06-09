@@ -570,12 +570,12 @@ export default function TournamentDetailPage() {
               (tournament.status === "registration" ||
                 tournament.status === "check_in") ? (
                 <p className="mt-4 rounded-xl border border-amber-500/25 bg-amber-950/20 px-4 py-3 text-xs text-amber-100/95 sm:text-sm">
-                  Starts automatically at{" "}
+                  Scheduled for{" "}
                   {new Date(tournament.starts_at).toLocaleString(undefined, {
                     dateStyle: "medium",
                     timeStyle: "short",
                   })}
-                  . Register before the bracket opens.
+                  . The host will start the bracket when players are ready.
                 </p>
               ) : null}
 

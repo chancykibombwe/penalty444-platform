@@ -195,7 +195,7 @@ export function getPresenceExplanation(
         return "You're in — waiting for the host to start the tournament.";
       }
       if (tournamentStatus === "check_in") {
-        return "Ready phase open — mark yourself ready before kickoff.";
+        return "You're in — waiting for the host to start the tournament.";
       }
       if (nextMatchIsFinal) {
         return "Championship match preparing — waiting for opponent.";
