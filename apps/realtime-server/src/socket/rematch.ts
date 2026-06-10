@@ -17,10 +17,14 @@ type RematchHandlerDeps = {
 };
 
 /**
- * Sprint 7 — max time to wait for `endMatch`'s finalization chain
+ * Sprint 7 — informational threshold. If `endMatch`'s finalization chain
  * (saveMatchResult → tournament advancement → progression → settlement)
- * before forcing the deferred rematch reset anyway. Prevents an
- * indefinite "finalizing previous match" wait if persistence hangs.
+ * is still running this long after both players accept a rematch, we
+ * emit `match:rematch:still-finalizing` so the client can update its UI.
+ *
+ * This does NOT force a reset or clear `finalizationInFlight` — only
+ * `endMatch`'s `finally` block may do that. The deferred reset stays
+ * queued via `room.pendingRematchReset` for as long as it takes.
  */
 const REMATCH_FINALIZATION_TIMEOUT_MS = 8000;
 
@@ -45,6 +49,12 @@ export function resetRoomForRematch(roomCode: string, room: Room) {
   if (deps.isTournamentRoom(room)) {
     return;
   }
+
+  // Sprint 7: the rematch is only "accepted" from the client's
+  // perspective once the reset actually runs — whether immediately or
+  // (when finalization was in flight) deferred to `endMatch`'s `finally`
+  // block. Emitting it here keeps both call sites in sync.
+  deps.io.to(roomCode).emit("match:rematch:accepted");
 
   clearRoomTimer(room);
   // A rematch revives a previously-ended room. Cancel any pending
@@ -155,25 +165,29 @@ export function registerRematchHandlers(socket: Socket) {
       });
 
       if (room.players.length === 2 && room.rematchVotes.length === 2) {
-        deps.io.to(code).emit("match:rematch:accepted");
-
         if (room.finalizationInFlight) {
           // Sprint 7: the previous match's save/progression/settlement
           // chain is still running. Defer the reset — `endMatch`'s
-          // `finally` block will perform it as soon as finalization
-          // completes. A short fallback timer prevents an indefinite
-          // wait if persistence hangs.
+          // `finally` block is the ONLY place allowed to clear
+          // `finalizationInFlight` and call `resetRoomForRematch`. We
+          // must NOT force a reset here even after a timeout: doing so
+          // would let the in-flight finalization chain keep mutating
+          // `room` (matchInstance/resultSaved/progressionApplied/scores)
+          // after it's been reset for the new match — exactly the race
+          // this guard exists to prevent.
           room.pendingRematchReset = true;
           deps.io.to(code).emit("match:rematch:finalizing", {});
           room.pendingRematchResetTimeout = setTimeout(() => {
-            if (!room.pendingRematchReset) return;
-            room.pendingRematchReset = false;
             room.pendingRematchResetTimeout = undefined;
-            room.finalizationInFlight = false;
+            if (!room.pendingRematchReset) return;
+            // Still waiting on finalization — just let the requesters
+            // know we haven't forgotten about them. The reset itself
+            // remains queued for `endMatch`'s `finally` block.
             console.warn(
-              `[Rematch] finalization timeout exceeded, forcing reset roomCode=${code}`
+              `[Rematch] finalization still in progress after ` +
+                `${REMATCH_FINALIZATION_TIMEOUT_MS}ms, continuing to wait roomCode=${code}`
             );
-            resetRoomForRematch(code, room);
+            deps.io.to(code).emit("match:rematch:still-finalizing", {});
           }, REMATCH_FINALIZATION_TIMEOUT_MS);
         } else {
           resetRoomForRematch(code, room);
