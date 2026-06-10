@@ -1,6 +1,7 @@
 import type { Server, Socket } from "socket.io";
 import { cleanUsername } from "../room/codes";
 import { allowSocketAction } from "../security/rateLimit";
+import { jwtEnforcementEnabled, jwtMatchesPlayer } from "../security/jwt";
 import { rankedQueue } from "../state/stores";
 import type { MatchType, Room, RoomPlayer } from "../types/room";
 
@@ -135,6 +136,25 @@ export function registerRankedHandlers(socket: Socket) {
         return;
       }
 
+      // Sprint 6 — soft JWT cross-check on the queueing player. Strict in
+      // enforce mode; logged-only otherwise (same posture as room:create).
+      if (!jwtMatchesPlayer(socket, normalizedId)) {
+        if (jwtEnforcementEnabled()) {
+          console.warn(
+            `[Security] ranked:enqueue jwt_player_mismatch socketId=${socket.id} ` +
+              `playerId=${normalizedId} verifiedUserId=${socket.data.userId ?? "—"}`
+          );
+          socket.emit("ranked:error", {
+            message: "Authentication mismatch. Please sign in again.",
+          });
+          return;
+        }
+        console.warn(
+          `[Security] ranked:enqueue jwt_player_mismatch (soft) socketId=${socket.id} ` +
+            `playerId=${normalizedId} verifiedUserId=${socket.data.userId ?? "—"}`
+        );
+      }
+
       if (typeof username !== "string") {
         socket.emit("ranked:error", { message: "Missing username." });
         return;
@@ -177,6 +197,24 @@ export function registerRankedHandlers(socket: Socket) {
       if (!normalizedId) {
         socket.emit("ranked:error", { message: "Missing player ID." });
         return;
+      }
+
+      // Sprint 6 — soft JWT cross-check, same posture as ranked:enqueue.
+      if (!jwtMatchesPlayer(socket, normalizedId)) {
+        if (jwtEnforcementEnabled()) {
+          console.warn(
+            `[Security] ranked:cancel jwt_player_mismatch socketId=${socket.id} ` +
+              `playerId=${normalizedId} verifiedUserId=${socket.data.userId ?? "—"}`
+          );
+          socket.emit("ranked:error", {
+            message: "Authentication mismatch. Please sign in again.",
+          });
+          return;
+        }
+        console.warn(
+          `[Security] ranked:cancel jwt_player_mismatch (soft) socketId=${socket.id} ` +
+            `playerId=${normalizedId} verifiedUserId=${socket.data.userId ?? "—"}`
+        );
       }
 
       if (!rankedQueue.has(normalizedId)) {
