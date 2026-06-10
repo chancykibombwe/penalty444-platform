@@ -241,7 +241,7 @@ function activeStateLine(state: ActiveTournament["lastKnownState"]): string {
     case "in_progress":
       return "Resume to play your next bracket match.";
     case "check_in":
-      return "Ready phase is open — mark yourself ready before kickoff.";
+      return "Head back to continue your tournament match.";
     case "registration":
       return "Registration is still open — head back when you're ready.";
     default:

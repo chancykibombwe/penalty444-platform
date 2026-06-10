@@ -142,7 +142,7 @@ export function getTournamentStateBadge(
       };
     case "check_in":
       return {
-        label: "Ready Phase",
+        label: "Starting soon",
         className: "border-amber-500/45 bg-amber-950/35 text-amber-100",
         pulse: true,
       };
@@ -186,7 +186,7 @@ export function getEventSubtitle(options: {
     case "cancelled":
       return `${tier.label} · ${formatPretty} · Cancelled`;
     case "check_in":
-      return `${tier.label} · ${formatPretty} · Ready phase`;
+      return `${tier.label} · ${formatPretty} · Starting soon`;
     case "registration":
       return `${tier.label} · ${formatPretty} · Registration open`;
     default:

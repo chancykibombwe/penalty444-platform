@@ -13,11 +13,11 @@ type HeroBannerProps = {
 const ROTATING_TAGLINES = [
   {
     headline: "Skill wins every time.",
-    subtext: "Real players. Real battles. Real rewards.",
+    subtext: "Real players. Real battles. Real rankings.",
   },
   {
-    headline: "Outplay. Outscore. Out-earn.",
-    subtext: "Climb the ranks. Cash the wins.",
+    headline: "Outplay. Outscore. Outrank.",
+    subtext: "Climb the ranks. Prove your skill.",
   },
   {
     headline: "Step into the arena.",

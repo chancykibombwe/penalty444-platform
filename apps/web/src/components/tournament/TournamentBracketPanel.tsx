@@ -1042,7 +1042,7 @@ function PrebuiltBracketSkeleton({
 
   const statusLabel =
     tournamentStatus === "check_in"
-      ? "Check-in open"
+      ? "Starting soon"
       : tournamentStatus === "registration"
         ? "Registration open"
         : "Pre-tournament";

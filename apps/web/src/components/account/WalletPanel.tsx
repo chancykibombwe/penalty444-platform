@@ -216,13 +216,13 @@ export default function WalletPanel({ userId }: Props) {
           </p>
         ) : !wallet ? (
           <p className="mt-4 rounded-2xl border border-dashed border-yellow-500/30 bg-yellow-500/5 px-4 py-5 text-center text-sm font-semibold text-yellow-100/80">
-            Arena wallet coming online. Your wallet will activate the first
-            time you join a staked match or tournament.
+            Paid wallet features are not live yet. All beta matches and
+            tournaments are Free Play.
           </p>
         ) : ledger.length === 0 ? (
           <p className="mt-4 rounded-2xl border border-dashed border-zinc-800 bg-black/35 px-4 py-5 text-center text-sm font-semibold text-zinc-500">
-            No transactions yet. Activity will appear here after your first
-            staked match.
+            No transactions yet. Activity will appear here once paid features
+            launch.
           </p>
         ) : (
           <ul className="mt-3 grid gap-2">
@@ -275,7 +275,7 @@ export default function WalletPanel({ userId }: Props) {
           <div>
             <p className="text-sm font-bold text-white">Withdrawals</p>
             <p className="mt-0.5 text-xs text-zinc-500">
-              Cash out arena winnings.
+              Withdraw arena winnings.
             </p>
           </div>
           <span className="rounded-full border border-zinc-700/80 bg-zinc-900/80 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">

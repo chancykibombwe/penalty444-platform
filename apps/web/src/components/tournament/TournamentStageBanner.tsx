@@ -93,8 +93,8 @@ function buildHeadline(
 
   if (status === "check_in") {
     return {
-      title: "Ready phase",
-      detail: "Players marking themselves ready.",
+      title: "Starting soon",
+      detail: "Waiting for the host to start the tournament.",
     };
   }
 
