@@ -118,7 +118,11 @@ import {
   bindMatchActionHandlers,
   registerMatchActionHandlers,
 } from "./socket/matchActions";
-import { bindRematchHandlers, registerRematchHandlers } from "./socket/rematch";
+import {
+  bindRematchHandlers,
+  registerRematchHandlers,
+  resetRoomForRematch,
+} from "./socket/rematch";
 import {
   bindRoomSocketHandlers,
   registerRoomSocketHandlers,
@@ -1286,48 +1290,80 @@ function endMatch(roomCode: string, room: Room) {
   // if `saveMatchResult` newly persisted a row. For free matches
   // (`stakeAmount <= 0`) the stake path is a no-op anyway; the ordering
   // is the production-ready contract we want before adding wallet logic.
+  //
+  // Sprint 7: `finalizationInFlight` is set synchronously here (before
+  // the first await) so it is already `true` by the time any
+  // `match:rematch` event fired immediately after `match:end` is
+  // processed. `resetRoomForRematch` checks this flag and, if set,
+  // defers the room reset via `pendingRematchReset` until the `finally`
+  // block below clears the flag — preventing a fast rematch from
+  // mutating `room.matchInstance`/`resultSaved`/`progressionApplied`
+  // while this chain is still reading/writing them.
+  room.finalizationInFlight = true;
   (async () => {
-    let saved = false;
     try {
-      saved = await saveMatchResult(room);
-    } catch (error) {
-      console.error("Match result save crashed:", error);
-    }
-
-    if (!saved && !room.resultSaved) {
-      console.warn(
-        `[Settlement] stake settlement skipped result save failed roomCode=${roomCode}`
-      );
-    } else if (room.settlementStarted) {
-      console.log(
-        `[Settlement] duplicate stake settlement skipped roomCode=${roomCode}`
-      );
-    } else {
-      room.settlementStarted = true;
-      console.log(
-        `[Settlement] result saved before stake settlement roomCode=${roomCode}`
-      );
+      let saved = false;
       try {
-        await settleStakes(room);
+        saved = await saveMatchResult(room);
       } catch (error) {
-        console.error("Stake settlement crashed:", error);
+        console.error("Match result save crashed:", error);
       }
 
-      // Phase 11 TASK 2: economy settlement runs in parallel with the
-      // legacy stake settle. No-op when economy off / free match. We
-      // intentionally run this AFTER `settleStakes` so the legacy path
-      // is untouched and any economy failure cannot poison the legacy
-      // settlement state.
-      try {
-        await settleMatchEconomyForRoom(room);
-      } catch (error) {
-        console.error("[Settlement] economy settle crashed:", error);
+      if (!saved && !room.resultSaved) {
+        console.warn(
+          `[Settlement] stake settlement skipped result save failed roomCode=${roomCode}`
+        );
+      } else if (room.settlementStarted) {
+        console.log(
+          `[Settlement] duplicate stake settlement skipped roomCode=${roomCode}`
+        );
+      } else {
+        room.settlementStarted = true;
+        console.log(
+          `[Settlement] result saved before stake settlement roomCode=${roomCode}`
+        );
+        try {
+          await settleStakes(room);
+        } catch (error) {
+          console.error("Stake settlement crashed:", error);
+        }
+
+        // Phase 11 TASK 2: economy settlement runs in parallel with the
+        // legacy stake settle. No-op when economy off / free match. We
+        // intentionally run this AFTER `settleStakes` so the legacy path
+        // is untouched and any economy failure cannot poison the legacy
+        // settlement state.
+        try {
+          await settleMatchEconomyForRoom(room);
+        } catch (error) {
+          console.error("[Settlement] economy settle crashed:", error);
+        }
+      }
+    } finally {
+      room.finalizationInFlight = false;
+
+      // Sprint 7: a rematch was accepted while we were finalizing the
+      // previous match — perform the deferred reset now that it's safe.
+      if (room.pendingRematchReset) {
+        room.pendingRematchReset = false;
+        if (room.pendingRematchResetTimeout) {
+          clearTimeout(room.pendingRematchResetTimeout);
+          room.pendingRematchResetTimeout = undefined;
+        }
+        console.log(
+          `[Rematch] performing deferred reset after finalization roomCode=${roomCode}`
+        );
+        resetRoomForRematch(roomCode, room);
+      }
+
+      // Sprint 1 TASK 4: schedule the room for delayed deletion so memory
+      // doesn't leak. Cancellable if a rematch starts before the timer.
+      // Skip if a deferred rematch already reset the room — cleanup
+      // would otherwise tear down the freshly-started match instance.
+      if (!room.pendingRematchReset && room.matchEnded) {
+        scheduleRoomCleanup(io, roomCode, "match-ended");
       }
     }
-
-    // Sprint 1 TASK 4: schedule the room for delayed deletion so memory
-    // doesn't leak. Cancellable if a rematch starts before the timer.
-    scheduleRoomCleanup(io, roomCode, "match-ended");
   })();
 }
 

@@ -131,6 +131,23 @@ export type Room = {
   cleanupTimeout?: NodeJS.Timeout;
   /** Sprint 1 TASK 1: spectator socket ids attached to `${code}:spectators`. */
   spectatorSocketIds: Set<string>;
+  /**
+   * Sprint 7 — set for the duration of `endMatch`'s async finalization
+   * chain (saveMatchResult → tournament advancement → progression →
+   * settlement). While true, `resetRoomForRematch` MUST NOT mutate this
+   * room — a rematch vote that completes during finalization is queued
+   * via `pendingRematchReset` instead.
+   */
+  finalizationInFlight?: boolean;
+  /**
+   * Sprint 7 — set when both players accept a rematch while
+   * `finalizationInFlight` is still true. Consumed (and reset) by
+   * `endMatch`'s finalization `finally` block, which performs the
+   * deferred `resetRoomForRematch` once it is safe to do so.
+   */
+  pendingRematchReset?: boolean;
+  /** Sprint 7 — fallback timer that forces the deferred rematch reset if finalization never completes. */
+  pendingRematchResetTimeout?: NodeJS.Timeout;
 };
 
 export type PublicMatchOffer = {
