@@ -71,7 +71,7 @@ import {
   pruneSpectatorOnDisconnect,
   registerSpectatorHandlers,
 } from "./socket/spectator";
-import { bindSocketJwtVerification } from "./security/jwt";
+import { bindSocketJwtVerification, jwtEnforcementEnabled } from "./security/jwt";
 import {
   logPresenceTransition,
   logRoomStateEmit,
@@ -1953,6 +1953,22 @@ io.on("connection", (socket) => {
           : null;
       const claimed =
         typeof payload?.playerId === "string" ? payload.playerId.trim() : "";
+
+      // Sprint 6 — in enforce mode an unauthenticated socket cannot read
+      // another player's active-room snapshot by simply claiming their
+      // playerId. Without a verified JWT we return an empty snapshot
+      // instead of trusting the payload.
+      if (!verifiedUserId && jwtEnforcementEnabled()) {
+        if (claimed) {
+          console.warn(
+            `[Security] activeRoom:request unauthenticated socketId=${socket.id} ` +
+              `claimed=${claimed} — rejected`
+          );
+        }
+        emitActiveRoomSnapshot(null);
+        return;
+      }
+
       emitActiveRoomSnapshot(verifiedUserId ?? claimed);
     }
   );
