@@ -16,6 +16,14 @@ type RematchHandlerDeps = {
   isTournamentRoom: (room: Room) => boolean;
 };
 
+/**
+ * Sprint 7 — max time to wait for `endMatch`'s finalization chain
+ * (saveMatchResult → tournament advancement → progression → settlement)
+ * before forcing the deferred rematch reset anyway. Prevents an
+ * indefinite "finalizing previous match" wait if persistence hangs.
+ */
+const REMATCH_FINALIZATION_TIMEOUT_MS = 8000;
+
 let rematchDeps: RematchHandlerDeps | null = null;
 
 export function bindRematchHandlers(deps: RematchHandlerDeps): void {
@@ -31,7 +39,7 @@ function getDeps(): RematchHandlerDeps {
   return rematchDeps;
 }
 
-function resetRoomForRematch(roomCode: string, room: Room) {
+export function resetRoomForRematch(roomCode: string, room: Room) {
   const deps = getDeps();
 
   if (deps.isTournamentRoom(room)) {
@@ -148,7 +156,28 @@ export function registerRematchHandlers(socket: Socket) {
 
       if (room.players.length === 2 && room.rematchVotes.length === 2) {
         deps.io.to(code).emit("match:rematch:accepted");
-        resetRoomForRematch(code, room);
+
+        if (room.finalizationInFlight) {
+          // Sprint 7: the previous match's save/progression/settlement
+          // chain is still running. Defer the reset — `endMatch`'s
+          // `finally` block will perform it as soon as finalization
+          // completes. A short fallback timer prevents an indefinite
+          // wait if persistence hangs.
+          room.pendingRematchReset = true;
+          deps.io.to(code).emit("match:rematch:finalizing", {});
+          room.pendingRematchResetTimeout = setTimeout(() => {
+            if (!room.pendingRematchReset) return;
+            room.pendingRematchReset = false;
+            room.pendingRematchResetTimeout = undefined;
+            room.finalizationInFlight = false;
+            console.warn(
+              `[Rematch] finalization timeout exceeded, forcing reset roomCode=${code}`
+            );
+            resetRoomForRematch(code, room);
+          }, REMATCH_FINALIZATION_TIMEOUT_MS);
+        } else {
+          resetRoomForRematch(code, room);
+        }
       }
     }
   );
@@ -191,6 +220,10 @@ export function registerRematchHandlers(socket: Socket) {
         "match:rematch:decline"
       );
       if (!identityDecline.ok) return;
+
+      // Sprint 7: a reset is already queued/performed because both
+      // players accepted — too late to decline.
+      if (room.pendingRematchReset) return;
 
       room.rematchVotes = [];
 
