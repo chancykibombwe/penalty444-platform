@@ -394,8 +394,21 @@ export function registerPublicOfferHandlers(socket: Socket) {
 
         const playerName = cleanUsername(username);
         const safeRounds = Number.isFinite(rounds) && rounds > 0 ? rounds : 3;
-        const safeStakeLabel = stakeLabel?.trim() || "Free";
-        const stakeAmount = deps.getStakeAmount(safeStakeLabel);
+
+        // Phase 8B beta lock — Public Offers are Free Play only. Hard-force
+        // the stake label/amount server-side regardless of what the client
+        // sends; a crafted `stakeLabel` of "K10"/"K50"/"K100"/etc. must
+        // never be allowed to reach `lockStake()` with a non-zero amount.
+        // Paid public offers require a future, explicitly-enabled economy
+        // phase — this is intentionally not derived from `getStakeAmount`.
+        if (stakeLabel && stakeLabel.trim().toUpperCase() !== "FREE") {
+          console.warn(
+            `[Security] publicOffer:create non-free stakeLabel rejected ` +
+              `socketId=${socket.id} playerId=${playerId} stakeLabel=${stakeLabel}`
+          );
+        }
+        const safeStakeLabel = "Free";
+        const stakeAmount = 0;
 
         const lockResult = await deps.lockStake(playerId, stakeAmount);
 
@@ -607,7 +620,14 @@ export function registerPublicOfferHandlers(socket: Socket) {
           return;
         }
 
-        const lockResult = await deps.lockStake(playerId, offer.stakeAmount);
+        // Phase 8B beta lock — Public Offers are Free Play only. Defense
+        // in depth: even though `publicOffer:create` now always persists
+        // `stakeAmount: 0`, never let a join lock a non-zero stake. Paid
+        // public offers require a future, explicitly-enabled economy
+        // phase.
+        const joinStakeAmount = 0;
+
+        const lockResult = await deps.lockStake(playerId, joinStakeAmount);
 
         if (!lockResult.ok) {
           socket.emit("publicOffers:error", {
