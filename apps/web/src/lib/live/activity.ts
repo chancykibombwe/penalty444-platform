@@ -69,7 +69,7 @@ export type LiveMatchPreviewItem = {
  * tournament Live Spotlight. Carries everything needed to render a
  * premium card + a working WATCH link.
  */
-export type FeaturedLiveMatch = LiveMatchPreviewItem & {
+export type FeaturedLiveMatch = Omit<LiveMatchPreviewItem, "status"> & {
   /**
    * Why this match is featured. Ordered by priority:
    *   1 = tournament final (in_progress)
@@ -80,6 +80,12 @@ export type FeaturedLiveMatch = LiveMatchPreviewItem & {
    */
   priority: 1 | 2 | 3 | 4 | 5;
   reason: string;
+  /**
+   * "completed" is exclusive to the recent-match-history fallback
+   * (`fetchRecentMatchHighlights`) — those rows come from finished
+   * `match_results` and must never render as live.
+   */
+  status: "in_progress" | "ready" | "completed";
 };
 
 export type RecentPlayerMoment = {
@@ -660,10 +666,10 @@ async function fetchRecentMatchHighlights(
           playerTwo: safeName(row.player_two_username, "Player 2"),
           isFinal: false,
           isSemifinal: false,
-          status: "in_progress",
+          status: "completed",
           roomCode: row.room_code,
           priority: 5,
-          reason: "Recent battle",
+          reason: "Recent result",
         };
       });
   } catch {

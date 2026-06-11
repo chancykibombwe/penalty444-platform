@@ -24,6 +24,7 @@ export default function FeaturedLiveMatchCard({
 }: Props) {
   const isFinal = match.isFinal;
   const isLive = match.status === "in_progress";
+  const isCompleted = match.status === "completed";
   const isHero = emphasis === "hero";
 
   const accentClass = isFinal
@@ -42,9 +43,12 @@ export default function FeaturedLiveMatchCard({
     ? "text-xs font-black uppercase tracking-[0.28em]"
     : "text-[10px] font-black uppercase tracking-[0.24em]";
 
-  const watchHref = match.roomCode
-    ? `/watch/${match.roomCode.toUpperCase()}`
-    : null;
+  // Completed fallback matches (recent match history) link nowhere — there is
+  // no replay/result page yet, so we must not surface a live "Watch" CTA.
+  const watchHref =
+    !isCompleted && match.roomCode
+      ? `/watch/${match.roomCode.toUpperCase()}`
+      : null;
 
   return (
     <article
@@ -65,6 +69,13 @@ export default function FeaturedLiveMatchCard({
           <LivePulseBadge
             label={match.isSemifinal ? "Semifinal · LIVE" : "Live"}
             tone="cyan"
+            size={isHero ? "md" : "sm"}
+          />
+        ) : isCompleted ? (
+          <LivePulseBadge
+            label="Completed"
+            tone="neutral"
+            pulsing={false}
             size={isHero ? "md" : "sm"}
           />
         ) : (
@@ -107,6 +118,10 @@ export default function FeaturedLiveMatchCard({
           >
             ▶ Watch
           </Link>
+        ) : isCompleted ? (
+          <span className="rounded-lg border border-zinc-700 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-500">
+            Final
+          </span>
         ) : (
           <span
             className="rounded-lg border border-zinc-700 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
