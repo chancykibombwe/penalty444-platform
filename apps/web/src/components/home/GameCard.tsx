@@ -2,15 +2,13 @@
 
 import Link from "next/link";
 
-export type GameCardStatus = "live" | "soon" | "preparing";
+export type GameCardStatus = "live" | "coming-soon";
 
 export type GameCardData = {
   id: string;
   title: string;
   /** Short subtitle / genre line. */
   subtitle: string;
-  /** Approximate online count for display. */
-  playersOnline: number;
   status: GameCardStatus;
   /** Highlights the card with extra glow. */
   featured?: boolean;
@@ -18,26 +16,23 @@ export type GameCardData = {
   href: string;
   /** Inline icon — emoji is fine. */
   icon: string;
-  /** Optional disabled flag (mock games we haven't shipped). */
+  /** Optional disabled flag (games we haven't shipped). */
   comingSoon?: boolean;
 };
 
 const STATUS_LABEL: Record<GameCardStatus, string> = {
-  live: "Live now",
-  soon: "Waiting for challengers",
-  preparing: "Preparing arena…",
+  live: "Free Play",
+  "coming-soon": "Coming Soon",
 };
 
 const STATUS_CLASS: Record<GameCardStatus, string> = {
   live: "border-cyan-400/55 bg-cyan-500/15 text-cyan-100",
-  soon: "border-amber-400/45 bg-amber-500/10 text-amber-100",
-  preparing: "border-zinc-700 bg-zinc-800/60 text-zinc-300",
+  "coming-soon": "border-zinc-700 bg-zinc-800/60 text-zinc-300",
 };
 
 const STATUS_DOT: Record<GameCardStatus, string> = {
   live: "bg-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.8)]",
-  soon: "bg-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.7)]",
-  preparing: "bg-zinc-400",
+  "coming-soon": "bg-zinc-400",
 };
 
 type Props = { game: GameCardData };
@@ -72,7 +67,7 @@ export default function GameCard({ game }: Props) {
           className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] ${STATUS_CLASS[game.status]}`}
         >
           <span
-            className={`inline-block h-1.5 w-1.5 animate-pulse rounded-full ${STATUS_DOT[game.status]}`}
+            className={`inline-block h-1.5 w-1.5 rounded-full ${game.comingSoon ? "" : "animate-pulse"} ${STATUS_DOT[game.status]}`}
             aria-hidden
           />
           {STATUS_LABEL[game.status]}
@@ -86,15 +81,7 @@ export default function GameCard({ game }: Props) {
         {game.title}
       </h3>
 
-      <div className="mt-3 flex items-end justify-between gap-2">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-            Online
-          </p>
-          <p className="text-base font-black tabular-nums text-white">
-            {game.playersOnline.toLocaleString()}
-          </p>
-        </div>
+      <div className="mt-3 flex items-center justify-end gap-2">
         <span
           className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider ${
             game.comingSoon
@@ -104,7 +91,7 @@ export default function GameCard({ game }: Props) {
                 : "bg-zinc-800 text-white"
           }`}
         >
-          {game.comingSoon ? "Soon" : "Play"}
+          {game.comingSoon ? "Coming Soon" : "Play"}
           {!game.comingSoon ? <span aria-hidden>→</span> : null}
         </span>
       </div>

@@ -1,35 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import {
+  fetchHomeFeaturedTournament,
+  type HomeFeaturedTournament,
+} from "../../lib/tournament/homeFeatured";
+import { useVisibleInterval } from "../../lib/polling/useVisibleInterval";
+import { supabase } from "../../lib/supabase/client";
 
-export type HomeTournamentPreviewData = {
-  /** Display name. Falls back to "Friday Night Cup" if missing. */
-  name: string;
-  /** "Live Event", "Ready Phase", "Registration", "Final" etc. */
-  statusLabel: string;
-  /** Round label e.g. "Semifinals". */
-  roundLabel: string;
-  playersRemaining: number;
-  matchesLive: number;
-  /** Optional ISO start time for a "Starts in" countdown. */
-  startsAtIso?: string | null;
-  /** Optional href; defaults to /tournaments. */
-  href?: string;
-};
-
-type Props = {
-  data?: HomeTournamentPreviewData;
-};
-
-const MOCK_DATA: HomeTournamentPreviewData = {
-  name: "Friday Night Cup",
-  statusLabel: "Live Event",
-  roundLabel: "Semifinals",
-  playersRemaining: 4,
-  matchesLive: 2,
-  startsAtIso: null,
-  href: "/tournaments",
+const STATUS_LABEL: Record<string, string> = {
+  in_progress: "Live Now",
+  check_in: "Check-in Open",
+  registration: "Registration Open",
 };
 
 function formatCountdown(targetIso: string | null | undefined, nowMs: number): string | null {
@@ -37,7 +20,7 @@ function formatCountdown(targetIso: string | null | undefined, nowMs: number): s
   const targetMs = new Date(targetIso).getTime();
   if (!Number.isFinite(targetMs)) return null;
   const diff = targetMs - nowMs;
-  if (diff <= 0) return "Live now";
+  if (diff <= 0) return "Starting soon";
   const totalSeconds = Math.floor(diff / 1000);
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -48,23 +31,64 @@ function formatCountdown(targetIso: string | null | undefined, nowMs: number): s
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-export default function HomeTournamentPreview({ data = MOCK_DATA }: Props) {
+export default function HomeTournamentPreview() {
+  const [tournament, setTournament] = useState<HomeFeaturedTournament | null | undefined>(
+    undefined
+  );
   const [nowMs, setNowMs] = useState(() => Date.now());
 
-  useEffect(() => {
-    if (!data.startsAtIso) return;
-    const id = window.setInterval(() => setNowMs(Date.now()), 1_000);
-    return () => window.clearInterval(id);
-  }, [data.startsAtIso]);
+  useVisibleInterval(
+    async (signal) => {
+      const next = await fetchHomeFeaturedTournament(supabase);
+      if (signal.aborted) return;
+      setTournament(next);
+      setNowMs(Date.now());
+    },
+    { intervalMs: 30_000 }
+  );
 
-  const countdown = formatCountdown(data.startsAtIso, nowMs);
-  const isLive = data.statusLabel.toLowerCase().includes("live");
-  const href = data.href ?? "/tournaments";
+  if (tournament === undefined) {
+    return (
+      <section
+        className="h-40 animate-pulse rounded-3xl border border-zinc-800/80 bg-zinc-950/65"
+        aria-label="Loading tournament preview"
+        aria-hidden
+      />
+    );
+  }
+
+  if (tournament === null) {
+    return (
+      <section
+        className="rounded-3xl border border-dashed border-zinc-800 bg-zinc-950/60 px-5 py-6 text-center sm:px-6"
+        aria-label="Tournament preview"
+      >
+        <p className="text-[10px] font-black uppercase tracking-[0.32em] text-zinc-500">
+          Tournament
+        </p>
+        <p className="mt-2 text-sm font-semibold text-zinc-400">
+          No public tournaments are live right now.
+        </p>
+        <Link
+          href="/tournaments"
+          className="mt-4 inline-flex items-center justify-center gap-2 rounded-2xl border border-zinc-700 bg-zinc-900/70 px-5 py-2.5 text-xs font-black uppercase tracking-wider text-zinc-200 transition-colors hover:border-cyan-500/50 hover:text-cyan-200"
+        >
+          View Tournaments
+          <span aria-hidden>→</span>
+        </Link>
+      </section>
+    );
+  }
+
+  const isLive = tournament.status === "in_progress";
+  const countdown = isLive ? null : formatCountdown(tournament.startsAtIso, nowMs);
+  const statusLabel = STATUS_LABEL[tournament.status] ?? tournament.status;
+  const href = `/tournaments/${tournament.id}`;
 
   return (
     <section
       className="relative overflow-hidden rounded-3xl border-2 border-cyan-500/40 bg-gradient-to-br from-zinc-950 via-zinc-950 to-black p-5 shadow-2xl sm:p-6"
-      aria-label="Live tournament preview"
+      aria-label="Featured tournament"
     >
       <div
         aria-hidden
@@ -91,7 +115,7 @@ export default function HomeTournamentPreview({ data = MOCK_DATA }: Props) {
                 }`}
                 aria-hidden
               />
-              {isLive ? "Live Now" : data.statusLabel}
+              {statusLabel}
             </span>
             <span className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-900/70 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-zinc-200">
               🏆 Featured
@@ -103,18 +127,20 @@ export default function HomeTournamentPreview({ data = MOCK_DATA }: Props) {
           </p>
           <h2 className="mt-1 break-words text-2xl font-black tracking-tight text-white sm:text-3xl">
             <span className="bg-gradient-to-r from-cyan-200 via-white to-amber-200 bg-clip-text text-transparent">
-              {data.name}
+              {tournament.name}
             </span>
           </h2>
           <p className="mt-1 text-xs text-zinc-400 sm:text-sm">
-            {data.roundLabel} · {data.playersRemaining} players remaining
+            {tournament.playersCount}{" "}
+            {tournament.playersCount === 1 ? "player" : "players"}
+            {tournament.currentRound ? ` · Round ${tournament.currentRound}` : ""}
           </p>
         </div>
 
         {countdown ? (
           <div className="shrink-0 rounded-2xl border border-amber-400/45 bg-amber-950/40 px-4 py-3 text-center shadow-lg">
             <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-200/90">
-              {countdown === "Live now" ? "Status" : "Starts in"}
+              Starts in
             </p>
             <p className="mt-1 text-xl font-black tabular-nums text-amber-100 sm:text-2xl">
               {countdown}
@@ -123,32 +149,26 @@ export default function HomeTournamentPreview({ data = MOCK_DATA }: Props) {
         ) : null}
       </div>
 
-      <dl className="relative mt-5 grid grid-cols-3 gap-2 border-t border-zinc-800/80 pt-4 sm:gap-4">
-        <div>
-          <dt className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-            Players left
-          </dt>
-          <dd className="mt-1 text-lg font-black tabular-nums text-white sm:text-xl">
-            {data.playersRemaining}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-            Round
-          </dt>
-          <dd className="mt-1 text-base font-black text-white sm:text-lg">
-            {data.roundLabel}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-            Live matches
-          </dt>
-          <dd className="mt-1 text-lg font-black tabular-nums text-white sm:text-xl">
-            {data.matchesLive}
-          </dd>
-        </div>
-      </dl>
+      {isLive ? (
+        <dl className="relative mt-5 grid grid-cols-2 gap-2 border-t border-zinc-800/80 pt-4 sm:gap-4">
+          <div>
+            <dt className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+              Players
+            </dt>
+            <dd className="mt-1 text-lg font-black tabular-nums text-white sm:text-xl">
+              {tournament.playersCount}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+              Live matches
+            </dt>
+            <dd className="mt-1 text-lg font-black tabular-nums text-white sm:text-xl">
+              {tournament.liveMatches}
+            </dd>
+          </div>
+        </dl>
+      ) : null}
 
       <Link
         href={href}
