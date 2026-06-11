@@ -1,41 +1,27 @@
 -- =============================================================================
--- Phase 8B beta lock — tournament creator RLS column lockdown
+-- Phase 8B beta lock -- tournament creator RLS column lockdown
 -- =============================================================================
 -- Background:
---   `tournaments_update_creator` (Phase 7, 20260515120000) lets a creator
---   UPDATE their own tournament row with no column restrictions:
---
---     CREATE POLICY tournaments_update_creator
---       ON public.tournaments
---       FOR UPDATE
---       TO authenticated
---       USING (created_by = auth.uid())
---       WITH CHECK (created_by = auth.uid());
---
---   Today no client code calls `.from("tournaments").update(...)` — every
---   write to `public.tournaments` (manual start, advancement, cleanup,
---   no-show handling) goes through service-role API routes
---   (apps/web/src/lib/tournament/startTournament.ts, advancement.ts,
---   processTournamentCleanup.ts via createAdminClient()). But the RLS
---   policy as written would allow a creator to directly flip `status`,
---   set `winner_id`, change `created_by`, or rewrite the prize-pool /
---   entry-fee columns added in 20260522104000_economy_foundation_v1.sql,
---   if any future client-side update is ever added (intentionally or by
---   mistake).
+-- `tournaments_update_creator` (Phase 7, 20260515120000) lets a creator
+-- UPDATE their own tournament row with no column restrictions.
 --
 -- Beta policy:
---   Tournament lifecycle, ownership, and financial fields are
---   server-authoritative. Creators may continue to edit safe metadata
---   (name, max_players, rounds_per_match, format, game_id, scheduling
---   timestamps) via `tournaments_update_creator`, but a BEFORE UPDATE
---   trigger rejects any change to the protected columns below unless the
---   write is performed by `service_role` (which bypasses this check, so
---   existing API routes — manual start, advancement, cleanup — continue
---   to work unchanged).
+--   Tournament lifecycle and ownership fields are server-authoritative.
+--   Creators may continue to edit safe metadata (name, max_players,
+--   rounds_per_match, format, game_id, scheduling timestamps) via
+--   `tournaments_update_creator`, but a BEFORE UPDATE trigger rejects any
+--   change to the protected columns below unless the write is performed by
+--   `service_role` (which bypasses this check, so existing API routes --
+--   manual start, advancement, cleanup -- continue to work unchanged).
 --
--- Protected columns:
---   status, winner_id, created_by, season_id, entry_fee_minor, currency,
---   rake_bps, payout_structure, prize_pool_minor
+-- Protected columns (always):
+--   status, winner_id, created_by, season_id
+--
+-- Protected columns (when present -- added by economy_foundation_v1):
+--   entry_fee_minor, currency, rake_bps, payout_structure, prize_pool_minor
+--
+-- NOTE: Economy columns are guarded with a pg_attribute existence check so
+-- this migration is safe to apply before or after the economy migration.
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION public.tournaments_protect_lifecycle_fields()
@@ -43,6 +29,8 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 SET search_path = public
 AS $$
+DECLARE
+  v_has_economy_cols boolean;
 BEGIN
   -- service_role (server API routes, scheduled tick) is fully trusted and
   -- is the only writer allowed to change lifecycle/financial fields.
@@ -50,19 +38,37 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  -- Check if economy columns exist on this table (added by economy_foundation_v1)
+  SELECT EXISTS (
+        SELECT 1 FROM pg_attribute
+        WHERE attrelid = 'public.tournaments'::regclass
+          AND attname = 'entry_fee_minor'
+          AND NOT attisdropped
+      ) INTO v_has_economy_cols;
+
+  -- Always-protected lifecycle/ownership columns
   IF NEW.status IS DISTINCT FROM OLD.status
     OR NEW.winner_id IS DISTINCT FROM OLD.winner_id
     OR NEW.created_by IS DISTINCT FROM OLD.created_by
     OR NEW.season_id IS DISTINCT FROM OLD.season_id
-    OR NEW.entry_fee_minor IS DISTINCT FROM OLD.entry_fee_minor
-    OR NEW.currency IS DISTINCT FROM OLD.currency
-    OR NEW.rake_bps IS DISTINCT FROM OLD.rake_bps
-    OR NEW.payout_structure IS DISTINCT FROM OLD.payout_structure
-    OR NEW.prize_pool_minor IS DISTINCT FROM OLD.prize_pool_minor
   THEN
     RAISE EXCEPTION
-      'tournaments: status, winner_id, created_by, season_id, and prize/entry-fee fields are server-authoritative and cannot be changed directly'
+      'tournaments: status, winner_id, created_by, and season_id are server-authoritative and cannot be changed directly'
       USING ERRCODE = '42501';
+  END IF;
+
+  -- Economy columns (only checked when they exist on the table)
+  IF v_has_economy_cols THEN
+    IF NEW.entry_fee_minor IS DISTINCT FROM OLD.entry_fee_minor
+      OR NEW.currency IS DISTINCT FROM OLD.currency
+      OR NEW.rake_bps IS DISTINCT FROM OLD.rake_bps
+      OR NEW.payout_structure IS DISTINCT FROM OLD.payout_structure
+      OR NEW.prize_pool_minor IS DISTINCT FROM OLD.prize_pool_minor
+    THEN
+      RAISE EXCEPTION
+        'tournaments: prize/entry-fee fields are server-authoritative and cannot be changed directly'
+        USING ERRCODE = '42501';
+    END IF;
   END IF;
 
   RETURN NEW;
@@ -71,9 +77,11 @@ $$;
 
 COMMENT ON FUNCTION public.tournaments_protect_lifecycle_fields() IS
   'Phase 8B beta lock: blocks non-service-role UPDATEs to public.tournaments '
-  'lifecycle/ownership/financial columns (status, winner_id, created_by, '
-  'season_id, entry_fee_minor, currency, rake_bps, payout_structure, '
-  'prize_pool_minor). service_role (server API routes) is exempt.';
+  'lifecycle/ownership columns (status, winner_id, created_by, season_id) and, '
+  'when present, economy columns (entry_fee_minor, currency, rake_bps, '
+  'payout_structure, prize_pool_minor). service_role is exempt. '
+  'Economy columns are checked dynamically so this trigger is safe before and '
+  'after the economy_foundation migration.';
 
 DROP TRIGGER IF EXISTS tournaments_protect_lifecycle_fields_trigger
   ON public.tournaments;
