@@ -2,6 +2,7 @@ import type { Server, Socket } from "socket.io";
 import { cleanUsername } from "../room/codes";
 import { allowSocketAction } from "../security/rateLimit";
 import { jwtEnforcementEnabled, jwtMatchesPlayer } from "../security/jwt";
+import { requireAuthenticatedSocket } from "../security/socketIdentity";
 import { rankedQueue } from "../state/stores";
 import type { MatchType, Room, RoomPlayer } from "../types/room";
 
@@ -129,6 +130,19 @@ export function registerRankedHandlers(socket: Socket) {
         return;
       }
 
+      // Phase 8B — an unauthenticated socket (no verified Supabase JWT)
+      // must not be able to claim any playerId at all when
+      // SOCKET_JWT_ENFORCE=true. jwtMatchesPlayer alone is insufficient
+      // here: it returns true for a token-less socket, so the mismatch
+      // branch below would never run for an anonymous client.
+      const auth = requireAuthenticatedSocket(socket, "ranked:enqueue");
+      if (!auth.ok) {
+        socket.emit("ranked:error", {
+          message: "Authentication required. Please sign in again.",
+        });
+        return;
+      }
+
       const normalizedId =
         typeof playerId === "string" ? playerId.trim() : "";
       if (!normalizedId) {
@@ -192,6 +206,17 @@ export function registerRankedHandlers(socket: Socket) {
   socket.on(
     "ranked:cancel",
     ({ playerId }: { playerId?: string }) => {
+      // Phase 8B — same hard-auth gate as ranked:enqueue. An anonymous
+      // socket must not be able to claim/cancel any playerId's queue
+      // entry when SOCKET_JWT_ENFORCE=true.
+      const auth = requireAuthenticatedSocket(socket, "ranked:cancel");
+      if (!auth.ok) {
+        socket.emit("ranked:error", {
+          message: "Authentication required. Please sign in again.",
+        });
+        return;
+      }
+
       const normalizedId =
         typeof playerId === "string" ? playerId.trim() : "";
       if (!normalizedId) {
