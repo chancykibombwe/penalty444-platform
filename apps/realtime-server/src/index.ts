@@ -1358,7 +1358,8 @@ function endMatch(roomCode: string, room: Room) {
           room.pendingRematchResetTimeout = undefined;
         }
         console.log(
-          `[Rematch] performing deferred reset after finalization roomCode=${roomCode}`
+          `[Rematch] performing deferred reset after finalization ` +
+            `roomCode=${roomCode} finalizationInFlight=false pendingRematchReset=false`
         );
         resetRoomForRematch(roomCode, room);
       }

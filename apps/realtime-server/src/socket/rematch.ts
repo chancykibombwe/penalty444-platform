@@ -102,6 +102,12 @@ export function resetRoomForRematch(roomCode: string, room: Room) {
     setPlayerActiveRoom(second.playerId, roomCode);
   }
 
+  console.log(
+    `[Rematch] reset_complete roomCode=${roomCode} ` +
+      `matchInstance=${room.matchInstance} ` +
+      `playerA=${first?.playerId ?? "—"} playerB=${second?.playerId ?? "—"}`
+  );
+
   deps.emitRoomUpdate(roomCode, room);
   deps.emitMatchState(roomCode, room);
   deps.startRoundTimer(roomCode, room);
@@ -158,6 +164,14 @@ export function registerRematchHandlers(socket: Socket) {
         room.rematchVotes.push(playerId);
       }
 
+      const opponent = room.players.find((p) => p.playerId !== playerId);
+
+      console.log(
+        `[Rematch] vote roomCode=${code} playerId=${playerId} ` +
+          `opponentId=${opponent?.playerId ?? "—"} votes=${room.rematchVotes.length} ` +
+          `required=${room.players.length} matchInstance=${room.matchInstance ?? 1}`
+      );
+
       deps.io.to(code).emit("match:rematch:update", {
         votes: room.rematchVotes.length,
         required: room.players.length,
@@ -165,6 +179,12 @@ export function registerRematchHandlers(socket: Socket) {
       });
 
       if (room.players.length === 2 && room.rematchVotes.length === 2) {
+        console.log(
+          `[Rematch] both_accepted roomCode=${code} ` +
+            `finalizationInFlight=${Boolean(room.finalizationInFlight)} ` +
+            `matchInstance=${room.matchInstance ?? 1}`
+        );
+
         if (room.finalizationInFlight) {
           // Sprint 7: the previous match's save/progression/settlement
           // chain is still running. Defer the reset — `endMatch`'s
@@ -176,6 +196,13 @@ export function registerRematchHandlers(socket: Socket) {
           // after it's been reset for the new match — exactly the race
           // this guard exists to prevent.
           room.pendingRematchReset = true;
+
+          console.log(
+            `[Rematch] reset_deferred roomCode=${code} ` +
+              `reason=finalization_in_flight finalizationInFlight=true ` +
+              `pendingRematchReset=true matchInstance=${room.matchInstance ?? 1}`
+          );
+
           deps.io.to(code).emit("match:rematch:finalizing", {});
           room.pendingRematchResetTimeout = setTimeout(() => {
             room.pendingRematchResetTimeout = undefined;
@@ -238,6 +265,16 @@ export function registerRematchHandlers(socket: Socket) {
       // Sprint 7: a reset is already queued/performed because both
       // players accepted — too late to decline.
       if (room.pendingRematchReset) return;
+
+      const opponentDecline = room.players.find(
+        (p) => p.playerId !== playerId
+      );
+
+      console.log(
+        `[Rematch] declined roomCode=${code} playerId=${playerId} ` +
+          `opponentId=${opponentDecline?.playerId ?? "—"} ` +
+          `matchInstance=${room.matchInstance ?? 1}`
+      );
 
       room.rematchVotes = [];
 
