@@ -1246,6 +1246,13 @@ async function saveMatchResult(room: Room): Promise<boolean> {
 function endMatch(roomCode: string, room: Room) {
   if (room.matchEnded) return;
 
+  if (room.disconnectedPlayerId || room.disconnectForfeitTimeout) {
+    console.log(
+      `[Disconnect] cleanup roomCode=${roomCode} ` +
+        `playerId=${room.disconnectedPlayerId ?? "—"} reason=match_ended`
+    );
+  }
+
   clearRoomTimer(room);
 
   // Sprint 1 TASK 6: explicitly leave `isResolving` consistent with the

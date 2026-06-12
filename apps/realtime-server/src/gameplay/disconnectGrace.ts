@@ -13,8 +13,16 @@ export type EndMatchFn = (roomCode: string, room: Room) => void;
 /**
  * Cancel any pending disconnect/forfeit grace for this room.
  * Idempotent — safe to call before re-arming or on reconnect.
+ *
+ * Pass `context` to emit a `[Disconnect] grace_cancelled` operator log
+ * (e.g. on reconnect). Internal re-arm calls omit it to avoid log noise.
  */
-export function clearDisconnectForfeitGrace(room: Room): void {
+export function clearDisconnectForfeitGrace(
+  room: Room,
+  context?: { roomCode: string; reason: string }
+): void {
+  const clearedPlayerId = room.disconnectedPlayerId;
+
   if (room.disconnectForfeitTimeout) {
     clearTimeout(room.disconnectForfeitTimeout);
     room.disconnectForfeitTimeout = undefined;
@@ -22,6 +30,13 @@ export function clearDisconnectForfeitGrace(room: Room): void {
   room.disconnectedPlayerId = undefined;
   room.disconnectedAt = undefined;
   room.disconnectForfeitExpiresAt = undefined;
+
+  if (context && clearedPlayerId) {
+    console.log(
+      `[Disconnect] grace_cancelled roomCode=${context.roomCode} ` +
+        `playerId=${clearedPlayerId} reason=${context.reason}`
+    );
+  }
 }
 
 /**
@@ -62,6 +77,16 @@ export function armDisconnectForfeitGrace(
       `expiresAt=${forfeitExpiresAt}`
   );
 
+  const disconnectedSocketId =
+    room.players.find((p) => p.playerId === disconnectedPlayerId)?.socketId ??
+    "—";
+
+  console.log(
+    `[Disconnect] grace_armed roomCode=${roomCode} ` +
+      `playerId=${disconnectedPlayerId} socketId=${disconnectedSocketId} ` +
+      `round=${room.round} reason=${logTag}`
+  );
+
   io.to(roomCode).emit("match:status", {
     roomCode,
     message: "Opponent disconnected. Waiting 39 seconds for reconnect...",
@@ -94,6 +119,12 @@ export function armDisconnectForfeitGrace(
 
     const maxScore = Math.max(...Object.values(r.scores || {}), 0);
     r.scores[opponent.playerId] = maxScore + 1;
+
+    console.log(
+      `[Disconnect] forfeit_triggered roomCode=${roomCode} ` +
+        `playerId=${disconnectedId} opponentId=${opponent.playerId} ` +
+        `round=${r.round}`
+    );
 
     clearDisconnectForfeitGrace(r);
     endMatch(roomCode, r);
@@ -145,7 +176,19 @@ export function tryResumeAfterDisconnectGrace(
     return false;
   }
 
-  clearDisconnectForfeitGrace(room);
+  const reconnectedSocketId =
+    room.players.find((p) => p.playerId === playerId)?.socketId ?? "—";
+  const remainingMs =
+    room.disconnectForfeitExpiresAt !== undefined
+      ? Math.max(0, room.disconnectForfeitExpiresAt - Date.now())
+      : "—";
+
+  console.log(
+    `[Disconnect] reconnect roomCode=${roomCode} playerId=${playerId} ` +
+      `socketId=${reconnectedSocketId} remainingMs=${remainingMs}`
+  );
+
+  clearDisconnectForfeitGrace(room, { roomCode, reason: "reconnected" });
 
   diagLog(
     `[diag:disconnect-policy] GRACE_CLEARED_ON_RECONNECT ` +
