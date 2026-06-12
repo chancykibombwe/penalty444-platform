@@ -8,6 +8,7 @@ import {
   jwtMatchesPlayer,
 } from "../security/jwt";
 import { allowSocketAction } from "../security/rateLimit";
+import { requireAuthenticatedSocket } from "../security/socketIdentity";
 import { rooms } from "../state/stores";
 import type { MatchType, Room, RoomPlayer } from "../types/room";
 import { diagLog } from "../diagnostics/log";
@@ -69,7 +70,42 @@ export function registerRoomSocketHandlers(socket: Socket) {
 
         const normalizedPlayerId = playerId.trim();
 
+        // Phase 9 — bring activeRoom:clear in line with the auth/audit
+        // posture of nearby active-room handlers (room:create, etc).
+        // This action stays cosmetic (clears the client's Resume Match
+        // hint only) — these checks just stop one socket from clearing
+        // another player's active-room memory.
+        const auth = requireAuthenticatedSocket(socket, "activeRoom:clear");
+        if (!auth.ok) {
+          socket.emit("activeRoom:clear:error", {
+            message: "Authentication required. Please sign in again.",
+          });
+          return;
+        }
+
+        if (!jwtMatchesPlayer(socket, normalizedPlayerId)) {
+          if (jwtEnforcementEnabled()) {
+            console.warn(
+              `[Security] activeRoom:clear jwt_player_mismatch socketId=${socket.id} ` +
+                `playerId=${normalizedPlayerId} verifiedUserId=${socket.data.userId ?? "—"}`
+            );
+            socket.emit("activeRoom:clear:error", {
+              message: "Authentication mismatch. Please sign in again.",
+            });
+            return;
+          }
+          console.warn(
+            `[Security] activeRoom:clear jwt_player_mismatch (soft) socketId=${socket.id} ` +
+              `playerId=${normalizedPlayerId} verifiedUserId=${socket.data.userId ?? "—"}`
+          );
+        }
+
         deps.clearPlayerActiveRoom(normalizedPlayerId);
+
+        console.log(
+          `[ActiveRoom] clear playerId=${normalizedPlayerId} ` +
+            `socketId=${socket.id} reason=user_clear`
+        );
 
         socket.emit("activeRoom:cleared", {
           message:
