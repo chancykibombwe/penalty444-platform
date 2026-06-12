@@ -38,6 +38,10 @@ export function removeRankedQueueEntryBySocketId(socketId: string): boolean {
   for (const [playerId, entry] of rankedQueue.entries()) {
     if (entry.socketId === socketId) {
       rankedQueue.delete(playerId);
+      console.log(
+        `[Ranked] cancel playerId=${playerId} socketId=${socketId} ` +
+          `queueSize=${rankedQueue.size} reason=disconnected`
+      );
       return true;
     }
   }
@@ -66,15 +70,27 @@ function tryFlushRankedQueue() {
     const okB = Boolean(socketB?.connected);
 
     if (!okA && !okB) {
+      console.log(
+        `[Ranked] flush skipped reason=both_disconnected ` +
+          `playerA=${a.playerId} playerB=${b.playerId} queueSize=${rankedQueue.size}`
+      );
       continue;
     }
 
     if (okA && !okB) {
+      console.log(
+        `[Ranked] flush skipped reason=partner_disconnected ` +
+          `playerId=${a.playerId} disconnectedPlayerId=${b.playerId} queueSize=${rankedQueue.size + 1}`
+      );
       rankedQueue.set(a.playerId, a);
       continue;
     }
 
     if (!okA && okB) {
+      console.log(
+        `[Ranked] flush skipped reason=partner_disconnected ` +
+          `playerId=${b.playerId} disconnectedPlayerId=${a.playerId} queueSize=${rankedQueue.size + 1}`
+      );
       rankedQueue.set(b.playerId, b);
       continue;
     }
@@ -97,6 +113,10 @@ function tryFlushRankedQueue() {
 
     try {
       const { code } = createRoomWithPlayers([p1, p2], 3, "ranked", "Free");
+      console.log(
+        `[Ranked] matched roomCode=${code} playerA=${a.playerId} ` +
+          `playerB=${b.playerId} queueSize=${rankedQueue.size}`
+      );
       io.to(code).emit("ranked:matched", { roomCode: code });
     } catch (error) {
       console.error("tryFlushRankedQueue: failed to create ranked room", error);
@@ -198,6 +218,11 @@ export function registerRankedHandlers(socket: Socket) {
         enqueuedAt: Date.now(),
       });
 
+      console.log(
+        `[Ranked] enqueue playerId=${normalizedId} username=${playerName} ` +
+          `socketId=${socket.id} queueSize=${rankedQueue.size}`
+      );
+
       socket.emit("ranked:queued", {});
       tryFlushRankedQueue();
     }
@@ -256,6 +281,12 @@ export function registerRankedHandlers(socket: Socket) {
       }
 
       rankedQueue.delete(normalizedId);
+
+      console.log(
+        `[Ranked] cancel playerId=${normalizedId} socketId=${socket.id} ` +
+          `queueSize=${rankedQueue.size}`
+      );
+
       socket.emit("ranked:cancelled", {});
     }
   );
