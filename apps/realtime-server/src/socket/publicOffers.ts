@@ -181,6 +181,12 @@ async function removeAbandonedPublicOffer(
       `reason=${reason}`
   );
 
+  console.log(
+    `[PublicOffer] removed offerId=${offer.offerId} ` +
+      `hostPlayerId=${offer.hostPlayerId} roomCode=${offer.roomCode} ` +
+      `reason=host_grace_expired remainingOffers=${publicOffers.size}`
+  );
+
   emitPublicOffers(reason);
 }
 
@@ -691,6 +697,14 @@ export function registerPublicOfferHandlers(socket: Socket) {
         cancelHostDisconnectGrace(offerId);
 
         publicOffers.delete(offerId);
+
+        console.log(
+          `[PublicOffer] removed offerId=${offerId} ` +
+            `hostPlayerId=${offer.hostPlayerId} requesterPlayerId=${playerId} ` +
+            `roomCode=${offer.roomCode} reason=match_started ` +
+            `remainingOffers=${publicOffers.size}`
+        );
+
         emitPublicOffers("publicOffer:join matched");
 
         deps.emitRoomUpdate(offer.roomCode, room);
@@ -733,9 +747,21 @@ export function registerPublicOfferHandlers(socket: Socket) {
 
       const offer = publicOffers.get(offerId);
 
-      if (!offer) return;
+      if (!offer) {
+        console.log(
+          `[PublicOffer] cancel ignored offerId=${offerId} ` +
+            `requesterPlayerId=${playerId} socketId=${socket.id} ` +
+            `reason=offer_not_found`
+        );
+        return;
+      }
 
       if (offer.hostPlayerId !== playerId) {
+        console.log(
+          `[PublicOffer] cancel rejected offerId=${offerId} ` +
+            `hostPlayerId=${offer.hostPlayerId} requesterPlayerId=${playerId} ` +
+            `socketId=${socket.id} reason=not_host`
+        );
         socket.emit("publicOffers:error", {
           message: "Only the host can cancel this offer.",
         });
@@ -790,6 +816,13 @@ export function registerPublicOfferHandlers(socket: Socket) {
       }
 
       deps.clearPlayerActiveRoom(playerId);
+
+      console.log(
+        `[PublicOffer] cancel offerId=${offerId} hostPlayerId=${playerId} ` +
+          `roomCode=${offer.roomCode} socketId=${socket.id} ` +
+          `remainingOffers=${publicOffers.size}`
+      );
+
       emitPublicOffers("publicOffer:cancel");
 
       socket.emit("publicOffer:cancelled", {
