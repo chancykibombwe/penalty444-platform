@@ -33,6 +33,7 @@ type RoomSocketHandlerDeps = {
   isTournamentRoom: (room: Room) => boolean;
   isPlayerAllowedInTournamentRoom: (room: Room, playerId: string) => boolean;
   emitRoomUpdate: (roomCode: string, room: Room) => void;
+  emitRoomUpdateToSocket: (socket: Socket, roomCode: string, room: Room) => void;
   emitMatchState: (roomCode: string, room: Room) => void;
   startRoundTimer: (roomCode: string, room: Room) => void;
   endMatch: (roomCode: string, room: Room) => void;
@@ -412,6 +413,16 @@ export function registerRoomSocketHandlers(socket: Socket) {
         deps.emitRoomUpdate(code, room);
         deps.emitMatchState(code, room);
 
+        // Phase 9 — hardening: guarantee this socket sees the current
+        // playerCount even if it missed the broadcast above because its
+        // `socket.join(code)` (just above) landed after an earlier
+        // `io.to(code)` emit (e.g. from `publicOffer:join`).
+        deps.emitRoomUpdateToSocket(socket, code, room);
+        console.log(
+          `[Room] direct_update socketId=${socket.id} roomCode=${code} ` +
+            `playerCount=${room.players.length} reason=room_join`
+        );
+
         // Reconnect/refresh fix: send a per-socket authoritative snapshot
         // so the rejoining client knows whether THEY have already locked a
         // pick this round, and whether the opponent has locked (boolean
@@ -513,6 +524,15 @@ export function registerRoomSocketHandlers(socket: Socket) {
 
       deps.emitRoomUpdate(code, room);
       deps.emitMatchState(code, room);
+
+      // Phase 9 — hardening: see comment in the existing-player branch
+      // above. Guarantees the newly-joined socket has the current
+      // playerCount even if it raced an earlier `io.to(code)` emit.
+      deps.emitRoomUpdateToSocket(socket, code, room);
+      console.log(
+        `[Room] direct_update socketId=${socket.id} roomCode=${code} ` +
+          `playerCount=${room.players.length} reason=room_join`
+      );
 
       // Phase 6C — the readiness authority is the SOLE caller of
       // `startRoundTimer`. The previous unconditional

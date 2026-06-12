@@ -1,6 +1,6 @@
 import express from "express";
 import http from "http";
-import { Server } from "socket.io";
+import { Server, type Socket } from "socket.io";
 import cors from "cors";
 import {
   EARLY_CANCEL_MS,
@@ -649,10 +649,8 @@ function buildPlayerNames(room: Room) {
   return playerNames;
 }
 
-function emitRoomUpdate(roomCode: string, room: Room) {
-  ensureAuthoritativeRoomRoles(room);
-
-  const payload = {
+function buildRoomUpdatePayload(roomCode: string, room: Room) {
+  return {
     roomCode,
     players: room.players.map((player) => player.playerId),
     playerNames: buildPlayerNames(room),
@@ -662,10 +660,26 @@ function emitRoomUpdate(roomCode: string, room: Room) {
     kickerPlayerId: getPlayerByRole(room, "KICKER") ?? null,
     keeperPlayerId: getPlayerByRole(room, "KEEPER") ?? null,
   };
+}
+
+function emitRoomUpdate(roomCode: string, room: Room) {
+  ensureAuthoritativeRoomRoles(room);
+
+  const payload = buildRoomUpdatePayload(roomCode, room);
   io.to(roomCode).emit("room:update", payload);
   mirrorToSpectators(room, "room:update", payload);
   logRoomStateEmit("room:update", roomCode, room);
   touchRoomActivity(room);
+}
+
+// Phase 9 — hardening: directly emit the current `room:update` payload to a
+// single socket right after it joins the room channel. Closes a race where
+// `io.to(roomCode)` broadcasts (e.g. from `publicOffer:join`) fire before
+// this socket's `socket.join(code)` lands, leaving it on a stale
+// `playerCount` and stuck on the "Waiting for opponent" overlay.
+function emitRoomUpdateToSocket(socket: Socket, roomCode: string, room: Room) {
+  const payload = buildRoomUpdatePayload(roomCode, room);
+  socket.emit("room:update", payload);
 }
 
 function isTournamentRoom(room: Room): boolean {
@@ -1805,6 +1819,7 @@ bindRoomSocketHandlers({
   isTournamentRoom,
   isPlayerAllowedInTournamentRoom,
   emitRoomUpdate,
+  emitRoomUpdateToSocket,
   emitMatchState,
   startRoundTimer,
   endMatch,
