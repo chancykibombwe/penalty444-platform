@@ -7,6 +7,7 @@ import {
 } from "../../lib/live/activity";
 import { useVisibleInterval } from "../../lib/polling/useVisibleInterval";
 import { supabase } from "../../lib/supabase/client";
+import ExpandToggle from "../ui/ExpandToggle";
 import FeaturedLiveMatchCard from "./FeaturedLiveMatchCard";
 import LivePulseBadge from "./LivePulseBadge";
 
@@ -51,7 +52,7 @@ export default function FeaturedLiveMatches({
 
   return (
     <section
-      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-4 shadow-xl sm:p-5"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-3.5 shadow-xl sm:p-4"
       aria-label="Featured live matches"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -78,16 +79,19 @@ export default function FeaturedLiveMatches({
           Preparing featured arenas…
         </p>
       ) : (
-        <div className="mt-4 grid gap-3 sm:gap-4">
-          {hero ? (
-            <FeaturedLiveMatchCard match={hero} emphasis="hero" />
-          ) : null}
+        <div className="mt-3">
+          {hero ? <FeaturedLiveMatchCard match={hero} emphasis="hero" /> : null}
           {rest.length > 0 ? (
-            <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
-              {rest.map((item) => (
-                <FeaturedLiveMatchCard key={item.id} match={item} />
-              ))}
-            </div>
+            <ExpandToggle
+              label={`+${rest.length} more arena${rest.length === 1 ? "" : "s"}`}
+              expandedLabel="Show less"
+            >
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 sm:gap-4">
+                {rest.map((item) => (
+                  <FeaturedLiveMatchCard key={item.id} match={item} />
+                ))}
+              </div>
+            </ExpandToggle>
           ) : null}
         </div>
       )}

@@ -8,6 +8,7 @@ import {
 } from "../../lib/live/activity";
 import { useVisibleInterval } from "../../lib/polling/useVisibleInterval";
 import { supabase } from "../../lib/supabase/client";
+import ExpandToggle from "../ui/ExpandToggle";
 import LivePulseBadge from "./LivePulseBadge";
 
 /**
@@ -63,7 +64,7 @@ export default function PlayerMomentsStrip({
 
   return (
     <section
-      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-4 shadow-xl sm:p-5"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-3.5 shadow-xl sm:p-4"
       aria-label="Featured player moments"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -93,52 +94,68 @@ export default function PlayerMomentsStrip({
           Rising competitors are warming up…
         </p>
       ) : (
-        <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-          {list.map((moment) => {
-            const body = (
-              <div
-                className={`flex items-center gap-3 rounded-2xl border px-3 py-2.5 ${TONE_BG[moment.tone]}`}
-              >
-                <span
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-black/40 text-lg ${TONE_TEXT[moment.tone]}`}
-                  aria-hidden
-                >
-                  {TONE_ICON[moment.tone]}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p
-                    className={`truncate text-sm font-black ${TONE_TEXT[moment.tone]}`}
-                  >
-                    {moment.headline}
-                  </p>
-                  <p className="mt-0.5 truncate text-[11px] text-zinc-400">
-                    {moment.context}
-                  </p>
-                </div>
-                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                  {moment.relativeTime}
-                </span>
-              </div>
-            );
-
-            return (
-              <li key={moment.id}>
-                {moment.href ? (
-                  <Link
-                    href={moment.href}
-                    className="block transition-transform hover:-translate-y-0.5"
-                  >
-                    {body}
-                  </Link>
-                ) : (
-                  body
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        <div className="mt-3">
+          <ul className="grid gap-2">
+            {list.slice(0, 2).map((moment) => (
+              <MomentItem key={moment.id} moment={moment} />
+            ))}
+          </ul>
+          {list.length > 2 ? (
+            <ExpandToggle
+              label={`+${list.length - 2} more moment${list.length - 2 === 1 ? "" : "s"}`}
+              expandedLabel="Show less"
+            >
+              <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+                {list.slice(2).map((moment) => (
+                  <MomentItem key={moment.id} moment={moment} />
+                ))}
+              </ul>
+            </ExpandToggle>
+          ) : null}
+        </div>
       )}
     </section>
+  );
+}
+
+function MomentItem({ moment }: { moment: RecentPlayerMoment }) {
+  const body = (
+    <div
+      className={`flex items-center gap-3 rounded-2xl border px-3 py-2.5 ${TONE_BG[moment.tone]}`}
+    >
+      <span
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-black/40 text-lg ${TONE_TEXT[moment.tone]}`}
+        aria-hidden
+      >
+        {TONE_ICON[moment.tone]}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className={`truncate text-sm font-black ${TONE_TEXT[moment.tone]}`}>
+          {moment.headline}
+        </p>
+        <p className="mt-0.5 truncate text-[11px] text-zinc-400">
+          {moment.context}
+        </p>
+      </div>
+      <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+        {moment.relativeTime}
+      </span>
+    </div>
+  );
+
+  return (
+    <li>
+      {moment.href ? (
+        <Link
+          href={moment.href}
+          className="block transition-transform hover:-translate-y-0.5"
+        >
+          {body}
+        </Link>
+      ) : (
+        body
+      )}
+    </li>
   );
 }
 

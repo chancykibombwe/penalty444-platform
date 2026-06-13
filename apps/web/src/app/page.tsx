@@ -288,8 +288,6 @@ export default function HomePage() {
         />
       </section>
 
-      <HomeTournamentPreview />
-
       <section aria-label="Games on 444 Arena">
         <div className="flex items-end justify-between gap-2">
           <div>
@@ -321,6 +319,8 @@ export default function HomePage() {
       </section>
 
       <PlayerStatsStrip username={username} stats={playerStats} />
+
+      <HomeTournamentPreview />
 
       <PlatformLiveStatus />
 

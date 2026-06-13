@@ -8,6 +8,7 @@ import {
   type PlatformLiveCounts,
 } from "../../lib/live/activity";
 import { useVisibleInterval } from "../../lib/polling/useVisibleInterval";
+import ExpandToggle from "../ui/ExpandToggle";
 import LivePulseBadge from "./LivePulseBadge";
 
 /**
@@ -29,7 +30,7 @@ type Tile = {
   pulse: boolean;
 };
 
-const TILES: Tile[] = [
+const PRIMARY_TILES: Tile[] = [
   {
     key: "liveMatches",
     label: "Live Matches",
@@ -44,6 +45,9 @@ const TILES: Tile[] = [
     tone: "amber",
     pulse: true,
   },
+];
+
+const SECONDARY_TILES: Tile[] = [
   {
     key: "activeEvents",
     label: "Active Events",
@@ -110,7 +114,7 @@ export default function PlatformLiveStatus({ refreshMs = 30_000 }: Props) {
 
   return (
     <section
-      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-4 shadow-xl sm:p-5"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-3.5 shadow-xl sm:p-4"
       aria-label="Platform live status"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -130,40 +134,54 @@ export default function PlatformLiveStatus({ refreshMs = 30_000 }: Props) {
         </p>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-5">
-        {TILES.map((tile) => {
-          const value = data[tile.key];
-          const showPulse = tile.pulse && value > 0;
-          return (
-            <div
-              key={tile.key}
-              className={`relative overflow-hidden rounded-2xl border px-3 py-2.5 ${TONE_BG[tile.tone]}`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span
-                  className={`text-[10px] font-black uppercase tracking-[0.22em] ${TONE_LABEL[tile.tone]}`}
-                >
-                  {tile.label}
-                </span>
-                {showPulse ? (
-                  <span
-                    className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current opacity-80"
-                    aria-hidden
-                  />
-                ) : null}
-              </div>
-              <div
-                className={`mt-1 text-2xl font-black tabular-nums ${TONE_VALUE[tile.tone]}`}
-              >
-                {isLoading ? "…" : value.toLocaleString()}
-              </div>
-              <p className="mt-0.5 text-[10px] font-semibold text-zinc-500">
-                {tile.hint}
-              </p>
-            </div>
-          );
-        })}
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {PRIMARY_TILES.map((tile) => (
+          <LiveTile key={tile.key} tile={tile} value={data[tile.key]} isLoading={isLoading} />
+        ))}
       </div>
+
+      <ExpandToggle label="More stats" expandedLabel="Fewer stats">
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          {SECONDARY_TILES.map((tile) => (
+            <LiveTile key={tile.key} tile={tile} value={data[tile.key]} isLoading={isLoading} />
+          ))}
+        </div>
+      </ExpandToggle>
     </section>
+  );
+}
+
+function LiveTile({
+  tile,
+  value,
+  isLoading,
+}: {
+  tile: Tile;
+  value: number;
+  isLoading: boolean;
+}) {
+  const showPulse = tile.pulse && value > 0;
+  return (
+    <div
+      className={`relative overflow-hidden rounded-2xl border px-3 py-2.5 ${TONE_BG[tile.tone]}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className={`text-[10px] font-black uppercase tracking-[0.22em] ${TONE_LABEL[tile.tone]}`}
+        >
+          {tile.label}
+        </span>
+        {showPulse ? (
+          <span
+            className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current opacity-80"
+            aria-hidden
+          />
+        ) : null}
+      </div>
+      <div className={`mt-1 text-2xl font-black tabular-nums ${TONE_VALUE[tile.tone]}`}>
+        {isLoading ? "…" : value.toLocaleString()}
+      </div>
+      <p className="mt-0.5 text-[10px] font-semibold text-zinc-500">{tile.hint}</p>
+    </div>
   );
 }

@@ -41,7 +41,7 @@ type Props = { game: GameCardData };
 export default function GameCard({ game }: Props) {
   const card = (
     <div
-      className={`group relative h-full w-[78%] shrink-0 snap-start overflow-hidden rounded-2xl border bg-gradient-to-br from-zinc-950 via-zinc-950/65 to-black p-3.5 transition-transform sm:w-[62%] md:w-[300px] ${
+      className={`group relative h-full w-[78%] shrink-0 snap-start overflow-hidden rounded-2xl border bg-gradient-to-br from-zinc-950 via-zinc-950/65 to-black p-3 transition-transform sm:w-[62%] md:w-[300px] ${
         game.featured
           ? "border-[#3B9EFF]/55 shadow-[0_0_28px_rgba(59,158,255,0.25)] hover:scale-[1.02]"
           : "border-[#1B2433] hover:scale-[1.015] hover:border-zinc-600"
@@ -58,7 +58,7 @@ export default function GameCard({ game }: Props) {
       />
 
       <div className="relative flex items-start justify-between gap-2">
-        <HexIconFrame tone={game.featured ? "primary" : "muted"} size="lg">
+        <HexIconFrame tone={game.featured ? "primary" : "muted"} size="md">
           {game.icon}
         </HexIconFrame>
         <div className="flex flex-col items-end gap-1.5">

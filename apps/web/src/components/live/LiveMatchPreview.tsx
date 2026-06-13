@@ -8,6 +8,7 @@ import {
   type LiveMatchPreviewItem,
 } from "../../lib/live/activity";
 import { useVisibleInterval } from "../../lib/polling/useVisibleInterval";
+import ExpandToggle from "../ui/ExpandToggle";
 import LivePulseBadge from "./LivePulseBadge";
 
 /**
@@ -43,7 +44,7 @@ export default function LiveMatchPreview({
 
   return (
     <section
-      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-4 shadow-xl sm:p-5"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-3.5 shadow-xl sm:p-4"
       aria-label="Live tournament matches"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -73,11 +74,23 @@ export default function LiveMatchPreview({
           Preparing live arena matches…
         </p>
       ) : (
-        <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-          {list.map((item) => (
-            <LiveMatchCard key={item.id} item={item} />
-          ))}
-        </ul>
+        <div className="mt-3">
+          <ul className="grid gap-2">
+            <LiveMatchCard key={list[0].id} item={list[0]} />
+          </ul>
+          {list.length > 1 ? (
+            <ExpandToggle
+              label={`+${list.length - 1} more live match${list.length - 1 === 1 ? "" : "es"}`}
+              expandedLabel="Show less"
+            >
+              <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+                {list.slice(1).map((item) => (
+                  <LiveMatchCard key={item.id} item={item} />
+                ))}
+              </ul>
+            </ExpandToggle>
+          ) : null}
+        </div>
       )}
     </section>
   );

@@ -87,7 +87,7 @@ export default function HomeTournamentPreview() {
 
   return (
     <section
-      className="relative overflow-hidden rounded-3xl border-2 border-cyan-500/40 bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-3.5 shadow-2xl sm:p-4"
+      className="relative overflow-hidden rounded-3xl border-2 border-cyan-500/40 bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-3 shadow-2xl sm:p-3.5"
       aria-label="Featured tournament"
     >
       <div
@@ -122,10 +122,10 @@ export default function HomeTournamentPreview() {
             </span>
           </div>
 
-          <p className="mt-2 text-[10px] font-black uppercase tracking-[0.32em] text-zinc-500">
+          <p className="mt-1.5 text-[10px] font-black uppercase tracking-[0.32em] text-zinc-500">
             Tournament
           </p>
-          <h2 className="mt-1 break-words text-xl font-black tracking-tight text-white sm:text-2xl">
+          <h2 className="mt-1 break-words text-lg font-black tracking-tight text-white sm:text-xl">
             <span className="bg-gradient-to-r from-cyan-200 via-white to-amber-200 bg-clip-text text-transparent">
               {tournament.name}
             </span>
@@ -138,11 +138,11 @@ export default function HomeTournamentPreview() {
         </div>
 
         {countdown ? (
-          <div className="shrink-0 rounded-2xl border border-amber-400/45 bg-amber-950/40 px-4 py-3 text-center shadow-lg">
+          <div className="shrink-0 rounded-2xl border border-amber-400/45 bg-amber-950/40 px-3 py-2 text-center shadow-lg">
             <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-200/90">
               Starts in
             </p>
-            <p className="mt-1 text-xl font-black tabular-nums text-amber-100 sm:text-2xl">
+            <p className="mt-1 text-lg font-black tabular-nums text-amber-100 sm:text-xl">
               {countdown}
             </p>
           </div>

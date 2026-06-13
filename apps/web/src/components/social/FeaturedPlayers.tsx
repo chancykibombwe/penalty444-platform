@@ -10,6 +10,7 @@ import {
 import { useVisibleInterval } from "../../lib/polling/useVisibleInterval";
 import LivePulseBadge from "../live/LivePulseBadge";
 import RankBadge from "../player/RankBadge";
+import ExpandToggle from "../ui/ExpandToggle";
 import { ViewProfileButton, ChallengePlayerButton } from "./SocialActions";
 
 /**
@@ -56,7 +57,7 @@ export default function FeaturedPlayers({
 
   return (
     <section
-      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-4 shadow-xl sm:p-5"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-3.5 shadow-xl sm:p-4"
       aria-label="Featured competitors"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -86,10 +87,25 @@ export default function FeaturedPlayers({
           Rising competitors are warming up…
         </p>
       ) : (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 sm:gap-4">
-          {list.map((player) => (
-            <PlayerTile key={`${player.userId}:${player.reason}`} player={player} />
-          ))}
+        <div className="mt-3">
+          <div className="grid gap-3">
+            <PlayerTile
+              key={`${list[0].userId}:${list[0].reason}`}
+              player={list[0]}
+            />
+          </div>
+          {list.length > 1 ? (
+            <ExpandToggle
+              label={`+${list.length - 1} more player${list.length - 1 === 1 ? "" : "s"}`}
+              expandedLabel="Show less"
+            >
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 sm:gap-4">
+                {list.slice(1).map((player) => (
+                  <PlayerTile key={`${player.userId}:${player.reason}`} player={player} />
+                ))}
+              </div>
+            </ExpandToggle>
+          ) : null}
         </div>
       )}
     </section>
