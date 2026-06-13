@@ -1,8 +1,14 @@
 import "./globals.css";
+import type { Viewport } from "next";
 import Navbar from "../components/layout/Navbar";
 import ActiveMatchRecovery from "../components/match/ActiveMatchRecovery";
 import MatchReadyNotification from "../components/match/MatchReadyNotification";
 import TournamentMatchReadyNotification from "../components/tournament/TournamentMatchReadyNotification";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
 
 export default function RootLayout({
   children,
@@ -16,7 +22,7 @@ export default function RootLayout({
         <MatchReadyNotification />
         <TournamentMatchReadyNotification />
         <Navbar />
-        <main className="p-6 pb-28 md:pb-6">{children}</main>
+        <main className="p-3 pb-28 sm:p-4 md:p-6 md:pb-6">{children}</main>
       </body>
     </html>
   );

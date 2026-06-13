@@ -38,14 +38,14 @@ function LobbyPageContent() {
           </div>
 
           {/* Page content */}
-          <div className="relative mx-auto max-w-4xl space-y-8 px-6 pt-6">
+          <div className="relative mx-auto max-w-4xl space-y-6 px-4 pt-6 sm:space-y-8 sm:px-6">
 
             {/* Page header */}
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
                 444 ARENA · Penalty444
               </p>
-              <h1 className="mt-1 text-4xl font-black tracking-tight text-white sm:text-5xl">
+              <h1 className="mt-1 text-3xl font-black tracking-tight text-white sm:text-4xl md:text-5xl">
                 Match Hub
               </h1>
               <p className="mt-2 text-sm text-zinc-400">
@@ -101,12 +101,12 @@ function LobbyPageContent() {
 function LobbyPageShell() {
   return (
     <div className="relative left-1/2 -mt-6 min-h-screen w-screen -translate-x-1/2 overflow-x-hidden bg-zinc-950 pb-28 md:pb-6">
-      <div className="relative mx-auto max-w-4xl px-6 pt-6">
+      <div className="relative mx-auto max-w-4xl px-4 pt-6 sm:px-6">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
             444 ARENA · Penalty444
           </p>
-          <h1 className="mt-1 text-4xl font-black tracking-tight text-white sm:text-5xl">
+          <h1 className="mt-1 text-3xl font-black tracking-tight text-white sm:text-4xl md:text-5xl">
             Match Hub
           </h1>
           <p className="mt-2 text-sm text-zinc-400">Loading match hub…</p>

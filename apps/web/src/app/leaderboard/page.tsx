@@ -217,13 +217,13 @@ export default async function LeaderboardPage({
   const showNextPage = leaderboard.length === limit;
 
   return (
-    <section className="space-y-10 rounded-[2rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top,_rgba(234,179,8,0.10),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(34,211,238,0.07),_transparent_28%),linear-gradient(180deg,_#050505,_#09090b_42%,_#020202)] p-5 shadow-[0_40px_120px_rgba(0,0,0,0.65)] sm:p-7 lg:p-9">
+    <section className="space-y-8 rounded-[2rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top,_rgba(234,179,8,0.10),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(34,211,238,0.07),_transparent_28%),linear-gradient(180deg,_#050505,_#09090b_42%,_#020202)] p-3 shadow-[0_40px_120px_rgba(0,0,0,0.65)] sm:p-5 sm:space-y-10 md:p-7 lg:p-9">
       <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.34em] text-yellow-300/70">
             Competitive Arena
           </p>
-          <h1 className="mt-2 text-4xl font-black tracking-tight text-white sm:text-5xl">
+          <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl md:text-5xl">
             444 ARENA Rankings
           </h1>
           <p className="mt-3 max-w-2xl text-sm text-zinc-500 sm:text-base">
@@ -262,12 +262,12 @@ export default async function LeaderboardPage({
           {topPlayers.map((player, index) => (
             <div
               key={player.id}
-              className={`min-h-[310px] rounded-[1.75rem] border p-7 md:min-h-[340px] md:p-8 ${getPodiumClass(
+              className={`min-h-[240px] rounded-[1.75rem] border p-4 sm:min-h-[310px] sm:p-6 md:min-h-[340px] md:p-8 ${getPodiumClass(
                 index
               )}`}
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="text-4xl font-black tracking-tight text-white">
+                <div className="text-2xl font-black tracking-tight text-white sm:text-3xl md:text-4xl">
                   #{index + 1}
                 </div>
                 <RankBadge
@@ -279,32 +279,32 @@ export default async function LeaderboardPage({
                 />
               </div>
 
-              <div className="mt-7 flex flex-col items-center text-center">
+              <div className="mt-4 flex flex-col items-center text-center sm:mt-7">
                 {hasValidUserId(player.id) ? (
                   <Link
                     href={buildPlayerProfileHref(player.id, player.username)}
-                    className="flex h-20 w-20 items-center justify-center rounded-full border border-white/15 bg-black/70 text-2xl font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_45px_rgba(0,0,0,0.45)] transition hover:border-white/30 hover:text-yellow-100 md:h-24 md:w-24 md:text-3xl"
+                    className="flex h-14 w-14 items-center justify-center rounded-full border border-white/15 bg-black/70 text-lg font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_45px_rgba(0,0,0,0.45)] transition hover:border-white/30 hover:text-yellow-100 sm:h-20 sm:w-20 sm:text-2xl md:h-24 md:w-24 md:text-3xl"
                   >
                     {getInitials(player.username)}
                   </Link>
                 ) : (
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full border border-white/15 bg-black/70 text-2xl font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_45px_rgba(0,0,0,0.45)] md:h-24 md:w-24 md:text-3xl">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/15 bg-black/70 text-lg font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_45px_rgba(0,0,0,0.45)] sm:h-20 sm:w-20 sm:text-2xl md:h-24 md:w-24 md:text-3xl">
                     {getInitials(player.username)}
                   </div>
                 )}
                 {hasValidUserId(player.id) ? (
                   <Link
                     href={buildPlayerProfileHref(player.id, player.username)}
-                    className="mt-5 max-w-full truncate text-2xl font-black tracking-tight text-white transition hover:text-yellow-100"
+                    className="mt-3 max-w-full truncate text-lg font-black tracking-tight text-white transition hover:text-yellow-100 sm:mt-5 sm:text-2xl"
                   >
                     {player.username}
                   </Link>
                 ) : (
-                  <div className="mt-5 max-w-full truncate text-2xl font-black tracking-tight text-white">
+                  <div className="mt-3 max-w-full truncate text-lg font-black tracking-tight text-white sm:mt-5 sm:text-2xl">
                     {player.username}
                   </div>
                 )}
-                <div className="mt-4 text-6xl font-black tracking-tighter text-white">
+                <div className="mt-2 text-3xl font-black tracking-tighter text-white sm:mt-4 sm:text-5xl md:text-6xl">
                   {player.rankPoints}
                 </div>
                 <div className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
