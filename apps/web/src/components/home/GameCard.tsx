@@ -58,18 +58,23 @@ export default function GameCard({ game }: Props) {
       />
 
       <div className="relative flex items-start justify-between gap-2">
-        <HexIconFrame tone={game.featured ? "primary" : "muted"} size="md">
+        <HexIconFrame tone={game.featured ? "primary" : "muted"} size="lg">
           {game.icon}
         </HexIconFrame>
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] ${STATUS_CLASS[game.status]}`}
-        >
+        <div className="flex flex-col items-end gap-1.5">
           <span
-            className={`inline-block h-1.5 w-1.5 rounded-full ${game.comingSoon ? "" : "animate-pulse"} ${STATUS_DOT[game.status]}`}
-            aria-hidden
-          />
-          {STATUS_LABEL[game.status]}
-        </span>
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] ${STATUS_CLASS[game.status]}`}
+          >
+            <span
+              className={`inline-block h-1.5 w-1.5 rounded-full ${game.comingSoon ? "" : "animate-pulse"} ${STATUS_DOT[game.status]}`}
+              aria-hidden
+            />
+            {STATUS_LABEL[game.status]}
+          </span>
+          <span className="inline-flex items-center rounded-full border border-[#1B2433] bg-[#111827]/80 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            1v1
+          </span>
+        </div>
       </div>
 
       <p className="mt-3 text-[10px] font-black uppercase tracking-[0.22em] text-zinc-500">
