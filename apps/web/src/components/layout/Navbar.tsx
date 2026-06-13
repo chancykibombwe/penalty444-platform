@@ -209,7 +209,7 @@ export default function Navbar() {
           on `/match/[roomCode]`. Without it the `fixed inset-0`
           overlay covers the navbar visually AND blocks taps. */}
       <header className="relative z-50 border-b border-zinc-800 bg-gradient-to-b from-zinc-950 to-black">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 md:py-4">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-2.5 md:py-3">
           <Link
             href="/"
             className="flex items-center gap-2 text-base font-black tracking-tight text-white sm:text-lg md:text-xl"
@@ -335,7 +335,7 @@ export default function Navbar() {
                 <Link
                   href={href}
                   aria-current={active ? "page" : undefined}
-                  className="relative flex min-h-[44px] flex-col items-center justify-center gap-0.5 py-2 text-[9px] font-bold transition-colors"
+                  className="relative flex min-h-[44px] flex-col items-center justify-center gap-0.5 py-1.5 text-[9px] font-bold transition-colors"
                   style={{ color: active ? accent : "#5A6472" }}
                 >
                   <item.Icon className="h-4 w-4" aria-hidden />

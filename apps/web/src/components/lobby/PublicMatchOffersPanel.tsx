@@ -484,13 +484,13 @@ export default function PublicMatchOffersPanel() {
   }
 
   return (
-    <section className="space-y-5 overflow-hidden rounded-2xl border border-[#1B2433] bg-[#0D1420] p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5)] sm:p-7">
+    <section className="space-y-3.5 overflow-hidden rounded-2xl border border-[#1B2433] bg-[#0D1420] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.5)] sm:p-5">
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
           Active Rooms
         </p>
 
-        <h2 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl">
+        <h2 className="mt-1 text-xl font-black tracking-tight text-white sm:text-2xl">
           Open Challenges
         </h2>
 

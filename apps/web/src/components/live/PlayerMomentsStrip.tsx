@@ -25,7 +25,7 @@ type Props = {
 const TONE_BG: Record<RecentPlayerMoment["tone"], string> = {
   champion: "border-yellow-300/55 bg-yellow-500/8",
   win: "border-emerald-400/40 bg-emerald-500/8",
-  info: "border-zinc-700 bg-zinc-900/60",
+  info: "border-[#1B2433] bg-[#111827]/60",
   promotion: "border-violet-400/45 bg-violet-500/10",
 };
 
@@ -63,7 +63,7 @@ export default function PlayerMomentsStrip({
 
   return (
     <section
-      className="rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-950 via-zinc-950/70 to-black p-4 shadow-xl sm:p-5"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-4 shadow-xl sm:p-5"
       aria-label="Featured player moments"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -89,7 +89,7 @@ export default function PlayerMomentsStrip({
       {isLoading ? (
         <MomentsSkeleton />
       ) : list.length === 0 ? (
-        <p className="mt-6 rounded-2xl border border-dashed border-zinc-800 bg-black/35 px-4 py-6 text-center text-sm font-semibold text-zinc-400">
+        <p className="mt-6 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-6 text-center text-sm font-semibold text-zinc-400">
           Rising competitors are warming up…
         </p>
       ) : (
@@ -148,7 +148,7 @@ function MomentsSkeleton() {
       {Array.from({ length: 4 }).map((_, idx) => (
         <li
           key={idx}
-          className="flex items-center gap-3 rounded-2xl border border-zinc-800/80 bg-zinc-950/65 px-3 py-2.5"
+          className="flex items-center gap-3 rounded-2xl border border-[#1B2433] bg-[#0D1420]/65 px-3 py-2.5"
         >
           <div className="h-8 w-8 animate-pulse rounded-xl bg-zinc-800" />
           <div className="flex-1 space-y-2">

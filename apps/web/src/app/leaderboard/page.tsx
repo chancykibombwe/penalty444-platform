@@ -45,11 +45,11 @@ function resolveTierForRow(row: LeaderboardPlayer): RankTier {
 function getPodiumClass(index: number) {
   switch (index) {
     case 0:
-      return "md:order-2 md:-mt-8 md:scale-[1.08] border-yellow-300/70 bg-[linear-gradient(180deg,_rgba(113,63,18,0.55),_rgba(9,9,11,0.96))] shadow-[inset_0_1px_0_rgba(255,255,255,0.10),0_36px_90px_rgba(234,179,8,0.22)] ring-1 ring-yellow-200/15";
+      return "md:order-2 md:-mt-6 md:scale-[1.06] border-yellow-300/70 bg-[linear-gradient(180deg,_rgba(113,63,18,0.55),_rgba(9,9,11,0.96))] shadow-[inset_0_1px_0_rgba(255,255,255,0.10),0_36px_90px_rgba(234,179,8,0.22)] ring-1 ring-yellow-200/15";
     case 1:
-      return "md:order-1 md:mt-12 border-slate-300/60 bg-[linear-gradient(180deg,_rgba(51,65,85,0.48),_rgba(9,9,11,0.95))] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_28px_70px_rgba(148,163,184,0.12)] ring-1 ring-white/10";
+      return "md:order-1 md:mt-8 border-slate-300/60 bg-[linear-gradient(180deg,_rgba(51,65,85,0.48),_rgba(9,9,11,0.95))] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_28px_70px_rgba(148,163,184,0.12)] ring-1 ring-white/10";
     case 2:
-      return "md:order-3 md:mt-12 border-amber-600/70 bg-[linear-gradient(180deg,_rgba(120,53,15,0.44),_rgba(9,9,11,0.95))] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_28px_70px_rgba(180,83,9,0.16)] ring-1 ring-amber-200/10";
+      return "md:order-3 md:mt-8 border-amber-600/70 bg-[linear-gradient(180deg,_rgba(120,53,15,0.44),_rgba(9,9,11,0.95))] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_28px_70px_rgba(180,83,9,0.16)] ring-1 ring-amber-200/10";
     default:
       return "border-zinc-800 bg-zinc-950";
   }
@@ -217,16 +217,16 @@ export default async function LeaderboardPage({
   const showNextPage = leaderboard.length === limit;
 
   return (
-    <section className="space-y-8 rounded-[2rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top,_rgba(234,179,8,0.10),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(34,211,238,0.07),_transparent_28%),linear-gradient(180deg,_#050505,_#09090b_42%,_#020202)] p-3 shadow-[0_40px_120px_rgba(0,0,0,0.65)] sm:p-5 sm:space-y-10 md:p-7 lg:p-9">
-      <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+    <section className="space-y-4 rounded-[2rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top,_rgba(234,179,8,0.10),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(34,211,238,0.07),_transparent_28%),linear-gradient(180deg,_#050505,_#09090b_42%,_#020202)] p-3 shadow-[0_40px_120px_rgba(0,0,0,0.65)] sm:space-y-6 sm:p-5 md:p-6 lg:p-7">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.34em] text-yellow-300/70">
             Competitive Arena
           </p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl md:text-5xl">
+          <h1 className="mt-1.5 text-2xl font-black tracking-tight text-white sm:text-3xl md:text-4xl">
             444 ARENA Rankings
           </h1>
-          <p className="mt-3 max-w-2xl text-sm text-zinc-500 sm:text-base">
+          <p className="mt-2 max-w-2xl text-sm text-zinc-500 sm:text-base">
             Global rankings from verified Penalty444 match results.
           </p>
         </div>
@@ -261,16 +261,16 @@ export default async function LeaderboardPage({
       ) : null}
 
       {!error && topPlayers.length > 0 ? (
-        <div className="grid gap-4 md:grid-cols-3 md:items-start">
+        <div className="grid gap-3 md:grid-cols-3 md:items-start">
           {topPlayers.map((player, index) => (
             <div
               key={player.id}
-              className={`min-h-[240px] rounded-[1.75rem] border p-4 sm:min-h-[310px] sm:p-6 md:min-h-[340px] md:p-8 ${getPodiumClass(
+              className={`min-h-[200px] rounded-[1.75rem] border p-3.5 sm:min-h-[260px] sm:p-5 md:min-h-[290px] md:p-6 ${getPodiumClass(
                 index
               )}`}
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="text-2xl font-black tracking-tight text-white sm:text-3xl md:text-4xl">
+                <div className="text-xl font-black tracking-tight text-white sm:text-2xl md:text-3xl">
                   #{index + 1}
                 </div>
                 <RankBadge
@@ -282,32 +282,32 @@ export default async function LeaderboardPage({
                 />
               </div>
 
-              <div className="mt-4 flex flex-col items-center text-center sm:mt-7">
+              <div className="mt-3 flex flex-col items-center text-center sm:mt-5">
                 {hasValidUserId(player.id) ? (
                   <Link
                     href={buildPlayerProfileHref(player.id, player.username)}
-                    className="flex h-14 w-14 items-center justify-center rounded-full border border-white/15 bg-black/70 text-lg font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_45px_rgba(0,0,0,0.45)] transition hover:border-white/30 hover:text-yellow-100 sm:h-20 sm:w-20 sm:text-2xl md:h-24 md:w-24 md:text-3xl"
+                    className="flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-black/70 text-base font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_45px_rgba(0,0,0,0.45)] transition hover:border-white/30 hover:text-yellow-100 sm:h-16 sm:w-16 sm:text-xl md:h-20 md:w-20 md:text-2xl"
                   >
                     {getInitials(player.username)}
                   </Link>
                 ) : (
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/15 bg-black/70 text-lg font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_45px_rgba(0,0,0,0.45)] sm:h-20 sm:w-20 sm:text-2xl md:h-24 md:w-24 md:text-3xl">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-black/70 text-base font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_45px_rgba(0,0,0,0.45)] sm:h-16 sm:w-16 sm:text-xl md:h-20 md:w-20 md:text-2xl">
                     {getInitials(player.username)}
                   </div>
                 )}
                 {hasValidUserId(player.id) ? (
                   <Link
                     href={buildPlayerProfileHref(player.id, player.username)}
-                    className="mt-3 max-w-full truncate text-lg font-black tracking-tight text-white transition hover:text-yellow-100 sm:mt-5 sm:text-2xl"
+                    className="mt-2 max-w-full truncate text-base font-black tracking-tight text-white transition hover:text-yellow-100 sm:mt-3 sm:text-xl"
                   >
                     {player.username}
                   </Link>
                 ) : (
-                  <div className="mt-3 max-w-full truncate text-lg font-black tracking-tight text-white sm:mt-5 sm:text-2xl">
+                  <div className="mt-2 max-w-full truncate text-base font-black tracking-tight text-white sm:mt-3 sm:text-xl">
                     {player.username}
                   </div>
                 )}
-                <div className="mt-2 text-3xl font-black tracking-tighter text-white sm:mt-4 sm:text-5xl md:text-6xl">
+                <div className="mt-1.5 text-2xl font-black tracking-tighter text-white sm:mt-3 sm:text-4xl md:text-5xl">
                   {player.rankPoints}
                 </div>
                 <div className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
@@ -315,7 +315,7 @@ export default async function LeaderboardPage({
                 </div>
               </div>
 
-              <div className="mt-7 flex items-center justify-between rounded-2xl border border-white/10 bg-black/35 px-4 py-3 text-xs font-semibold text-zinc-400 shadow-inner">
+              <div className="mt-4 flex items-center justify-between rounded-2xl border border-white/10 bg-black/35 px-3.5 py-2.5 text-xs font-semibold text-zinc-400 shadow-inner">
                 <span>
                   {player.wins}W / {player.losses}L / {player.draws}D
                 </span>

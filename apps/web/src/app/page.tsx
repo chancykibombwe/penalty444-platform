@@ -241,7 +241,7 @@ export default function HomePage() {
   }, [activeMatch, activeTournament]);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8 px-1 pb-2 sm:px-2">
+    <div className="mx-auto max-w-6xl space-y-5 pb-2">
       <HomeShared />
 
       <HeroBanner primaryHref="/lobby" secondaryHref="/tournaments" />
@@ -334,7 +334,7 @@ export default function HomePage() {
 
       <GlobalActivityFeed seeMoreHref="/tournaments" />
 
-      <footer className="rounded-2xl border border-zinc-800/80 bg-zinc-950/60 px-4 py-3 text-center text-[11px] text-zinc-500 sm:px-5">
+      <footer className="rounded-2xl border border-[#1B2433] bg-[#0D1420]/60 px-4 py-3 text-center text-[11px] text-zinc-500 sm:px-5">
         444 Arena · Competitive multiplayer · Skill over luck
       </footer>
     </div>

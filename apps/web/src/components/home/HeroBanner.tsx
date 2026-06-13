@@ -55,7 +55,7 @@ export default function HeroBanner({
 
   return (
     <section
-      className="relative overflow-hidden rounded-3xl border border-zinc-800/80 bg-gradient-to-br from-zinc-950 via-zinc-950 to-black px-5 py-8 shadow-2xl sm:px-8 sm:py-12"
+      className="relative overflow-hidden rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black px-4 py-5 shadow-2xl sm:px-6 sm:py-8"
       aria-label="444 Arena hero"
     >
       {/* Background layers */}
@@ -89,7 +89,7 @@ export default function HeroBanner({
 
         <h1
           key={`headline-${activeIndex}`}
-          className="mt-4 text-3xl font-black uppercase leading-tight tracking-tight sm:text-4xl md:text-5xl"
+          className="mt-3 text-2xl font-black uppercase leading-tight tracking-tight sm:text-3xl md:text-4xl"
           style={{ animation: "homeFeedFade 0.45s ease-out forwards" }}
         >
           {(() => {
@@ -107,29 +107,29 @@ export default function HeroBanner({
 
         <p
           key={`subtext-${activeIndex}`}
-          className="mt-3 max-w-md text-sm leading-relaxed text-zinc-300 sm:text-base"
+          className="mt-2 max-w-md text-sm leading-relaxed text-zinc-300 sm:text-base"
           style={{ animation: "homeFeedFade 0.5s ease-out forwards" }}
         >
           {tagline.subtext}
         </p>
 
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="mt-4 flex flex-col gap-2.5 sm:flex-row sm:items-center">
           <Link
             href={primaryHref}
-            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] px-6 py-3 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_28px_rgba(59,158,255,0.4)] transition-transform hover:scale-[1.02] sm:text-base"
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] px-5 py-2.5 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_28px_rgba(59,158,255,0.4)] transition-transform hover:scale-[1.02] sm:text-base"
           >
             ▶ Play Now
           </Link>
           <Link
             href={secondaryHref}
-            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-[#E0A000]/55 bg-transparent px-6 py-3 text-sm font-black uppercase tracking-wide text-[#E0A000] transition-transform hover:scale-[1.02] hover:bg-[#E0A000]/10 sm:text-base"
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-[#E0A000]/55 bg-transparent px-5 py-2.5 text-sm font-black uppercase tracking-wide text-[#E0A000] transition-transform hover:scale-[1.02] hover:bg-[#E0A000]/10 sm:text-base"
           >
             🏆 Tournaments
           </Link>
         </div>
 
         <div
-          className="mt-6 flex items-center gap-2"
+          className="mt-4 flex items-center gap-2"
           role="tablist"
           aria-label="Hero tagline indicators"
         >

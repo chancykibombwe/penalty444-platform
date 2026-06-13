@@ -68,7 +68,7 @@ export default function PlayerStatsStrip({
 
   return (
     <section
-      className="rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-950 via-zinc-950/60 to-black p-4 shadow-xl sm:p-5"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-4 shadow-xl sm:p-5"
       aria-label="Your statistics"
     >
       <div className="flex flex-wrap items-end justify-between gap-2">

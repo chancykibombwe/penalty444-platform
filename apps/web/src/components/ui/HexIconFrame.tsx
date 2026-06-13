@@ -11,9 +11,9 @@ const TONE_CLASS: Record<HexIconFrameTone, string> = {
 };
 
 const SIZE_CLASS = {
-  sm: "h-9 w-9 text-lg",
-  md: "h-12 w-12 text-2xl",
-  lg: "h-14 w-14 text-3xl",
+  sm: "h-8 w-8 text-base",
+  md: "h-10 w-10 text-xl",
+  lg: "h-12 w-12 text-2xl",
 };
 
 type Props = {

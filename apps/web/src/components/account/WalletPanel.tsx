@@ -119,7 +119,7 @@ export default function WalletPanel({ userId }: Props) {
       className="overflow-hidden rounded-3xl border border-[#E0A000]/30 bg-gradient-to-br from-[#0A0E14] via-[#0A0E14]/70 to-black shadow-[0_30px_80px_rgba(0,0,0,0.55)]"
       aria-label="Arena Wallet"
     >
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1B2433] px-5 py-4">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1B2433] px-4 py-3">
         <div className="flex items-center gap-3">
           <span
             className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#E0A000]/50 bg-[#E0A000]/10 text-base font-black text-[#F5C453] shadow-[0_0_18px_rgba(224,160,0,0.35)]"
@@ -149,50 +149,50 @@ export default function WalletPanel({ userId }: Props) {
         </div>
       </header>
 
-      <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="relative overflow-hidden rounded-2xl border border-[#E0A000]/30 bg-[#E0A000]/8 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.35)] lg:col-span-1">
+      <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="relative overflow-hidden rounded-2xl border border-[#E0A000]/30 bg-[#E0A000]/8 p-3.5 shadow-[0_18px_50px_rgba(0,0,0,0.35)] sm:p-4 lg:col-span-1">
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#F5C453]">
             Total Balance
           </p>
-          <p className="mt-3 flex items-baseline gap-1 text-4xl font-black tabular-nums text-white">
+          <p className="mt-2 flex items-baseline gap-1 text-3xl font-black tabular-nums text-white">
             <span>{total.major}</span>
-            <span className="text-2xl text-zinc-400">.{total.cents}</span>
+            <span className="text-xl text-zinc-400">.{total.cents}</span>
             <span className="ml-2 text-xs font-bold uppercase tracking-[0.22em] text-[#F5C453]/80">
               {currency}
             </span>
           </p>
-          <p className="mt-2 text-[11px] font-semibold text-zinc-500">
+          <p className="mt-1.5 text-[11px] font-semibold text-zinc-500">
             Available + reserved in escrow.
           </p>
         </div>
-        <div className="relative overflow-hidden rounded-2xl border border-[#22C55E]/30 bg-[#22C55E]/8 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
+        <div className="relative overflow-hidden rounded-2xl border border-[#22C55E]/30 bg-[#22C55E]/8 p-3.5 shadow-[0_18px_50px_rgba(0,0,0,0.35)] sm:p-4">
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#86EFAC]">
             Available Balance
           </p>
-          <p className="mt-3 flex items-baseline gap-1 text-4xl font-black tabular-nums text-white">
+          <p className="mt-2 flex items-baseline gap-1 text-3xl font-black tabular-nums text-white">
             <span>{available.major}</span>
-            <span className="text-2xl text-zinc-400">.{available.cents}</span>
+            <span className="text-xl text-zinc-400">.{available.cents}</span>
             <span className="ml-2 text-xs font-bold uppercase tracking-[0.22em] text-[#86EFAC]/80">
               {currency}
             </span>
           </p>
-          <p className="mt-2 text-[11px] font-semibold text-zinc-500">
+          <p className="mt-1.5 text-[11px] font-semibold text-zinc-500">
             Spendable in matches and tournaments.
           </p>
         </div>
 
-        <div className="relative overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#8B5CF6]/8 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
+        <div className="relative overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#8B5CF6]/8 p-3.5 shadow-[0_18px_50px_rgba(0,0,0,0.35)] sm:p-4">
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#C4B5FD]">
             Locked in Escrow
           </p>
-          <p className="mt-3 flex items-baseline gap-1 text-4xl font-black tabular-nums text-white">
+          <p className="mt-2 flex items-baseline gap-1 text-3xl font-black tabular-nums text-white">
             <span>{locked.major}</span>
-            <span className="text-2xl text-zinc-400">.{locked.cents}</span>
+            <span className="text-xl text-zinc-400">.{locked.cents}</span>
             <span className="ml-2 text-xs font-bold uppercase tracking-[0.22em] text-[#C4B5FD]/80">
               {currency}
             </span>
           </p>
-          <p className="mt-2 text-[11px] font-semibold text-zinc-500">
+          <p className="mt-1.5 text-[11px] font-semibold text-zinc-500">
             {pendingEscrowCount > 0
               ? `${pendingEscrowCount} active reservation${pendingEscrowCount === 1 ? "" : "s"}.`
               : "Reserved for live stakes and tournament entries."}
@@ -200,7 +200,7 @@ export default function WalletPanel({ userId }: Props) {
         </div>
       </div>
 
-      <div className="border-t border-[#1B2433] px-5 py-4">
+      <div className="border-t border-[#1B2433] px-4 py-3.5">
         <div className="flex items-center justify-between gap-2">
           <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">
             Recent Activity
@@ -259,7 +259,7 @@ export default function WalletPanel({ userId }: Props) {
         )}
       </div>
 
-      <div className="grid gap-2 border-t border-[#1B2433] px-5 py-4 sm:grid-cols-2">
+      <div className="grid gap-2 border-t border-[#1B2433] px-4 py-3.5 sm:grid-cols-2">
         <div className="flex items-center justify-between rounded-2xl border border-[#1B2433] bg-black/45 px-4 py-3">
           <div>
             <p className="text-sm font-bold text-white">Deposits</p>

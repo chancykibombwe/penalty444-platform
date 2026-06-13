@@ -185,18 +185,18 @@ export default function RankedMatchmakingPanel() {
   }
 
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-[#3B9EFF]/30 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-6 shadow-[0_0_60px_rgba(59,158,255,0.15),0_8px_32px_rgba(0,0,0,0.5)] sm:p-8 md:p-10">
+    <section className="relative overflow-hidden rounded-3xl border border-[#3B9EFF]/30 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-4 shadow-[0_0_60px_rgba(59,158,255,0.15),0_8px_32px_rgba(0,0,0,0.5)] sm:p-6 md:p-8">
       <div aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-[#3B9EFF]/15 blur-[80px]" />
       <div aria-hidden className="pointer-events-none absolute -bottom-12 left-4 h-48 w-48 rounded-full bg-[#1E6FE0]/10 blur-[60px]" />
 
       {/* Two-zone layout: left content + right decorative arena art */}
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:gap-10">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-8">
 
         {/* Left zone — all interactive content */}
-        <div className="min-w-0 flex-1 space-y-5">
+        <div className="min-w-0 flex-1 space-y-3.5">
           <div>
-            <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-2xl bg-[#3B9EFF]/15 ring-1 ring-[#3B9EFF]/30">
-              <svg className="h-5 w-5 text-[#9AD2FF]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-2xl bg-[#3B9EFF]/15 ring-1 ring-[#3B9EFF]/30">
+              <svg className="h-4 w-4 text-[#9AD2FF]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M14.615 1.595a.75.75 0 01.359.852L12.982 9.75h7.268a.75.75 0 01.548 1.262l-10.5 11.25a.75.75 0 01-1.272-.71l1.992-7.302H3.818a.75.75 0 01-.548-1.262l10.5-11.25a.75.75 0 01.845-.143z" />
               </svg>
             </div>
@@ -205,7 +205,7 @@ export default function RankedMatchmakingPanel() {
               Ranked Arena
             </p>
 
-            <h2 className="mt-0.5 text-3xl font-black tracking-tight text-white sm:text-4xl">
+            <h2 className="mt-0.5 text-2xl font-black tracking-tight text-white sm:text-3xl">
               Quick Match
             </h2>
 
@@ -270,14 +270,14 @@ export default function RankedMatchmakingPanel() {
         </div>
 
         {/* Right zone — purely decorative arena art, desktop only */}
-        <div aria-hidden className="pointer-events-none hidden shrink-0 sm:flex sm:w-40 sm:items-center sm:justify-center md:w-48">
-          <div className="relative flex h-40 w-40 items-center justify-center md:h-48 md:w-48">
+        <div aria-hidden className="pointer-events-none hidden shrink-0 sm:flex sm:w-32 sm:items-center sm:justify-center md:w-40">
+          <div className="relative flex h-32 w-32 items-center justify-center md:h-40 md:w-40">
             <div className="absolute inset-0 rounded-full border border-[#3B9EFF]/15" />
             <div className="absolute inset-5 rounded-full border border-[#3B9EFF]/10" />
             <div className="absolute inset-10 rounded-full border border-[#3B9EFF]/8" />
             <div className="absolute inset-0 rounded-full bg-[#1E6FE0]/8 blur-2xl" />
             <svg
-              className="relative h-16 w-16 text-[#3B9EFF]/25 md:h-20 md:w-20"
+              className="relative h-14 w-14 text-[#3B9EFF]/25 md:h-16 md:w-16"
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
               fill="currentColor"

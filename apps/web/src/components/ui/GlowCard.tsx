@@ -35,7 +35,7 @@ export default function GlowCard({
   const Tag = as;
   return (
     <Tag
-      className={`rounded-2xl border bg-[#0D1420] p-4 ${VARIANT_CLASS[variant]} ${className}`}
+      className={`rounded-2xl border bg-[#0D1420] p-3.5 sm:p-4 ${VARIANT_CLASS[variant]} ${className}`}
     >
       {children}
     </Tag>

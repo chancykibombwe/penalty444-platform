@@ -83,7 +83,7 @@ export default function GameCard({ game }: Props) {
         <span
           className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider ${
             game.comingSoon
-              ? "border border-zinc-700 bg-zinc-900/80 text-zinc-400"
+              ? "border border-[#1B2433] bg-[#111827]/80 text-zinc-400"
               : game.featured
                 ? "bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] text-white"
                 : "bg-zinc-800 text-white"

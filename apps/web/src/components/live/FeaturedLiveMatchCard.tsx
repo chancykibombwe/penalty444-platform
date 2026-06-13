@@ -33,7 +33,7 @@ export default function FeaturedLiveMatchCard({
       ? "border-amber-400/50 bg-amber-500/8 shadow-[0_0_22px_rgba(245,158,11,0.18)]"
       : isLive
         ? "border-cyan-400/45 bg-cyan-500/5 shadow-[0_0_22px_rgba(34,211,238,0.18)]"
-        : "border-zinc-800/80 bg-zinc-950/65";
+        : "border-[#1B2433] bg-[#0D1420]/65";
 
   const titleClass = isHero
     ? "text-lg font-black sm:text-xl md:text-2xl"
@@ -119,12 +119,12 @@ export default function FeaturedLiveMatchCard({
             ▶ Watch
           </Link>
         ) : isCompleted ? (
-          <span className="rounded-lg border border-zinc-700 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-500">
+          <span className="rounded-lg border border-[#1B2433] px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-500">
             Final
           </span>
         ) : (
           <span
-            className="rounded-lg border border-zinc-700 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+            className="rounded-lg border border-[#1B2433] px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
             title="Waiting for room assignment"
           >
             Soon

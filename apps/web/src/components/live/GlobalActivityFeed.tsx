@@ -32,7 +32,7 @@ type Props = {
 const TONE_BORDER: Record<ActivityEventTone, string> = {
   live: "border-cyan-400/45 bg-cyan-500/8",
   win: "border-emerald-400/40 bg-emerald-500/8",
-  info: "border-zinc-700/80 bg-zinc-900/60",
+  info: "border-[#1B2433] bg-[#111827]/60",
   champion: "border-yellow-300/55 bg-yellow-500/8",
   promotion: "border-violet-400/45 bg-violet-500/10",
 };
@@ -78,7 +78,7 @@ export default function GlobalActivityFeed({
 
   return (
     <section
-      className="rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-950 via-zinc-950/65 to-black p-4 shadow-xl sm:p-5"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-4 shadow-xl sm:p-5"
       aria-label="Global live activity feed"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -101,7 +101,7 @@ export default function GlobalActivityFeed({
       {isLoading ? (
         <FeedSkeleton />
       ) : items.length === 0 ? (
-        <p className="mt-6 rounded-2xl border border-dashed border-zinc-800 bg-black/35 px-4 py-6 text-center text-sm font-semibold text-zinc-400">
+        <p className="mt-6 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-6 text-center text-sm font-semibold text-zinc-400">
           Preparing live arena activity…
         </p>
       ) : (
@@ -154,7 +154,7 @@ function FeedSkeleton() {
       {Array.from({ length: 4 }).map((_, idx) => (
         <li
           key={idx}
-          className="flex items-center gap-3 rounded-2xl border border-zinc-800/80 bg-zinc-950/60 px-3 py-3"
+          className="flex items-center gap-3 rounded-2xl border border-[#1B2433] bg-[#0D1420]/80 px-3 py-3"
         >
           <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-zinc-700" />
           <div className="flex-1 space-y-2">

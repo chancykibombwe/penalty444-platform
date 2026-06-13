@@ -57,7 +57,7 @@ export default function QuickActionCard({
   return (
     <Link
       href={href}
-      className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br from-zinc-950 via-zinc-950/70 to-black p-5 transition-transform hover:scale-[1.015] sm:p-6 ${t.border} ${t.glow}`}
+      className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br from-zinc-950 via-zinc-950/70 to-black p-4 transition-transform hover:scale-[1.015] sm:p-5 ${t.border} ${t.glow}`}
     >
       <div
         aria-hidden
@@ -72,9 +72,9 @@ export default function QuickActionCard({
         }}
       />
 
-      <div className="relative flex items-start gap-4">
+      <div className="relative flex items-start gap-3">
         <div
-          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-2xl ${t.iconRing}`}
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border text-xl ${t.iconRing}`}
           aria-hidden
         >
           {icon}
@@ -83,15 +83,15 @@ export default function QuickActionCard({
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-zinc-500">
             Quick Action
           </p>
-          <h3 className="mt-1 text-lg font-black uppercase tracking-tight text-white sm:text-xl">
+          <h3 className="mt-1 text-base font-black uppercase tracking-tight text-white sm:text-lg">
             {title}
           </h3>
-          <p className="mt-1.5 text-sm text-zinc-400">{subtitle}</p>
+          <p className="mt-1 text-sm text-zinc-400">{subtitle}</p>
         </div>
       </div>
 
       <span
-        className={`relative mt-5 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-black uppercase tracking-wide ${t.ctaBg} ${t.ctaText}`}
+        className={`relative mt-3.5 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-black uppercase tracking-wide ${t.ctaBg} ${t.ctaText}`}
       >
         {cta}
         <span aria-hidden>→</span>

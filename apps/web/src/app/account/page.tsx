@@ -367,7 +367,7 @@ export default function AccountPage() {
   }, [account, stats, recentMatches, tournamentWins]);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5 pb-24 sm:pb-6">
+    <div className="mx-auto max-w-4xl space-y-4 pb-24 sm:pb-6">
       <PromotionToast event={promotionEvent} />
 
       {activeSeason ? (

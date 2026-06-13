@@ -43,7 +43,7 @@ export default function LiveMatchPreview({
 
   return (
     <section
-      className="rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-950 via-zinc-950/70 to-black p-4 shadow-xl sm:p-5"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-4 shadow-xl sm:p-5"
       aria-label="Live tournament matches"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -69,7 +69,7 @@ export default function LiveMatchPreview({
       {isLoading ? (
         <PreviewSkeleton />
       ) : list.length === 0 ? (
-        <p className="mt-6 rounded-2xl border border-dashed border-zinc-800 bg-black/35 px-4 py-6 text-center text-sm font-semibold text-zinc-400">
+        <p className="mt-6 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-6 text-center text-sm font-semibold text-zinc-400">
           Preparing live arena matches…
         </p>
       ) : (
@@ -92,7 +92,7 @@ function LiveMatchCard({ item }: { item: LiveMatchPreviewItem }) {
           ? "border-yellow-300/55 bg-yellow-500/5 shadow-[0_0_24px_rgba(250,204,21,0.18)]"
           : isLive
             ? "border-cyan-400/45 bg-cyan-500/5 shadow-[0_0_18px_rgba(34,211,238,0.18)]"
-            : "border-zinc-800/80 bg-zinc-950/60"
+            : "border-[#1B2433] bg-[#0D1420]/80"
       }`}
     >
       <div className="flex items-center justify-between gap-2">
@@ -145,7 +145,7 @@ function LiveMatchCard({ item }: { item: LiveMatchPreviewItem }) {
         ) : (
           <Link
             href={`/tournaments/${item.tournamentId}`}
-            className="rounded-lg border border-zinc-700 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition-colors hover:bg-zinc-800/80"
+            className="rounded-lg border border-[#1B2433] px-2 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition-colors hover:bg-[#111827]/80"
           >
             Open
           </Link>
@@ -161,7 +161,7 @@ function PreviewSkeleton() {
       {Array.from({ length: 2 }).map((_, idx) => (
         <li
           key={idx}
-          className="space-y-3 rounded-2xl border border-zinc-800/80 bg-zinc-950/60 px-3.5 py-3"
+          className="space-y-3 rounded-2xl border border-[#1B2433] bg-[#0D1420]/80 px-3.5 py-3"
         >
           <div className="flex items-center justify-between">
             <div className="h-3 w-1/3 animate-pulse rounded bg-zinc-800/80" />

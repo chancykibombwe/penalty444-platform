@@ -50,7 +50,7 @@ export default function HomeTournamentPreview() {
   if (tournament === undefined) {
     return (
       <section
-        className="h-40 animate-pulse rounded-3xl border border-zinc-800/80 bg-zinc-950/65"
+        className="h-40 animate-pulse rounded-3xl border border-[#1B2433] bg-[#0D1420]/65"
         aria-label="Loading tournament preview"
         aria-hidden
       />
@@ -60,7 +60,7 @@ export default function HomeTournamentPreview() {
   if (tournament === null) {
     return (
       <section
-        className="rounded-3xl border border-dashed border-zinc-800 bg-zinc-950/60 px-5 py-6 text-center sm:px-6"
+        className="rounded-3xl border border-dashed border-[#1B2433] bg-[#0D1420]/60 px-5 py-6 text-center sm:px-6"
         aria-label="Tournament preview"
       >
         <p className="text-[10px] font-black uppercase tracking-[0.32em] text-zinc-500">
@@ -71,7 +71,7 @@ export default function HomeTournamentPreview() {
         </p>
         <Link
           href="/tournaments"
-          className="mt-4 inline-flex items-center justify-center gap-2 rounded-2xl border border-zinc-700 bg-zinc-900/70 px-5 py-2.5 text-xs font-black uppercase tracking-wider text-zinc-200 transition-colors hover:border-cyan-500/50 hover:text-cyan-200"
+          className="mt-4 inline-flex items-center justify-center gap-2 rounded-2xl border border-[#1B2433] bg-[#111827]/70 px-5 py-2.5 text-xs font-black uppercase tracking-wider text-zinc-200 transition-colors hover:border-cyan-500/50 hover:text-cyan-200"
         >
           View Tournaments
           <span aria-hidden>→</span>
@@ -87,7 +87,7 @@ export default function HomeTournamentPreview() {
 
   return (
     <section
-      className="relative overflow-hidden rounded-3xl border-2 border-cyan-500/40 bg-gradient-to-br from-zinc-950 via-zinc-950 to-black p-5 shadow-2xl sm:p-6"
+      className="relative overflow-hidden rounded-3xl border-2 border-cyan-500/40 bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-4 shadow-2xl sm:p-5"
       aria-label="Featured tournament"
     >
       <div
@@ -117,7 +117,7 @@ export default function HomeTournamentPreview() {
               />
               {statusLabel}
             </span>
-            <span className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-900/70 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-zinc-200">
+            <span className="inline-flex items-center rounded-full border border-[#1B2433] bg-[#111827]/70 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-zinc-200">
               🏆 Featured
             </span>
           </div>

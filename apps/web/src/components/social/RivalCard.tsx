@@ -109,11 +109,11 @@ export default function RivalCard({
   if (!rival) {
     return (
       <section
-        className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-4 shadow-xl sm:p-5"
+        className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-4 shadow-xl sm:p-5"
         aria-label="Top rival"
       >
         <Header title={title} />
-        <p className="mt-4 rounded-2xl border border-dashed border-zinc-800 bg-black/35 px-4 py-6 text-center text-sm font-semibold text-zinc-400">
+        <p className="mt-4 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-6 text-center text-sm font-semibold text-zinc-400">
           No rivalry yet — play someone 3+ times to start a head-to-head.
         </p>
       </section>
@@ -172,7 +172,7 @@ function Header({ title }: { title: string }) {
 function RivalSkeleton() {
   return (
     <section
-      className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-4 shadow-xl sm:p-5"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-4 shadow-xl sm:p-5"
       aria-hidden
     >
       <div className="h-3 w-32 animate-pulse rounded bg-zinc-800/80" />
@@ -184,7 +184,7 @@ function RivalSkeleton() {
         {Array.from({ length: 4 }).map((_, i) => (
           <div
             key={i}
-            className="h-16 animate-pulse rounded-2xl border border-zinc-800/80 bg-zinc-950/60"
+            className="h-16 animate-pulse rounded-2xl border border-[#1B2433] bg-[#0D1420]/60"
           />
         ))}
       </div>

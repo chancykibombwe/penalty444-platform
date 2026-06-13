@@ -16,7 +16,7 @@ export default function JoinRoomPanel() {
   }
 
   return (
-    <div className="space-y-4 overflow-hidden rounded-2xl border border-[#22C55E]/30 bg-[#0D1420] p-6 shadow-[0_0_24px_rgba(34,197,94,0.14)]">
+    <div className="space-y-4 overflow-hidden rounded-2xl border border-[#22C55E]/30 bg-[#0D1420] p-4 shadow-[0_0_24px_rgba(34,197,94,0.14)]">
       <div>
         <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-[#22C55E]/15 ring-1 ring-[#22C55E]/30">
           <svg className="h-4 w-4 text-[#86EFAC]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

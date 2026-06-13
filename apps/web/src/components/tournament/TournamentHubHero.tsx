@@ -98,7 +98,7 @@ export default function TournamentHubHero({
 
   return (
     <section
-      className="relative overflow-hidden rounded-3xl border-2 border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black px-4 py-6 shadow-2xl sm:px-6 sm:py-7"
+      className="relative overflow-hidden rounded-3xl border-2 border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black px-4 py-4 shadow-2xl sm:px-5 sm:py-5"
       aria-label="Tournaments overview"
     >
       <div
@@ -115,12 +115,12 @@ export default function TournamentHubHero({
           <p className="inline-flex items-center gap-2 rounded-full border border-[#E0A000]/40 bg-[#E0A000]/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.32em] text-[#F5C453]">
             🏆 Event Hub
           </p>
-          <h1 className="mt-3 text-2xl font-black tracking-tight text-white sm:text-3xl md:text-4xl">
+          <h1 className="mt-2 text-xl font-black tracking-tight text-white sm:text-2xl md:text-3xl">
             <span className="bg-gradient-to-r from-[#9CCBFF] via-white to-[#C4B5FD] bg-clip-text text-transparent">
               Tournaments
             </span>
           </h1>
-          <p className="mt-1.5 max-w-xl text-sm text-zinc-400 sm:text-base">
+          <p className="mt-1 max-w-xl text-sm text-zinc-400 sm:text-base">
             Compete in live knockout events and climb the arena.
           </p>
         </div>
@@ -129,14 +129,14 @@ export default function TournamentHubHero({
         ) : null}
       </div>
 
-      <dl className="relative mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+      <dl className="relative mt-3.5 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
         {cards.map((card) => {
           const tone = TONE_CLASS[card.tone];
           return (
             <div
               key={card.label}
               aria-label={card.ariaLabel}
-              className={`rounded-2xl border border-[#1B2433] bg-[#0D1420] px-3 py-3 ring-1 ${tone.ring} ${tone.glow}`}
+              className={`rounded-2xl border border-[#1B2433] bg-[#0D1420] px-2.5 py-2.5 ring-1 ${tone.ring} ${tone.glow}`}
             >
               <dt className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-400">
                 <span
@@ -146,11 +146,11 @@ export default function TournamentHubHero({
                 {card.label}
               </dt>
               <dd
-                className={`mt-1 text-xl font-black leading-none tabular-nums sm:text-2xl ${tone.text}`}
+                className={`mt-1 text-lg font-black leading-none tabular-nums sm:text-xl ${tone.text}`}
               >
                 {isLoading ? "—" : card.value.toLocaleString()}
               </dd>
-              <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+              <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                 {card.hint}
               </p>
             </div>

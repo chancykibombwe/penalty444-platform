@@ -51,7 +51,7 @@ export default function FeaturedLiveMatches({
 
   return (
     <section
-      className="rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-950 via-zinc-950/65 to-black p-4 shadow-xl sm:p-5"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-4 shadow-xl sm:p-5"
       aria-label="Featured live matches"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -74,7 +74,7 @@ export default function FeaturedLiveMatches({
       {isLoading ? (
         <FeaturedSkeleton />
       ) : list.length === 0 ? (
-        <p className="mt-6 rounded-2xl border border-dashed border-zinc-800 bg-black/35 px-4 py-6 text-center text-sm font-semibold text-zinc-400">
+        <p className="mt-6 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-6 text-center text-sm font-semibold text-zinc-400">
           Preparing featured arenas…
         </p>
       ) : (
@@ -98,10 +98,10 @@ export default function FeaturedLiveMatches({
 function FeaturedSkeleton() {
   return (
     <div className="mt-4 grid gap-3 sm:gap-4" aria-hidden>
-      <div className="h-32 animate-pulse rounded-3xl border border-zinc-800/80 bg-zinc-950/65" />
+      <div className="h-32 animate-pulse rounded-3xl border border-[#1B2433] bg-[#0D1420]/65" />
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="h-28 animate-pulse rounded-3xl border border-zinc-800/80 bg-zinc-950/65" />
-        <div className="h-28 animate-pulse rounded-3xl border border-zinc-800/80 bg-zinc-950/65" />
+        <div className="h-28 animate-pulse rounded-3xl border border-[#1B2433] bg-[#0D1420]/65" />
+        <div className="h-28 animate-pulse rounded-3xl border border-[#1B2433] bg-[#0D1420]/65" />
       </div>
     </div>
   );

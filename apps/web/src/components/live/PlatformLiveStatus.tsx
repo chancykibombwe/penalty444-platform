@@ -72,7 +72,7 @@ const TONE_BG: Record<Tile["tone"], string> = {
   amber: "border-yellow-300/55 bg-yellow-500/10",
   violet: "border-violet-400/45 bg-violet-500/10",
   emerald: "border-emerald-400/45 bg-emerald-500/10",
-  neutral: "border-zinc-700/80 bg-zinc-900/70",
+  neutral: "border-[#1B2433] bg-[#111827]/70",
 };
 
 const TONE_LABEL: Record<Tile["tone"], string> = {
@@ -110,7 +110,7 @@ export default function PlatformLiveStatus({ refreshMs = 30_000 }: Props) {
 
   return (
     <section
-      className="rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-950 via-zinc-950/70 to-black p-4 shadow-xl sm:p-5"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-4 shadow-xl sm:p-5"
       aria-label="Platform live status"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
