@@ -57,7 +57,7 @@ export default function QuickActionCard({
   return (
     <Link
       href={href}
-      className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br from-zinc-950 via-zinc-950/70 to-black p-4 transition-transform hover:scale-[1.015] sm:p-5 ${t.border} ${t.glow}`}
+      className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br from-zinc-950 via-zinc-950/70 to-black p-3 transition-transform hover:scale-[1.015] sm:p-4 ${t.border} ${t.glow}`}
     >
       <div
         aria-hidden
@@ -91,7 +91,7 @@ export default function QuickActionCard({
       </div>
 
       <span
-        className={`relative mt-3 inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-black uppercase tracking-wide sm:w-auto sm:px-4 sm:text-sm ${t.ctaBg} ${t.ctaText}`}
+        className={`relative mt-2.5 inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-black uppercase tracking-wide sm:w-auto sm:px-4 sm:text-sm ${t.ctaBg} ${t.ctaText}`}
       >
         {cta}
         <span aria-hidden>→</span>

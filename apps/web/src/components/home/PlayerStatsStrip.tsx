@@ -68,7 +68,7 @@ export default function PlayerStatsStrip({
 
   return (
     <section
-      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-4 shadow-xl sm:p-5"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-3.5 shadow-xl sm:p-4"
       aria-label="Your statistics"
     >
       <div className="flex flex-wrap items-end justify-between gap-2">
@@ -89,7 +89,7 @@ export default function PlayerStatsStrip({
         />
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+      <div className="mt-3.5 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
         <StatTile
           label="Rank"
           value={placement.inPlacement ? "Placement" : tier.label}

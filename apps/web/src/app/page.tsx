@@ -241,7 +241,7 @@ export default function HomePage() {
   }, [activeMatch, activeTournament]);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5 pb-2">
+    <div className="mx-auto max-w-6xl space-y-3.5 pb-2">
       <HomeShared />
 
       <HeroBanner primaryHref="/lobby" secondaryHref="/tournaments" />
@@ -308,12 +308,12 @@ export default function HomePage() {
           </Link>
         </div>
 
-        <p className="mt-2 text-xs text-zinc-400">
+        <p className="mt-1.5 text-xs text-zinc-400">
           Free Play — no real money. Play ranked matches and climb the
           leaderboard.
         </p>
 
-        <div className="home-game-scroll relative mt-3 -mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-2 sm:gap-4">
+        <div className="home-game-scroll relative mt-2.5 -mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-2 sm:gap-4">
           {MOCK_GAMES.map((game) => (
             <GameCard key={game.id} game={game} />
           ))}

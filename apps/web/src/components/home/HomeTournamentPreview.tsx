@@ -50,7 +50,7 @@ export default function HomeTournamentPreview() {
   if (tournament === undefined) {
     return (
       <section
-        className="h-40 animate-pulse rounded-3xl border border-[#1B2433] bg-[#0D1420]/65"
+        className="h-32 animate-pulse rounded-3xl border border-[#1B2433] bg-[#0D1420]/65"
         aria-label="Loading tournament preview"
         aria-hidden
       />
@@ -87,7 +87,7 @@ export default function HomeTournamentPreview() {
 
   return (
     <section
-      className="relative overflow-hidden rounded-3xl border-2 border-cyan-500/40 bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-4 shadow-2xl sm:p-5"
+      className="relative overflow-hidden rounded-3xl border-2 border-cyan-500/40 bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-3.5 shadow-2xl sm:p-4"
       aria-label="Featured tournament"
     >
       <div
@@ -122,10 +122,10 @@ export default function HomeTournamentPreview() {
             </span>
           </div>
 
-          <p className="mt-3 text-[10px] font-black uppercase tracking-[0.32em] text-zinc-500">
+          <p className="mt-2 text-[10px] font-black uppercase tracking-[0.32em] text-zinc-500">
             Tournament
           </p>
-          <h2 className="mt-1 break-words text-2xl font-black tracking-tight text-white sm:text-3xl">
+          <h2 className="mt-1 break-words text-xl font-black tracking-tight text-white sm:text-2xl">
             <span className="bg-gradient-to-r from-cyan-200 via-white to-amber-200 bg-clip-text text-transparent">
               {tournament.name}
             </span>
@@ -150,7 +150,7 @@ export default function HomeTournamentPreview() {
       </div>
 
       {isLive ? (
-        <dl className="relative mt-5 grid grid-cols-2 gap-2 border-t border-zinc-800/80 pt-4 sm:gap-4">
+        <dl className="relative mt-3.5 grid grid-cols-2 gap-2 border-t border-zinc-800/80 pt-3 sm:gap-4">
           <div>
             <dt className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
               Players
@@ -172,7 +172,7 @@ export default function HomeTournamentPreview() {
 
       <Link
         href={href}
-        className="relative mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-amber-500 px-5 py-3 text-sm font-black tracking-wide text-zinc-950 shadow-[0_0_28px_rgba(34,211,238,0.32)] transition-transform hover:scale-[1.01] hover:from-cyan-300 hover:to-amber-400 sm:w-auto"
+        className="relative mt-3.5 inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-amber-500 px-5 py-2.5 text-sm font-black tracking-wide text-zinc-950 shadow-[0_0_28px_rgba(34,211,238,0.32)] transition-transform hover:scale-[1.01] hover:from-cyan-300 hover:to-amber-400 sm:w-auto"
       >
         View Tournament
         <span aria-hidden>→</span>
