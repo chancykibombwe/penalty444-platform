@@ -267,14 +267,14 @@ export default function HomePage() {
       ) : null}
 
       <section
-        className="grid gap-3 sm:grid-cols-2 sm:gap-4"
+        className="grid grid-cols-2 gap-3 sm:gap-4"
         aria-label="Quick actions"
       >
         <QuickActionCard
           title="Quick Match"
           subtitle="Find an opponent instantly"
           href="/lobby"
-          cta="Find a match"
+          cta="Find Match"
           icon="⚡"
           tone="cyan"
         />
@@ -282,7 +282,7 @@ export default function HomePage() {
           title="Create Room"
           subtitle="Challenge your friends"
           href="/lobby"
-          cta="Create room"
+          cta="Create Room"
           icon="🎯"
           tone="purple"
         />
