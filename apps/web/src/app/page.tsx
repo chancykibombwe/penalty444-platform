@@ -241,7 +241,7 @@ export default function HomePage() {
   }, [activeMatch, activeTournament]);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-3.5 pb-2">
+    <div className="mx-auto max-w-6xl space-y-3 pb-2">
       <HomeShared />
 
       <HeroBanner primaryHref="/lobby" secondaryHref="/tournaments" />
@@ -267,7 +267,7 @@ export default function HomePage() {
       ) : null}
 
       <section
-        className="grid grid-cols-2 gap-3 sm:gap-4"
+        className="grid grid-cols-2 gap-2 sm:gap-4"
         aria-label="Quick actions"
       >
         <QuickActionCard
@@ -291,10 +291,10 @@ export default function HomePage() {
       <section aria-label="Games on 444 Arena">
         <div className="flex items-end justify-between gap-2">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-zinc-500">
+            <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-500 sm:text-[10px] sm:tracking-[0.28em]">
               Games
             </p>
-            <h2 className="mt-1 text-lg font-black tracking-tight text-white sm:text-xl">
+            <h2 className="mt-0.5 text-base font-black tracking-tight text-white sm:text-xl">
               Pick your arena
             </h2>
           </div>
@@ -306,12 +306,12 @@ export default function HomePage() {
           </Link>
         </div>
 
-        <p className="mt-1.5 text-xs text-zinc-400">
+        <p className="mt-1 hidden text-xs text-zinc-400 sm:block">
           Free Play — no real money. Play ranked matches and climb the
           leaderboard.
         </p>
 
-        <div className="home-game-scroll relative mt-2.5 -mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-2 sm:gap-4">
+        <div className="home-game-scroll relative mt-2 -mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1.5 sm:gap-4">
           {MOCK_GAMES.map((game) => (
             <GameCard key={game.id} game={game} />
           ))}

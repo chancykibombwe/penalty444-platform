@@ -77,14 +77,14 @@ export default function GameCard({ game }: Props) {
         </div>
       </div>
 
-      <p className="mt-2 text-[10px] font-black uppercase tracking-[0.22em] text-zinc-500">
+      <p className="mt-1.5 text-[10px] font-black uppercase tracking-[0.22em] text-zinc-500">
         {game.subtitle}
       </p>
       <h3 className="mt-0.5 truncate text-sm font-black tracking-tight text-white sm:text-base">
         {game.title}
       </h3>
 
-      <div className="mt-2 flex items-center justify-end gap-2">
+      <div className="mt-1.5 flex items-center justify-end gap-2">
         <span
           className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-wider ${
             game.comingSoon

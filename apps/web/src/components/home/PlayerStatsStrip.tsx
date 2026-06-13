@@ -68,15 +68,15 @@ export default function PlayerStatsStrip({
 
   return (
     <section
-      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-3 shadow-xl sm:p-3.5"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-2.5 shadow-xl sm:p-3.5"
       aria-label="Your statistics"
     >
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-zinc-500">
+          <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-500 sm:text-[10px] sm:tracking-[0.28em]">
             Your Performance
           </p>
-          <h2 className="mt-1 text-lg font-black tracking-tight text-white sm:text-xl">
+          <h2 className="mt-0.5 text-base font-black tracking-tight text-white sm:text-xl">
             {username ? `Welcome back, ${username}` : "Welcome to the arena"}
           </h2>
         </div>
@@ -89,7 +89,7 @@ export default function PlayerStatsStrip({
         />
       </div>
 
-      <div className="mt-3 grid grid-cols-4 gap-1.5 sm:gap-3">
+      <div className="mt-2 grid grid-cols-4 gap-1.5 sm:gap-3">
         <StatTile
           compact
           label="Rank"
