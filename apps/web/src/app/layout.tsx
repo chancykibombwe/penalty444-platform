@@ -22,7 +22,7 @@ export default function RootLayout({
         <MatchReadyNotification />
         <TournamentMatchReadyNotification />
         <Navbar />
-        <main className="p-3 pb-28 sm:p-4 md:p-6 md:pb-6">{children}</main>
+        <main className="p-4 pb-28 md:p-6 md:pb-6">{children}</main>
       </body>
     </html>
   );
