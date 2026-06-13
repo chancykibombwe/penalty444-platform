@@ -21,7 +21,7 @@ const ROTATING_TAGLINES = [
   },
   {
     headline: "Step into the arena.",
-    subtext: "Tournaments live. Bracket spots open now.",
+    subtext: "Tournaments coming soon. Free Play is live.",
   },
 ];
 

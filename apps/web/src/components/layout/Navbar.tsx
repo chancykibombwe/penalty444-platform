@@ -335,11 +335,11 @@ export default function Navbar() {
                 <Link
                   href={href}
                   aria-current={active ? "page" : undefined}
-                  className="relative flex min-h-[44px] flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-bold transition-colors"
+                  className="relative flex min-h-[44px] flex-col items-center justify-center gap-0.5 py-2 text-[9px] font-bold transition-colors"
                   style={{ color: active ? accent : "#5A6472" }}
                 >
                   <item.Icon className="h-4 w-4" aria-hidden />
-                  <span className="leading-none">
+                  <span className="whitespace-nowrap leading-none">
                     {item.id === "account"
                       ? loggedIn
                         ? "Account"
