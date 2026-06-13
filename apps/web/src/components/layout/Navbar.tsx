@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactElement, type SVGProps } from "react";
 import NotificationBell from "../live/NotificationBell";
+import WalletPill from "../ui/WalletPill";
 import { getActiveMatch } from "../../lib/match/activeMatch";
 import { supabase } from "../../lib/supabase/client";
 
@@ -76,6 +77,16 @@ function AccountIcon(props: NavIconProps) {
   );
 }
 
+function WalletIcon(props: NavIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="2" y="6" width="20" height="14" rx="2" />
+      <path d="M16 14h.01" />
+      <path d="M2 10h20" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS: NavItem[] = [
   { id: "home", label: "Home", buildHref: () => "/", matchPrefixes: ["/"], Icon: HomeIcon },
   { id: "lobby", label: "Lobby", buildHref: () => "/lobby", matchPrefixes: ["/lobby", "/play", "/games"], Icon: LobbyIcon },
@@ -88,6 +99,7 @@ const NAV_ITEMS: NavItem[] = [
     competitive: true,
   },
   { id: "leaderboard", label: "Leaderboard", buildHref: () => "/leaderboard", matchPrefixes: ["/leaderboard"], Icon: LeaderboardIcon },
+  { id: "wallet", label: "Wallet", buildHref: () => "/wallet", matchPrefixes: ["/wallet"], Icon: WalletIcon },
   {
     id: "account",
     label: "Account",
@@ -227,11 +239,11 @@ export default function Navbar() {
                   className={`relative inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold tracking-wide transition-colors ${
                     active
                       ? item.competitive
-                        ? "bg-amber-500/15 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.25)] ring-1 ring-amber-400/40"
-                        : "bg-cyan-500/15 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.22)] ring-1 ring-cyan-400/40"
+                        ? "bg-[#E0A000]/15 text-[#FBD38D] shadow-[0_0_18px_rgba(224,160,0,0.25)] ring-1 ring-[#E0A000]/40"
+                        : "bg-[#3B9EFF]/15 text-[#9AD2FF] shadow-[0_0_18px_rgba(59,158,255,0.22)] ring-1 ring-[#3B9EFF]/40"
                       : item.competitive
-                        ? "text-amber-200/80 hover:bg-amber-500/10 hover:text-amber-100"
-                        : "text-zinc-300 hover:bg-zinc-800/70 hover:text-white"
+                        ? "text-[#E0A000]/80 hover:bg-[#E0A000]/10 hover:text-[#FBD38D]"
+                        : "text-[#9AA4B2] hover:bg-white/5 hover:text-white"
                   }`}
                 >
                   <item.Icon className="h-4 w-4" aria-hidden />
@@ -245,6 +257,7 @@ export default function Navbar() {
 
           {/* Right-side actions on desktop. Always shows Resume Match if active. */}
           <div className="hidden items-center gap-2 md:flex">
+            <WalletPill />
             {activeRoomCode ? (
               <Link
                 href={`/match/${activeRoomCode}`}
@@ -260,8 +273,9 @@ export default function Navbar() {
             <NotificationBell />
           </div>
 
-          {/* Mobile-only compact controls: Resume Match (if any) + bell on the right of the logo */}
+          {/* Mobile-only compact controls: Wallet pill, Resume Match (if any) + bell */}
           <div className="flex items-center gap-2 md:hidden">
+            <WalletPill />
             {activeRoomCode ? (
               <Link
                 href={`/match/${activeRoomCode}`}
@@ -287,47 +301,44 @@ export default function Navbar() {
           still be able to tap Home / Lobby / Wallet without
           having to back out of the match page first. */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-50 border-t border-zinc-800/90 bg-zinc-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-zinc-950/85 md:hidden"
+        className="fixed inset-x-0 bottom-0 z-50 border-t border-[#1B2433] bg-[#0A0E14]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-[#0A0E14]/85 md:hidden"
         aria-label="Primary mobile"
       >
-        <ul className="mx-auto grid max-w-md grid-cols-5 px-1">
+        <ul className="mx-auto grid max-w-md grid-cols-6 px-1">
           {NAV_ITEMS.map((item) => {
             const href = item.buildHref(loggedIn);
             const active = isItemActive(pathname, item);
+            const accent = item.competitive ? "#E0A000" : "#3B9EFF";
             return (
-              <li key={item.id}>
+              <li key={item.id} className="relative">
+                {active ? (
+                  <>
+                    {/* Glowing top-edge light line for the active tab */}
+                    <span
+                      className="pointer-events-none absolute inset-x-3 top-0 h-px rounded-full"
+                      style={{
+                        background: accent,
+                        boxShadow: `0 0 8px ${accent}, 0 0 2px ${accent}`,
+                      }}
+                      aria-hidden
+                    />
+                    {/* Faint upward light bleed from the active tab */}
+                    <span
+                      className="pointer-events-none absolute inset-x-0 top-0 h-10 opacity-25"
+                      style={{
+                        background: `linear-gradient(to bottom, ${accent}, transparent)`,
+                      }}
+                      aria-hidden
+                    />
+                  </>
+                ) : null}
                 <Link
                   href={href}
                   aria-current={active ? "page" : undefined}
-                  className={`flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-bold transition-colors ${
-                    active
-                      ? item.competitive
-                        ? "text-amber-200"
-                        : "text-cyan-200"
-                      : item.competitive
-                        ? "text-amber-300/70 hover:text-amber-100"
-                        : "text-zinc-400 hover:text-white"
-                  }`}
+                  className="relative flex min-h-[44px] flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-bold transition-colors"
+                  style={{ color: active ? accent : "#5A6472" }}
                 >
-                  <span
-                    className={`relative inline-flex h-7 w-7 items-center justify-center rounded-lg transition-all ${
-                      active
-                        ? item.competitive
-                          ? "bg-amber-500/20 shadow-[0_0_12px_rgba(251,191,36,0.45)] ring-1 ring-amber-400/50"
-                          : "bg-cyan-500/20 shadow-[0_0_12px_rgba(34,211,238,0.45)] ring-1 ring-cyan-400/50"
-                        : ""
-                    }`}
-                  >
-                    <item.Icon className="h-4 w-4" aria-hidden />
-                    {active ? (
-                      <span
-                        className={`absolute -bottom-0.5 left-1/2 h-0.5 w-4 -translate-x-1/2 rounded-full ${
-                          item.competitive ? "bg-amber-300" : "bg-cyan-300"
-                        }`}
-                        aria-hidden
-                      />
-                    ) : null}
-                  </span>
+                  <item.Icon className="h-4 w-4" aria-hidden />
                   <span className="leading-none">
                     {item.id === "account"
                       ? loggedIn

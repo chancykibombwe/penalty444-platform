@@ -284,7 +284,7 @@ export default function HomePage() {
           href="/lobby"
           cta="Create room"
           icon="🎯"
-          tone="amber"
+          tone="purple"
         />
       </section>
 

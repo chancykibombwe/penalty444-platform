@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { getSocket } from "../../lib/socket/client";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
 import { clearActiveMatch } from "../../lib/match/activeMatch";
+import { GradientButton } from "../ui/GradientButton";
+import { OutlineButton } from "../ui/OutlineButton";
 
 type CreateRoomPanelProps = {
   challengeUserId?: string;
@@ -193,11 +195,11 @@ export default function CreateRoomPanel({
   // ── Waiting state — room created, host stays in lobby ──────────────────
   if (waitingRoom) {
     return (
-      <div className="space-y-4 overflow-hidden rounded-2xl border border-violet-500/25 bg-zinc-950/80 p-6 shadow-[0_0_24px_rgba(139,92,246,0.08),0_8px_24px_rgba(0,0,0,0.4)]">
+      <div className="space-y-4 overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#0D1420] p-6 shadow-[0_0_28px_rgba(139,92,246,0.16)]">
         <div>
-          <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/20 ring-1 ring-violet-500/25">
+          <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-[#8B5CF6]/15 ring-1 ring-[#8B5CF6]/30">
             <svg
-              className="h-4 w-4 text-violet-300"
+              className="h-4 w-4 text-[#C4B5FD]"
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
               fill="currentColor"
@@ -212,8 +214,8 @@ export default function CreateRoomPanel({
           <h2 className="mt-1 text-lg font-black text-white">Room Created</h2>
         </div>
 
-        <div className="rounded-xl border border-violet-500/20 bg-violet-950/20 px-4 py-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-violet-300/60">
+        <div className="rounded-xl border border-[#8B5CF6]/25 bg-[#8B5CF6]/10 px-4 py-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#C4B5FD]/70">
             Room Code
           </p>
           <div className="mt-1 flex items-center gap-3">
@@ -223,7 +225,7 @@ export default function CreateRoomPanel({
             <button
               type="button"
               onClick={copyRoomCode}
-              className="rounded-lg border border-zinc-700 px-2 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 transition hover:border-violet-500/40 hover:text-zinc-200"
+              className="rounded-lg border border-zinc-700 px-2 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 transition hover:border-[#8B5CF6]/40 hover:text-zinc-200"
             >
               Copy
             </button>
@@ -235,7 +237,7 @@ export default function CreateRoomPanel({
 
         <div className="flex items-center gap-2">
           <span
-            className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400"
+            className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#8B5CF6]"
             aria-hidden
           />
           <p className="text-sm text-zinc-400">Waiting for opponent to join…</p>
@@ -247,21 +249,21 @@ export default function CreateRoomPanel({
         </p>
 
         <div className="flex flex-col gap-2">
-          <button
-            type="button"
+          <GradientButton
+            variant="purple"
             onClick={() => router.push(`/match/${waitingRoom.roomCode}`)}
-            className="w-full rounded-xl border border-violet-500/30 bg-violet-950/20 px-4 py-3 text-sm font-black text-violet-100 transition-colors hover:border-violet-400/50 hover:bg-violet-950/40"
+            className="w-full"
           >
             Enter Room
-          </button>
-          <button
-            type="button"
+          </GradientButton>
+          <OutlineButton
+            tone="muted"
             onClick={cancelRoom}
             disabled={cancelling}
-            className="w-full rounded-xl border border-zinc-700 bg-zinc-950/80 px-4 py-3 text-sm font-semibold text-zinc-400 transition-colors hover:border-red-500/30 hover:text-red-300 disabled:opacity-50"
+            className="w-full"
           >
             {cancelling ? "Cancelling…" : "Cancel Room"}
-          </button>
+          </OutlineButton>
         </div>
 
         {status ? (
@@ -275,11 +277,11 @@ export default function CreateRoomPanel({
 
   // ── Setup state ──────────────────────────────────────────────────────────
   return (
-    <div className="space-y-4 overflow-hidden rounded-2xl border border-violet-500/25 bg-zinc-950/80 p-6 shadow-[0_0_24px_rgba(139,92,246,0.08),0_8px_24px_rgba(0,0,0,0.4)]">
+    <div className="space-y-4 overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#0D1420] p-6 shadow-[0_0_28px_rgba(139,92,246,0.16)]">
       <div>
-        <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/20 ring-1 ring-violet-500/25">
+        <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-[#8B5CF6]/15 ring-1 ring-[#8B5CF6]/30">
           <svg
-            className="h-4 w-4 text-violet-300"
+            className="h-4 w-4 text-[#C4B5FD]"
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
             fill="currentColor"
@@ -320,7 +322,7 @@ export default function CreateRoomPanel({
               onClick={() => setRounds(r)}
               className={`flex-1 rounded-xl border px-3 py-2 text-sm font-black transition-colors ${
                 rounds === r
-                  ? "border-violet-500/60 bg-violet-950/40 text-violet-100"
+                  ? "border-[#8B5CF6]/60 bg-[#8B5CF6]/15 text-[#C4B5FD]"
                   : "border-zinc-700 bg-zinc-950/60 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300"
               }`}
             >
@@ -343,13 +345,9 @@ export default function CreateRoomPanel({
         </div>
       </div>
 
-      <button
-        onClick={createRoom}
-        disabled={loading}
-        className="w-full rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-600 px-4 py-3 text-sm font-black text-white shadow-[0_0_16px_rgba(139,92,246,0.25)] transition-opacity disabled:opacity-50"
-      >
+      <GradientButton variant="purple" onClick={createRoom} disabled={loading} className="w-full">
         {loading ? "Creating..." : "Create Room"}
-      </button>
+      </GradientButton>
 
       {status ? (
         <p className="text-sm text-amber-200/90" role="status" aria-live="polite">

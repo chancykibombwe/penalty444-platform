@@ -8,6 +8,7 @@ import RankedMatchmakingPanel from "../../components/lobby/RankedMatchmakingPane
 import CreateRoomPanel from "../../components/lobby/CreateRoomPanel";
 import JoinRoomPanel from "../../components/lobby/JoinRoomPanel";
 import { LobbyConnectionProvider } from "../../lib/socket/LobbyConnectionProvider";
+import EmptyState from "../../components/ui/EmptyState";
 
 function LobbyPageContent() {
   const searchParams = useSearchParams();
@@ -89,6 +90,18 @@ function LobbyPageContent() {
                 />
                 <JoinRoomPanel />
               </div>
+            </div>
+
+            {/* Play Again — recent opponents */}
+            <div>
+              <p className="mb-3 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
+                Play Again
+              </p>
+              <EmptyState
+                icon="🤝"
+                title="Recent opponents appear here"
+                subtitle="Play a match to start building your rematch list"
+              />
             </div>
 
           </div>

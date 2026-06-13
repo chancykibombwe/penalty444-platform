@@ -25,6 +25,16 @@ const ROTATING_TAGLINES = [
   },
 ];
 
+/**
+ * Splits a headline into two halves for the two-tone treatment
+ * (white + accent gradient) used across the rotating taglines.
+ */
+function splitHeadline(headline: string): [string, string] {
+  const words = headline.replace(/\.$/, "").split(" ");
+  const mid = Math.ceil(words.length / 2);
+  return [words.slice(0, mid).join(" "), words.slice(mid).join(" ")];
+}
+
 export default function HeroBanner({
   primaryHref = "/lobby",
   secondaryHref = "/tournaments",
@@ -79,12 +89,20 @@ export default function HeroBanner({
 
         <h1
           key={`headline-${activeIndex}`}
-          className="mt-4 text-3xl font-black uppercase leading-tight tracking-tight text-white sm:text-4xl md:text-5xl"
+          className="mt-4 text-3xl font-black uppercase leading-tight tracking-tight sm:text-4xl md:text-5xl"
           style={{ animation: "homeFeedFade 0.45s ease-out forwards" }}
         >
-          <span className="bg-gradient-to-r from-cyan-200 via-white to-amber-200 bg-clip-text text-transparent">
-            {tagline.headline}
-          </span>
+          {(() => {
+            const [first, second] = splitHeadline(tagline.headline);
+            return (
+              <>
+                <span className="text-white">{first}</span>{" "}
+                <span className="bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] bg-clip-text text-transparent">
+                  {second}
+                </span>
+              </>
+            );
+          })()}
         </h1>
 
         <p
@@ -98,13 +116,13 @@ export default function HeroBanner({
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
           <Link
             href={primaryHref}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-cyan-500 px-6 py-3 text-sm font-black tracking-wide text-zinc-950 shadow-[0_0_28px_rgba(34,211,238,0.45)] transition-transform hover:scale-[1.02] hover:from-cyan-300 hover:to-cyan-400 sm:text-base"
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] px-6 py-3 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_28px_rgba(59,158,255,0.4)] transition-transform hover:scale-[1.02] sm:text-base"
           >
             ▶ Play Now
           </Link>
           <Link
             href={secondaryHref}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-amber-400/55 bg-amber-500/10 px-6 py-3 text-sm font-black tracking-wide text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.18)] transition-transform hover:scale-[1.02] hover:bg-amber-500/15 sm:text-base"
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-[#E0A000]/55 bg-transparent px-6 py-3 text-sm font-black uppercase tracking-wide text-[#E0A000] transition-transform hover:scale-[1.02] hover:bg-[#E0A000]/10 sm:text-base"
           >
             🏆 Tournaments
           </Link>

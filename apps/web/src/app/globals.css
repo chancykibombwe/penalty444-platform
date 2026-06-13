@@ -10,6 +10,20 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* 444 ARENA — Premium Mobile UI Pass design tokens (Part 2 spec) */
+  --color-arena-bg: #0a0e14;
+  --color-arena-bg-deep: #000000;
+  --color-arena-surface: #0d1420;
+  --color-arena-surface-alt: #111827;
+  --color-arena-border: #1b2433;
+  --color-arena-primary: #3b9eff;
+  --color-arena-primary-deep: #1e6fe0;
+  --color-arena-purple: #8b5cf6;
+  --color-arena-green: #22c55e;
+  --color-arena-gold: #e0a000;
+  --color-arena-red: #ef4444;
+  --color-arena-muted: #5a6472;
 }
 
 @media (prefers-color-scheme: dark) {

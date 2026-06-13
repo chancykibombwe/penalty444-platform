@@ -232,8 +232,11 @@ export default async function LeaderboardPage({
         </div>
 
         <div className="flex flex-wrap items-end gap-2">
-          <div className="rounded-xl border border-yellow-500/30 bg-yellow-950/20 px-4 py-2 text-sm font-semibold text-yellow-100 shadow-lg shadow-black/30">
+          <div className="rounded-xl border border-[#E0A000]/35 bg-[#E0A000]/10 px-4 py-2 text-sm font-semibold text-[#FBD38D] shadow-lg shadow-black/30">
             Global · All Time
+          </div>
+          <div className="rounded-xl border border-[#5A6472]/40 bg-white/5 px-4 py-2 text-sm font-semibold text-[#9AA4B2]">
+            Season: Coming Soon
           </div>
           {placementPlayerCount > 0 ? (
             <div
@@ -357,7 +360,86 @@ export default async function LeaderboardPage({
         </div>
       </form>
 
-      <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_28px_80px_rgba(0,0,0,0.45)]">
+      {/* Mobile ranked list — card rows, no horizontal scroll */}
+      <div className="space-y-2 md:hidden">
+        {leaderboard.length === 0 ? (
+          hasActiveSearch ? (
+            <div className="rounded-2xl border border-[#1B2433] bg-[#0D1420] px-4 py-6 text-center text-sm text-zinc-400">
+              {`No players found for "${search}".`}
+            </div>
+          ) : (
+            <div className="space-y-4 rounded-2xl border border-[#1B2433] bg-[#0D1420] px-4 py-6 text-center">
+              <p className="text-sm text-zinc-400">
+                No ranked players yet. Complete 10 placement matches to appear.
+              </p>
+              <Link
+                href="/lobby"
+                className="inline-flex rounded-xl border border-zinc-700 px-4 py-3 text-sm font-semibold text-white hover:border-zinc-500"
+              >
+                Start Playing
+              </Link>
+            </div>
+          )
+        ) : (
+          leaderboard.map((player, index) => (
+            <div
+              key={player.id}
+              className="flex items-center gap-3 rounded-2xl border border-[#1B2433] bg-[#0D1420] px-4 py-3"
+            >
+              <div className="w-7 shrink-0 text-center text-sm font-black text-zinc-400">
+                #{from + index + 1}
+              </div>
+
+              {hasValidUserId(player.id) ? (
+                <Link
+                  href={buildPlayerProfileHref(player.id, player.username)}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700/80 bg-black/60 text-xs font-black text-white"
+                >
+                  {getInitials(player.username)}
+                </Link>
+              ) : (
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700/80 bg-black/60 text-xs font-black text-white">
+                  {getInitials(player.username)}
+                </div>
+              )}
+
+              <div className="min-w-0 flex-1">
+                {hasValidUserId(player.id) ? (
+                  <Link
+                    href={buildPlayerProfileHref(player.id, player.username)}
+                    className="block truncate text-sm font-bold text-white"
+                  >
+                    {player.username}
+                  </Link>
+                ) : (
+                  <span className="block truncate text-sm font-bold text-white">
+                    {player.username}
+                  </span>
+                )}
+                <RankBadge
+                  tier={resolveTierForRow(player)}
+                  rating={player.rankPoints}
+                  matchesPlayed={player.matches}
+                  showRating={false}
+                  variant="chip"
+                  className="mt-1"
+                />
+              </div>
+
+              <div className="shrink-0 text-right">
+                <p className="text-base font-black tabular-nums text-[#FBD38D]">
+                  {player.rankPoints}
+                </p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                  {player.winRate}% WR
+                </p>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="hidden overflow-hidden rounded-2xl border border-zinc-800/80 bg-black/45 shadow-[0_28px_80px_rgba(0,0,0,0.45)] md:block">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-left">
             <thead className="bg-black/55">
@@ -463,27 +545,27 @@ export default async function LeaderboardPage({
             </tbody>
           </table>
         </div>
+      </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 px-4 py-4">
-          {page > 1 ? (
-            <Link
-              href={previousPageHref}
-              className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-white hover:border-zinc-500"
-            >
-              Previous
-            </Link>
-          ) : (
-            <span />
-          )}
-          {showNextPage ? (
-            <Link
-              href={nextPageHref}
-              className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-white hover:border-zinc-500"
-            >
-              Next
-            </Link>
-          ) : null}
-        </div>
+      <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-800/80 bg-black/45 px-4 py-4">
+        {page > 1 ? (
+          <Link
+            href={previousPageHref}
+            className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-white hover:border-zinc-500"
+          >
+            Previous
+          </Link>
+        ) : (
+          <span />
+        )}
+        {showNextPage ? (
+          <Link
+            href={nextPageHref}
+            className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-white hover:border-zinc-500"
+          >
+            Next
+          </Link>
+        ) : null}
       </div>
     </section>
   );
