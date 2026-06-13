@@ -30,14 +30,12 @@ type LegacyStats = {
 };
 
 type Props = {
-  username?: string | null;
   stats?: CompetitiveStats | null;
   /** Deprecated: kept for back-compat with earlier home page wiring. */
   legacyStats?: LegacyStats;
 };
 
 export default function PlayerStatsStrip({
-  username = null,
   stats,
   legacyStats,
 }: Props) {
@@ -71,15 +69,10 @@ export default function PlayerStatsStrip({
       className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-2.5 shadow-xl sm:p-3.5"
       aria-label="Your statistics"
     >
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-500 sm:text-[10px] sm:tracking-[0.28em]">
-            Your Performance
-          </p>
-          <h2 className="mt-0.5 text-base font-black tracking-tight text-white sm:text-xl">
-            {username ? `Welcome back, ${username}` : "Welcome to the arena"}
-          </h2>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-500 sm:text-[10px] sm:tracking-[0.28em]">
+          Your Performance
+        </p>
         <RankBadge
           tier={ranked ? tier : undefined}
           rating={effectiveStats.rating ?? null}
@@ -93,12 +86,8 @@ export default function PlayerStatsStrip({
         <StatTile
           compact
           label="Rank"
-          value={placement.inPlacement ? "Placement" : tier.label}
-          hint={
-            placement.inPlacement
-              ? `${placement.played} / ${placement.required}`
-              : "Climbing"
-          }
+          value={placement.inPlacement ? "Unranked" : tier.label}
+          hint={placement.inPlacement ? "Keep playing" : "Climbing"}
           tone={
             placement.inPlacement
               ? "cyan"

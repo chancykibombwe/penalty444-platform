@@ -74,7 +74,6 @@ const MOCK_GAMES: GameCardData[] = [
 ];
 
 export default function HomePage() {
-  const [username, setUsername] = useState<string | null>(null);
   const [activeMatch, setActiveMatch] = useState<ActiveMatch | null>(null);
   const [activeTournament, setActiveTournament] =
     useState<ActiveTournament | null>(null);
@@ -89,7 +88,6 @@ export default function HomePage() {
 
     void getCurrentPlayerIdentity().then(async (identity) => {
       if (cancelled) return;
-      setUsername(identity?.username ?? null);
       setActiveTournament(
         getActiveTournament(identity?.playerId ?? undefined)
       );
@@ -289,15 +287,10 @@ export default function HomePage() {
       </section>
 
       <section aria-label="Games on 444 Arena">
-        <div className="flex items-end justify-between gap-2">
-          <div>
-            <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-500 sm:text-[10px] sm:tracking-[0.28em]">
-              Games
-            </p>
-            <h2 className="mt-0.5 text-base font-black tracking-tight text-white sm:text-xl">
-              Pick your arena
-            </h2>
-          </div>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-500 sm:text-[10px] sm:tracking-[0.28em]">
+            Games
+          </p>
           <Link
             href="/lobby"
             className="text-[11px] font-bold uppercase tracking-wider text-cyan-300/85 hover:text-cyan-200"
@@ -318,7 +311,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <PlayerStatsStrip username={username} stats={playerStats} />
+      <PlayerStatsStrip stats={playerStats} />
 
       <HomeTournamentPreview />
 
