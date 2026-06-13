@@ -36,8 +36,8 @@ export default function FeaturedLiveMatchCard({
         : "border-[#1B2433] bg-[#0D1420]/65";
 
   const titleClass = isHero
-    ? "text-lg font-black sm:text-xl md:text-2xl"
-    : "text-base font-black sm:text-lg";
+    ? "text-base font-black sm:text-lg md:text-xl"
+    : "text-sm font-black sm:text-base";
 
   const tournamentNameClass = isHero
     ? "text-xs font-black uppercase tracking-[0.28em]"
@@ -52,7 +52,7 @@ export default function FeaturedLiveMatchCard({
 
   return (
     <article
-      className={`flex h-full flex-col gap-3 rounded-3xl border px-4 py-4 sm:px-5 sm:py-5 ${accentClass}`}
+      className={`flex h-full flex-col gap-2 rounded-3xl border px-3.5 py-3 sm:px-4 sm:py-3.5 ${accentClass}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className={`truncate ${tournamentNameClass} text-zinc-300`}>

@@ -100,7 +100,7 @@ function LiveMatchCard({ item }: { item: LiveMatchPreviewItem }) {
   const isLive = item.status === "in_progress";
   return (
     <li
-      className={`flex flex-col gap-3 rounded-2xl border px-3.5 py-3 ${
+      className={`flex flex-col gap-2 rounded-2xl border px-3 py-2.5 ${
         item.isFinal
           ? "border-yellow-300/55 bg-yellow-500/5 shadow-[0_0_24px_rgba(250,204,21,0.18)]"
           : isLive

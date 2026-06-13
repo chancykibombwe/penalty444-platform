@@ -8,6 +8,7 @@ import {
   type ActivityEventTone,
 } from "../../lib/live/activity";
 import { useVisibleInterval } from "../../lib/polling/useVisibleInterval";
+import ExpandToggle from "../ui/ExpandToggle";
 import LivePulseBadge from "./LivePulseBadge";
 
 /**
@@ -78,7 +79,7 @@ export default function GlobalActivityFeed({
 
   return (
     <section
-      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-4 shadow-xl sm:p-5"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-3.5 shadow-xl sm:p-4"
       aria-label="Global live activity feed"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -105,42 +106,65 @@ export default function GlobalActivityFeed({
           Preparing live arena activity…
         </p>
       ) : (
-        <ul className="mt-4 grid gap-2">
-          {items.map((event, index) => (
-            <li
-              key={event.id}
-              className={`home-feed-item flex items-start gap-3 rounded-2xl border px-3 py-3 ${TONE_BORDER[event.tone]}`}
-              style={{ animationDelay: `${Math.min(index * 50, 250)}ms` }}
+        <div className="mt-3">
+          <ul className="grid gap-2">
+            {items.slice(0, 2).map((event, index) => (
+              <ActivityItem key={event.id} event={event} index={index} />
+            ))}
+          </ul>
+          {items.length > 2 ? (
+            <ExpandToggle
+              label={`+${items.length - 2} more activity`}
+              expandedLabel="Show less"
             >
-              <span
-                className={`mt-1.5 inline-block h-2 w-2 shrink-0 animate-pulse rounded-full ${TONE_DOT[event.tone]}`}
-                aria-hidden
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-bold text-white sm:text-base">
-                  {event.message}
-                </p>
-                {event.context ? (
-                  <p className="mt-0.5 text-[11px] text-zinc-400">
-                    {event.context}
-                  </p>
-                ) : null}
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <span
-                  className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${TONE_BORDER[event.tone]}`}
-                >
-                  {TONE_PILL[event.tone]}
-                </span>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                  {event.relativeTime}
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
+              <ul className="mt-2 grid gap-2">
+                {items.slice(2).map((event, index) => (
+                  <ActivityItem key={event.id} event={event} index={index} />
+                ))}
+              </ul>
+            </ExpandToggle>
+          ) : null}
+        </div>
       )}
     </section>
+  );
+}
+
+function ActivityItem({
+  event,
+  index,
+}: {
+  event: ActivityEvent;
+  index: number;
+}) {
+  return (
+    <li
+      className={`home-feed-item flex items-start gap-2.5 rounded-2xl border px-3 py-2.5 ${TONE_BORDER[event.tone]}`}
+      style={{ animationDelay: `${Math.min(index * 50, 250)}ms` }}
+    >
+      <span
+        className={`mt-1.5 inline-block h-2 w-2 shrink-0 animate-pulse rounded-full ${TONE_DOT[event.tone]}`}
+        aria-hidden
+      />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-bold text-white sm:text-base">
+          {event.message}
+        </p>
+        {event.context ? (
+          <p className="mt-0.5 text-[11px] text-zinc-400">{event.context}</p>
+        ) : null}
+      </div>
+      <div className="flex flex-col items-end gap-1">
+        <span
+          className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${TONE_BORDER[event.tone]}`}
+        >
+          {TONE_PILL[event.tone]}
+        </span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+          {event.relativeTime}
+        </span>
+      </div>
+    </li>
   );
 }
 

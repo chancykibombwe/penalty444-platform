@@ -121,7 +121,7 @@ export default function PlayerMomentsStrip({
 function MomentItem({ moment }: { moment: RecentPlayerMoment }) {
   const body = (
     <div
-      className={`flex items-center gap-3 rounded-2xl border px-3 py-2.5 ${TONE_BG[moment.tone]}`}
+      className={`flex items-center gap-2.5 rounded-2xl border px-3 py-2 ${TONE_BG[moment.tone]}`}
     >
       <span
         className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-black/40 text-lg ${TONE_TEXT[moment.tone]}`}
