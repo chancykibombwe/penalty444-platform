@@ -15,7 +15,7 @@ export default function HeroBanner({
 }: HeroBannerProps) {
   return (
     <section
-      className="relative overflow-hidden rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black px-4 py-3.5 shadow-2xl sm:px-5 sm:py-5"
+      className="relative overflow-hidden rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black px-3.5 py-3 shadow-2xl sm:px-5 sm:py-4"
       aria-label="444 Arena hero"
     >
       {/* Background layers */}
@@ -40,7 +40,7 @@ export default function HeroBanner({
 
       <div className="relative flex items-center justify-between gap-6">
         <div className="max-w-2xl">
-          <p className="inline-flex items-center gap-2 rounded-full border border-cyan-400/45 bg-cyan-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.32em] text-cyan-100">
+          <p className="inline-flex items-center gap-2 rounded-full border border-cyan-400/45 bg-cyan-500/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.32em] text-cyan-100">
             <span
               className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.9)]"
               aria-hidden
@@ -48,27 +48,27 @@ export default function HeroBanner({
             444 Arena · Live
           </p>
 
-          <h1 className="mt-2 text-xl font-black uppercase leading-tight tracking-tight sm:text-2xl md:text-3xl">
+          <h1 className="mt-1.5 text-lg font-black uppercase leading-tight tracking-tight sm:text-xl md:text-2xl">
             <span className="text-white">Skill Wins</span>{" "}
             <span className="bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] bg-clip-text text-transparent">
               Every Time
             </span>
           </h1>
 
-          <p className="mt-1 max-w-md text-xs leading-relaxed text-zinc-300 sm:text-sm">
+          <p className="mt-0.5 max-w-md text-xs leading-relaxed text-zinc-300 sm:text-sm">
             Real players. Real battles. Real rewards.
           </p>
 
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-2.5 flex items-center gap-2">
             <Link
               href={primaryHref}
-              className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-[0_0_28px_rgba(59,158,255,0.4)] transition-transform hover:scale-[1.02] sm:flex-none sm:px-6 sm:text-sm"
+              className="inline-flex min-h-[40px] flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] px-4 py-1.5 text-xs font-black uppercase tracking-wide text-white shadow-[0_0_28px_rgba(59,158,255,0.4)] transition-transform hover:scale-[1.02] sm:flex-none sm:px-6 sm:text-sm"
             >
               ▶ Play Now
             </Link>
             <Link
               href={secondaryHref}
-              className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-2xl border border-[#E0A000]/55 bg-transparent px-4 py-2 text-xs font-black uppercase tracking-wide text-[#E0A000] transition-transform hover:scale-[1.02] hover:bg-[#E0A000]/10 sm:flex-none sm:px-5 sm:text-sm"
+              className="inline-flex min-h-[40px] flex-1 items-center justify-center gap-2 rounded-2xl border border-[#E0A000]/55 bg-transparent px-4 py-1.5 text-xs font-black uppercase tracking-wide text-[#E0A000] transition-transform hover:scale-[1.02] hover:bg-[#E0A000]/10 sm:flex-none sm:px-5 sm:text-sm"
             >
               🏆 Tournaments
             </Link>
@@ -80,13 +80,13 @@ export default function HeroBanner({
             laptop widths. */}
         <div
           aria-hidden
-          className="relative hidden h-32 w-32 shrink-0 items-center justify-center lg:flex"
+          className="relative hidden h-24 w-24 shrink-0 items-center justify-center lg:flex"
         >
           <div className="absolute inset-0 rounded-full border border-cyan-400/15" />
-          <div className="absolute inset-5 rounded-full border border-cyan-400/10" />
-          <div className="absolute inset-10 rounded-full border border-amber-400/10" />
+          <div className="absolute inset-4 rounded-full border border-cyan-400/10" />
+          <div className="absolute inset-8 rounded-full border border-amber-400/10" />
           <div className="absolute inset-0 rounded-full bg-cyan-500/10 blur-2xl" />
-          <span className="relative text-5xl">⚽</span>
+          <span className="relative text-4xl">⚽</span>
         </div>
       </div>
     </section>

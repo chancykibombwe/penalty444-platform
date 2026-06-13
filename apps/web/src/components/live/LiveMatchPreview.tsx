@@ -100,7 +100,7 @@ function LiveMatchCard({ item }: { item: LiveMatchPreviewItem }) {
   const isLive = item.status === "in_progress";
   return (
     <li
-      className={`flex flex-col gap-2 rounded-2xl border px-3 py-2.5 ${
+      className={`flex flex-col gap-1.5 rounded-2xl border px-3 py-2 ${
         item.isFinal
           ? "border-yellow-300/55 bg-yellow-500/5 shadow-[0_0_24px_rgba(250,204,21,0.18)]"
           : isLive
@@ -125,13 +125,13 @@ function LiveMatchCard({ item }: { item: LiveMatchPreviewItem }) {
       </div>
 
       <div className="flex items-center justify-between gap-3">
-        <span className="min-w-0 flex-1 truncate text-sm font-bold text-white sm:text-base">
+        <span className="min-w-0 flex-1 truncate text-sm font-bold text-white">
           {item.playerOne}
         </span>
         <span className="shrink-0 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
           vs
         </span>
-        <span className="min-w-0 flex-1 truncate text-right text-sm font-bold text-white sm:text-base">
+        <span className="min-w-0 flex-1 truncate text-right text-sm font-bold text-white">
           {item.playerTwo}
         </span>
       </div>

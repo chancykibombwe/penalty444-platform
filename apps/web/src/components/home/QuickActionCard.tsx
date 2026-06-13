@@ -57,7 +57,7 @@ export default function QuickActionCard({
   return (
     <Link
       href={href}
-      className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br from-zinc-950 via-zinc-950/70 to-black p-3 transition-transform hover:scale-[1.015] sm:p-4 ${t.border} ${t.glow}`}
+      className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br from-zinc-950 via-zinc-950/70 to-black p-2.5 transition-transform hover:scale-[1.015] sm:p-3.5 ${t.border} ${t.glow}`}
     >
       <div
         aria-hidden
@@ -72,9 +72,9 @@ export default function QuickActionCard({
         }}
       />
 
-      <div className="relative flex items-start gap-2.5">
+      <div className="relative flex items-start gap-2">
         <div
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border text-lg sm:h-10 sm:w-10 sm:text-xl ${t.iconRing}`}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl border text-base sm:h-9 sm:w-9 sm:text-lg ${t.iconRing}`}
           aria-hidden
         >
           {icon}
@@ -83,15 +83,15 @@ export default function QuickActionCard({
           <p className="text-[9px] font-black uppercase tracking-[0.22em] text-zinc-500 sm:text-[10px]">
             Quick Action
           </p>
-          <h3 className="mt-1 text-sm font-black uppercase tracking-tight text-white sm:text-lg">
+          <h3 className="mt-0.5 text-sm font-black uppercase tracking-tight text-white sm:text-base">
             {title}
           </h3>
-          <p className="mt-1 text-xs text-zinc-400 sm:text-sm">{subtitle}</p>
+          <p className="mt-0.5 text-xs text-zinc-400 sm:text-sm">{subtitle}</p>
         </div>
       </div>
 
       <span
-        className={`relative mt-2.5 inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-black uppercase tracking-wide sm:w-auto sm:px-4 sm:text-sm ${t.ctaBg} ${t.ctaText}`}
+        className={`relative mt-2 inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl px-3 py-1.5 text-xs font-black uppercase tracking-wide sm:w-auto sm:px-4 sm:text-sm ${t.ctaBg} ${t.ctaText}`}
       >
         {cta}
         <span aria-hidden>→</span>

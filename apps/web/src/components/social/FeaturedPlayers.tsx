@@ -117,7 +117,7 @@ function PlayerTile({ player }: { player: FeaturedPlayer }) {
 
   return (
     <article
-      className={`flex flex-col gap-2.5 rounded-2xl border px-3.5 py-3 ${accent}`}
+      className={`flex flex-col gap-2 rounded-2xl border px-3 py-2.5 ${accent}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-300">
@@ -135,7 +135,7 @@ function PlayerTile({ player }: { player: FeaturedPlayer }) {
         href={`/profile/${encodeURIComponent(player.username)}`}
         className="block min-w-0"
       >
-        <p className="truncate text-lg font-black tracking-tight text-white transition-colors hover:text-cyan-100 sm:text-xl">
+        <p className="truncate text-base font-black tracking-tight text-white transition-colors hover:text-cyan-100 sm:text-lg">
           {player.username}
         </p>
         <p className="mt-0.5 truncate text-[11px] text-zinc-400">
@@ -143,7 +143,7 @@ function PlayerTile({ player }: { player: FeaturedPlayer }) {
         </p>
       </Link>
 
-      <dl className="grid grid-cols-3 gap-2 border-t border-zinc-800/60 pt-2.5">
+      <dl className="grid grid-cols-3 gap-2 border-t border-zinc-800/60 pt-2">
         <Stat label="Wins" value={player.wins} />
         <Stat
           label="Win Rate"

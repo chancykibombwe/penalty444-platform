@@ -72,6 +72,8 @@ type Props = {
   /** Optional secondary line (e.g. "Last 30 days"). */
   caption?: string;
   className?: string;
+  /** Denser sizing for 4-up rows on narrow screens. */
+  compact?: boolean;
 };
 
 export default function StatTile({
@@ -82,29 +84,34 @@ export default function StatTile({
   icon,
   caption,
   className,
+  compact = false,
 }: Props) {
   const t = TONE_CLASS[tone];
   return (
     <div
-      className={`rounded-2xl border bg-zinc-950/65 px-3 py-3 ${t.border} ${t.bg} ${t.glow} ${className ?? ""}`}
+      className={`rounded-2xl border bg-zinc-950/65 ${compact ? "px-2 py-2" : "px-3 py-3"} ${t.border} ${t.bg} ${t.glow} ${className ?? ""}`}
     >
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+      <div className="flex items-center justify-between gap-1">
+        <p
+          className={`truncate font-bold uppercase tracking-[0.18em] text-zinc-500 ${compact ? "text-[8px]" : "text-[10px]"}`}
+        >
           {label}
         </p>
         {icon ? (
-          <span aria-hidden className="text-base leading-none text-zinc-400">
+          <span aria-hidden className="shrink-0 text-base leading-none text-zinc-400">
             {icon}
           </span>
         ) : null}
       </div>
       <p
-        className={`mt-1 text-2xl font-black leading-none tabular-nums sm:text-3xl ${t.valueText}`}
+        className={`mt-1 truncate font-black leading-none tabular-nums ${t.valueText} ${compact ? "text-base sm:text-2xl" : "text-2xl sm:text-3xl"}`}
       >
         {value}
       </p>
       {hint ? (
-        <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+        <p
+          className={`mt-1.5 truncate font-bold uppercase tracking-wider text-zinc-500 ${compact ? "text-[8px]" : "text-[10px]"}`}
+        >
           {hint}
         </p>
       ) : null}

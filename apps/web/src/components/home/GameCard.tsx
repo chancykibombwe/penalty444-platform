@@ -41,7 +41,7 @@ type Props = { game: GameCardData };
 export default function GameCard({ game }: Props) {
   const card = (
     <div
-      className={`group relative h-full w-[78%] shrink-0 snap-start overflow-hidden rounded-2xl border bg-gradient-to-br from-zinc-950 via-zinc-950/65 to-black p-3 transition-transform sm:w-[62%] md:w-[300px] ${
+      className={`group relative h-full w-[78%] shrink-0 snap-start overflow-hidden rounded-2xl border bg-gradient-to-br from-zinc-950 via-zinc-950/65 to-black p-2.5 transition-transform sm:w-[62%] md:w-[300px] ${
         game.featured
           ? "border-[#3B9EFF]/55 shadow-[0_0_28px_rgba(59,158,255,0.25)] hover:scale-[1.02]"
           : "border-[#1B2433] hover:scale-[1.015] hover:border-zinc-600"
@@ -58,10 +58,10 @@ export default function GameCard({ game }: Props) {
       />
 
       <div className="relative flex items-start justify-between gap-2">
-        <HexIconFrame tone={game.featured ? "primary" : "muted"} size="md">
+        <HexIconFrame tone={game.featured ? "primary" : "muted"} size="sm">
           {game.icon}
         </HexIconFrame>
-        <div className="flex flex-col items-end gap-1.5">
+        <div className="flex flex-col items-end gap-1">
           <span
             className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] ${STATUS_CLASS[game.status]}`}
           >
@@ -77,16 +77,16 @@ export default function GameCard({ game }: Props) {
         </div>
       </div>
 
-      <p className="mt-2.5 text-[10px] font-black uppercase tracking-[0.22em] text-zinc-500">
+      <p className="mt-2 text-[10px] font-black uppercase tracking-[0.22em] text-zinc-500">
         {game.subtitle}
       </p>
-      <h3 className="mt-1 truncate text-base font-black tracking-tight text-white sm:text-lg">
+      <h3 className="mt-0.5 truncate text-sm font-black tracking-tight text-white sm:text-base">
         {game.title}
       </h3>
 
-      <div className="mt-2.5 flex items-center justify-end gap-2">
+      <div className="mt-2 flex items-center justify-end gap-2">
         <span
-          className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider ${
+          className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-wider ${
             game.comingSoon
               ? "border border-[#1B2433] bg-[#111827]/80 text-zinc-400"
               : game.featured

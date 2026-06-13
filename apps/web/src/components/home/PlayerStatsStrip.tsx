@@ -89,8 +89,9 @@ export default function PlayerStatsStrip({
         />
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+      <div className="mt-3 grid grid-cols-4 gap-1.5 sm:gap-3">
         <StatTile
+          compact
           label="Rank"
           value={placement.inPlacement ? "Placement" : tier.label}
           hint={
@@ -108,12 +109,14 @@ export default function PlayerStatsStrip({
           icon={placement.inPlacement ? "○" : tier.icon}
         />
         <StatTile
+          compact
           label="Win Rate"
           value={ranked ? `${winRate}%` : "—"}
           hint={ranked ? "Last season" : "After placements"}
           tone="violet"
         />
         <StatTile
+          compact
           label="Streak"
           value={formatStreakLabel(streak)}
           hint={
@@ -122,6 +125,7 @@ export default function PlayerStatsStrip({
           tone="amber"
         />
         <StatTile
+          compact
           label="Trophies"
           value={tournamentWins.toLocaleString()}
           hint={tournamentWins > 0 ? "Tournament wins" : "Start competing"}
