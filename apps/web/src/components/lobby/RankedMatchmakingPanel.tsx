@@ -238,7 +238,7 @@ export default function RankedMatchmakingPanel() {
               variant="primary"
               onClick={findRankedMatch}
               disabled={!connected || enqueueing || inQueue}
-              className="shrink-0"
+              className="shrink-0 !min-h-[40px] !py-2"
             >
               <span className="sm:hidden">{enqueueing && !inQueue ? "Joining…" : "Find Match"}</span>
               <span className="hidden sm:inline">{enqueueing && !inQueue ? "Joining…" : "Find Ranked Match"}</span>

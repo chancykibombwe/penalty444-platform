@@ -39,10 +39,10 @@ export default function JoinRoomPanel() {
         value={roomCode}
         onChange={(event) => setRoomCode(event.target.value)}
         placeholder="Room code"
-        className="w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-3.5 py-2.5 font-mono text-sm uppercase tracking-widest text-white outline-none placeholder:text-zinc-600 placeholder:normal-case placeholder:tracking-normal focus:border-[#22C55E]/60 focus:ring-2 focus:ring-[#22C55E]/10"
+        className="w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-3.5 py-2 font-mono text-sm uppercase tracking-widest text-white outline-none placeholder:text-zinc-600 placeholder:normal-case placeholder:tracking-normal focus:border-[#22C55E]/60 focus:ring-2 focus:ring-[#22C55E]/10"
       />
 
-      <OutlineButton tone="positive" onClick={joinRoom} className="w-full">
+      <OutlineButton tone="positive" onClick={joinRoom} className="w-full !min-h-[40px] !py-2">
         Join Room
       </OutlineButton>
     </div>

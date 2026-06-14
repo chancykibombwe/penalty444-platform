@@ -506,12 +506,12 @@ export default function PublicMatchOffersPanel() {
         </p>
       </div>
 
-      <div className="grid gap-2 rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-2.5 sm:gap-3 sm:p-3 md:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-2 sm:gap-3 sm:p-3 md:grid-cols-3">
         <div className="hidden sm:block">
           <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
             Stake
           </label>
-          <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+          <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-1.5">
             <span className="text-sm font-black text-emerald-300">Free</span>
             <span className="text-xs text-zinc-600">— Paid stakes coming soon.</span>
           </div>
@@ -526,7 +526,7 @@ export default function PublicMatchOffersPanel() {
             value={rounds}
             onChange={(event) => setRounds(Number(event.target.value))}
             disabled={creating || Boolean(cancellingOfferId)}
-            className="w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-3 py-2 text-sm text-white outline-none transition-colors focus:border-zinc-500 disabled:opacity-50"
+            className="w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-3 py-1.5 text-sm text-white outline-none transition-colors focus:border-zinc-500 disabled:opacity-50"
           >
             <option value={3}>3 rounds</option>
             <option value={5}>5 rounds</option>
@@ -538,18 +538,18 @@ export default function PublicMatchOffersPanel() {
             variant="primary"
             onClick={createOffer}
             disabled={creating || !connected || Boolean(cancellingOfferId)}
-            className="w-full"
+            className="w-full !min-h-[36px] !px-3 !py-1.5 !text-xs"
           >
             {creating ? "Creating..." : "Create Public Offer"}
           </GradientButton>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 border-t border-zinc-800/80 pt-3">
+      <div className="flex flex-wrap items-center gap-3 border-t border-zinc-800/80 pt-2">
         <button
           type="button"
           onClick={clearSavedMatch}
-          className="text-xs font-semibold text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline"
+          className="text-[10px] font-semibold text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline"
         >
           Clear saved match
         </button>
@@ -557,7 +557,7 @@ export default function PublicMatchOffersPanel() {
         <button
           type="button"
           onClick={refreshLobby}
-          className="text-xs font-semibold text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline"
+          className="text-[10px] font-semibold text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline"
         >
           Refresh lobby
         </button>
@@ -569,7 +569,7 @@ export default function PublicMatchOffersPanel() {
         </div>
       ) : null}
 
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
           Open Offers
         </p>
@@ -579,6 +579,7 @@ export default function PublicMatchOffersPanel() {
             icon="⚔"
             title="No public rooms right now"
             subtitle="Live rooms appear here"
+            compact
           />
         ) : (
           offers.map((offer) => {
@@ -588,7 +589,7 @@ export default function PublicMatchOffersPanel() {
             return (
               <div
                 key={offer.offerId}
-                className={`flex flex-col gap-3 rounded-2xl border border-l-2 py-3 pl-5 pr-4 sm:flex-row sm:items-center sm:justify-between ${
+                className={`flex flex-col gap-2 rounded-2xl border border-l-2 py-2 pl-4 pr-3 sm:flex-row sm:items-center sm:justify-between ${
                   isHostWaitingOffer
                     ? "border-cyan-500/30 border-l-cyan-400/60 bg-cyan-950/15 shadow-[0_0_24px_rgba(34,211,238,0.06)]"
                     : "border-zinc-800/60 border-l-violet-500/40 bg-zinc-900/40"

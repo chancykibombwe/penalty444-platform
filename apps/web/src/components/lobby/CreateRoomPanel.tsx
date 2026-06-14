@@ -250,11 +250,11 @@ export default function CreateRoomPanel({
           opponent joins.
         </p>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex gap-2">
           <GradientButton
             variant="purple"
             onClick={() => router.push(`/match/${waitingRoom.roomCode}`)}
-            className="w-full"
+            className="w-full !min-h-[40px] !py-2"
           >
             Enter Room
           </GradientButton>
@@ -262,7 +262,7 @@ export default function CreateRoomPanel({
             tone="muted"
             onClick={cancelRoom}
             disabled={cancelling}
-            className="w-full"
+            className="w-full !min-h-[40px] !py-2"
           >
             {cancelling ? "Cancelling…" : "Cancel Room"}
           </OutlineButton>
@@ -350,7 +350,7 @@ export default function CreateRoomPanel({
         </div>
       </div>
 
-      <GradientButton variant="purple" onClick={createRoom} disabled={loading} className="w-full">
+      <GradientButton variant="purple" onClick={createRoom} disabled={loading} className="w-full !min-h-[40px] !py-2">
         {loading ? "Creating..." : "Create Room"}
       </GradientButton>
 

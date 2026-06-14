@@ -11,6 +11,7 @@ export default function LobbyChatPanel() {
       icon="💬"
       title="Lobby chat — coming soon"
       subtitle="Message players and send direct challenges from here"
+      compact
     />
   );
 }

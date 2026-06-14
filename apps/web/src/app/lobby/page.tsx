@@ -108,6 +108,7 @@ function LobbyPageContent() {
                     icon="🤝"
                     title="Recent opponents appear here"
                     subtitle="Play a match to start building your rematch list"
+                    compact
                   />
                 </div>
 
