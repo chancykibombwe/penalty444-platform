@@ -114,7 +114,7 @@ export default function PlatformLiveStatus({ refreshMs = 30_000 }: Props) {
 
   return (
     <section
-      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-3.5 shadow-xl sm:p-4"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-2.5 shadow-xl sm:p-3"
       aria-label="Platform live status"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -122,26 +122,26 @@ export default function PlatformLiveStatus({ refreshMs = 30_000 }: Props) {
           <LivePulseBadge
             label="Arena Live"
             tone={totalActive > 0 ? "cyan" : "neutral"}
-            size="md"
+            size="sm"
             pulsing={totalActive > 0}
           />
-          <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+          <p className="hidden text-[10px] font-bold uppercase tracking-wider text-zinc-500 sm:inline">
             Platform snapshot
           </p>
         </div>
-        <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+        <p className="hidden text-[10px] font-bold uppercase tracking-wider text-zinc-500 sm:inline">
           {isLoading ? "Loading…" : "Updated just now"}
         </p>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
         {PRIMARY_TILES.map((tile) => (
           <LiveTile key={tile.key} tile={tile} value={data[tile.key]} isLoading={isLoading} />
         ))}
       </div>
 
       <ExpandToggle label="More stats" expandedLabel="Fewer stats">
-        <div className="mt-2 grid grid-cols-3 gap-2">
+        <div className="mt-1.5 grid grid-cols-3 gap-2">
           {SECONDARY_TILES.map((tile) => (
             <LiveTile key={tile.key} tile={tile} value={data[tile.key]} isLoading={isLoading} />
           ))}
@@ -163,25 +163,25 @@ function LiveTile({
   const showPulse = tile.pulse && value > 0;
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl border px-3 py-2.5 ${TONE_BG[tile.tone]}`}
+      className={`relative overflow-hidden rounded-2xl border px-2.5 py-1.5 ${TONE_BG[tile.tone]}`}
     >
       <div className="flex items-center justify-between gap-2">
         <span
-          className={`text-[10px] font-black uppercase tracking-[0.22em] ${TONE_LABEL[tile.tone]}`}
+          className={`truncate text-[9px] font-black uppercase tracking-[0.18em] ${TONE_LABEL[tile.tone]}`}
         >
           {tile.label}
         </span>
         {showPulse ? (
           <span
-            className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current opacity-80"
+            className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-current opacity-80"
             aria-hidden
           />
         ) : null}
       </div>
-      <div className={`mt-1 text-2xl font-black tabular-nums ${TONE_VALUE[tile.tone]}`}>
+      <div className={`mt-0.5 text-lg font-black tabular-nums sm:text-xl ${TONE_VALUE[tile.tone]}`}>
         {isLoading ? "…" : value.toLocaleString()}
       </div>
-      <p className="mt-0.5 text-[10px] font-semibold text-zinc-500">{tile.hint}</p>
+      <p className="mt-0.5 truncate text-[9px] font-semibold text-zinc-500">{tile.hint}</p>
     </div>
   );
 }

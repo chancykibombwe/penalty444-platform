@@ -64,7 +64,7 @@ export default function PlayerMomentsStrip({
 
   return (
     <section
-      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-3.5 shadow-xl sm:p-4"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-2.5 shadow-xl sm:p-3"
       aria-label="Featured player moments"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -73,9 +73,9 @@ export default function PlayerMomentsStrip({
             label="Player Moments"
             tone="amber"
             pulsing={false}
-            size="md"
+            size="sm"
           />
-          <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+          <p className="hidden text-[10px] font-bold uppercase tracking-wider text-zinc-500 sm:inline">
             Champions · Wins · Promotions
           </p>
         </div>
@@ -90,12 +90,12 @@ export default function PlayerMomentsStrip({
       {isLoading ? (
         <MomentsSkeleton />
       ) : list.length === 0 ? (
-        <p className="mt-6 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-6 text-center text-sm font-semibold text-zinc-400">
+        <p className="mt-4 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-4 text-center text-sm font-semibold text-zinc-400">
           Rising competitors are warming up…
         </p>
       ) : (
-        <div className="mt-3">
-          <ul className="grid gap-2">
+        <div className="mt-2">
+          <ul className="grid gap-1.5">
             {list.slice(0, 2).map((moment) => (
               <MomentItem key={moment.id} moment={moment} />
             ))}
@@ -105,7 +105,7 @@ export default function PlayerMomentsStrip({
               label={`+${list.length - 2} more moment${list.length - 2 === 1 ? "" : "s"}`}
               expandedLabel="Show less"
             >
-              <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+              <ul className="mt-1.5 grid gap-1.5 sm:grid-cols-2">
                 {list.slice(2).map((moment) => (
                   <MomentItem key={moment.id} moment={moment} />
                 ))}
@@ -121,10 +121,10 @@ export default function PlayerMomentsStrip({
 function MomentItem({ moment }: { moment: RecentPlayerMoment }) {
   const body = (
     <div
-      className={`flex items-center gap-2.5 rounded-2xl border px-3 py-2 ${TONE_BG[moment.tone]}`}
+      className={`flex items-center gap-2 rounded-2xl border px-2.5 py-1.5 ${TONE_BG[moment.tone]}`}
     >
       <span
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-black/40 text-lg ${TONE_TEXT[moment.tone]}`}
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-black/40 text-base ${TONE_TEXT[moment.tone]}`}
         aria-hidden
       >
         {TONE_ICON[moment.tone]}

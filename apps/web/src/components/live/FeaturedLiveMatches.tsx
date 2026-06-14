@@ -52,7 +52,7 @@ export default function FeaturedLiveMatches({
 
   return (
     <section
-      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-3.5 shadow-xl sm:p-4"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-2.5 shadow-xl sm:p-3"
       aria-label="Featured live matches"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -61,13 +61,13 @@ export default function FeaturedLiveMatches({
             label="Featured Arenas"
             tone={anyLive ? "cyan" : "neutral"}
             pulsing={anyLive}
-            size="md"
+            size="sm"
           />
-          <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+          <p className="hidden text-[10px] font-bold uppercase tracking-wider text-zinc-500 sm:inline">
             Watch the action
           </p>
         </div>
-        <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+        <p className="hidden text-[10px] font-bold uppercase tracking-wider text-zinc-500 sm:inline">
           Auto-updating
         </p>
       </div>
@@ -75,18 +75,18 @@ export default function FeaturedLiveMatches({
       {isLoading ? (
         <FeaturedSkeleton />
       ) : list.length === 0 ? (
-        <p className="mt-6 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-6 text-center text-sm font-semibold text-zinc-400">
+        <p className="mt-4 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-4 text-center text-sm font-semibold text-zinc-400">
           Preparing featured arenas…
         </p>
       ) : (
-        <div className="mt-3">
+        <div className="mt-2">
           {hero ? <FeaturedLiveMatchCard match={hero} emphasis="hero" /> : null}
           {rest.length > 0 ? (
             <ExpandToggle
               label={`+${rest.length} more arena${rest.length === 1 ? "" : "s"}`}
               expandedLabel="Show less"
             >
-              <div className="mt-3 grid gap-3 sm:grid-cols-2 sm:gap-4">
+              <div className="mt-2 grid gap-2 sm:grid-cols-2 sm:gap-3">
                 {rest.map((item) => (
                   <FeaturedLiveMatchCard key={item.id} match={item} />
                 ))}

@@ -52,7 +52,7 @@ export default function FeaturedLiveMatchCard({
 
   return (
     <article
-      className={`flex h-full flex-col gap-1.5 rounded-3xl border px-3 py-2.5 sm:px-3.5 sm:py-3 ${accentClass}`}
+      className={`flex h-full flex-col gap-1 rounded-2xl border px-2.5 py-2 sm:px-3 sm:py-2.5 ${accentClass}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className={`truncate ${tournamentNameClass} text-zinc-300`}>

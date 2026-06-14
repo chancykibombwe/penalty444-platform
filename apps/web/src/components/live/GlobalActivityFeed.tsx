@@ -79,13 +79,13 @@ export default function GlobalActivityFeed({
 
   return (
     <section
-      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-3.5 shadow-xl sm:p-4"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-2.5 shadow-xl sm:p-3"
       aria-label="Global live activity feed"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <LivePulseBadge label="Live Activity" tone="cyan" size="md" />
-          <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+          <LivePulseBadge label="Live Activity" tone="cyan" size="sm" />
+          <p className="hidden text-[10px] font-bold uppercase tracking-wider text-zinc-500 sm:inline">
             {refreshing ? "Refreshing…" : "Auto-updating"}
           </p>
         </div>
@@ -102,12 +102,12 @@ export default function GlobalActivityFeed({
       {isLoading ? (
         <FeedSkeleton />
       ) : items.length === 0 ? (
-        <p className="mt-6 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-6 text-center text-sm font-semibold text-zinc-400">
+        <p className="mt-4 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-4 text-center text-sm font-semibold text-zinc-400">
           Preparing live arena activity…
         </p>
       ) : (
-        <div className="mt-3">
-          <ul className="grid gap-2">
+        <div className="mt-2">
+          <ul className="grid gap-1.5">
             {items.slice(0, 2).map((event, index) => (
               <ActivityItem key={event.id} event={event} index={index} />
             ))}
@@ -117,7 +117,7 @@ export default function GlobalActivityFeed({
               label={`+${items.length - 2} more activity`}
               expandedLabel="Show less"
             >
-              <ul className="mt-2 grid gap-2">
+              <ul className="mt-1.5 grid gap-1.5">
                 {items.slice(2).map((event, index) => (
                   <ActivityItem key={event.id} event={event} index={index} />
                 ))}
@@ -139,7 +139,7 @@ function ActivityItem({
 }) {
   return (
     <li
-      className={`home-feed-item flex items-start gap-2.5 rounded-2xl border px-3 py-2.5 ${TONE_BORDER[event.tone]}`}
+      className={`home-feed-item flex items-start gap-2 rounded-2xl border px-2.5 py-2 ${TONE_BORDER[event.tone]}`}
       style={{ animationDelay: `${Math.min(index * 50, 250)}ms` }}
     >
       <span
