@@ -195,7 +195,7 @@ export default function CreateRoomPanel({
   // ── Waiting state — room created, host stays in lobby ──────────────────
   if (waitingRoom) {
     return (
-      <div className="space-y-2 overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#0D1420] p-2.5 shadow-[0_0_28px_rgba(139,92,246,0.16)] sm:space-y-3 sm:p-3.5">
+      <div className="col-span-2 space-y-2 overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#0D1420] p-2 shadow-[0_0_28px_rgba(139,92,246,0.16)] sm:space-y-3 sm:p-3.5">
         <div>
           <div className="flex items-center gap-2 sm:block">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#8B5CF6]/15 ring-1 ring-[#8B5CF6]/30 sm:mb-1.5">
@@ -220,8 +220,8 @@ export default function CreateRoomPanel({
           <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#C4B5FD]/70">
             Room Code
           </p>
-          <div className="mt-1 flex items-center gap-3">
-            <p className="select-all font-mono text-2xl font-black tracking-[0.25em] text-white">
+          <div className="mt-1 flex flex-wrap items-center gap-2 sm:gap-3">
+            <p className="select-all font-mono text-lg font-black tracking-[0.2em] text-white sm:text-2xl sm:tracking-[0.25em]">
               {waitingRoom.roomCode}
             </p>
             <button
@@ -279,7 +279,7 @@ export default function CreateRoomPanel({
 
   // ── Setup state ──────────────────────────────────────────────────────────
   return (
-    <div className="space-y-2 overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#0D1420] p-2.5 shadow-[0_0_28px_rgba(139,92,246,0.16)] sm:space-y-3 sm:p-3.5">
+    <div className="space-y-2 overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#0D1420] p-2 shadow-[0_0_28px_rgba(139,92,246,0.16)] sm:space-y-3 sm:p-3.5">
       <div>
         <div className="flex items-center gap-2 sm:block">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#8B5CF6]/15 ring-1 ring-[#8B5CF6]/30 sm:mb-1.5">
@@ -318,19 +318,20 @@ export default function CreateRoomPanel({
         <p className="mb-1 text-[10px] font-black uppercase tracking-[0.25em] text-zinc-500">
           Rounds
         </p>
-        <div className="flex gap-2">
+        <div className="flex gap-1.5 sm:gap-2">
           {([3, 5] as const).map((r) => (
             <button
               key={r}
               type="button"
               onClick={() => setRounds(r)}
-              className={`flex-1 rounded-xl border px-3 py-1.5 text-sm font-black transition-colors ${
+              className={`flex-1 rounded-xl border px-2 py-1.5 text-sm font-black transition-colors sm:px-3 ${
                 rounds === r
                   ? "border-[#8B5CF6]/60 bg-[#8B5CF6]/15 text-[#C4B5FD]"
                   : "border-zinc-700 bg-zinc-950/60 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300"
               }`}
             >
-              {r} rounds
+              <span className="sm:hidden">{r}</span>
+              <span className="hidden sm:inline">{r} rounds</span>
             </button>
           ))}
         </div>

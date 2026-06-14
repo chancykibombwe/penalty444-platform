@@ -85,7 +85,7 @@ function LobbyPageContent() {
                   <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:mb-2">
                     Private Rooms
                   </p>
-                  <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3">
                     <CreateRoomPanel
                       challengeUserId={hasChallengeContext ? challengeUserId : undefined}
                       challengeUsername={

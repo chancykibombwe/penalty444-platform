@@ -16,7 +16,7 @@ export default function JoinRoomPanel() {
   }
 
   return (
-    <div className="space-y-2 overflow-hidden rounded-2xl border border-[#22C55E]/30 bg-[#0D1420] p-2.5 shadow-[0_0_24px_rgba(34,197,94,0.14)] sm:space-y-3 sm:p-3.5">
+    <div className="space-y-2 overflow-hidden rounded-2xl border border-[#22C55E]/30 bg-[#0D1420] p-2 shadow-[0_0_24px_rgba(34,197,94,0.14)] sm:space-y-3 sm:p-3.5">
       <div>
         <div className="flex items-center gap-2 sm:block">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#22C55E]/15 ring-1 ring-[#22C55E]/30 sm:mb-1.5">
