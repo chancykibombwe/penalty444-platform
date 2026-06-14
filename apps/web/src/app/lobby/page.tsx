@@ -77,6 +77,14 @@ function LobbyPageContent() {
                 {/* Ranked matchmaking — primary action */}
                 <RankedMatchmakingPanel />
 
+                {/* Lobby chat — important, kept near the top and always visible */}
+                <div>
+                  <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:mb-2">
+                    Lobby Chat
+                  </p>
+                  <LobbyChatPanel />
+                </div>
+
                 {/* Public match offers */}
                 <PublicMatchOffersPanel />
 
@@ -99,26 +107,23 @@ function LobbyPageContent() {
 
               {/* Sidebar (stacks below main column on mobile) */}
               <aside className="space-y-2 sm:space-y-3 lg:sticky lg:top-20 lg:space-y-5">
-                {/* Play Again — recent opponents */}
-                <div>
-                  <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:mb-2">
-                    Play Again
-                  </p>
-                  <EmptyState
-                    icon="🤝"
-                    title="Recent opponents appear here"
-                    subtitle="Play a match to start building your rematch list"
-                    compact
-                  />
-                </div>
-
-                {/* Lobby chat — coming soon provision */}
-                <div>
-                  <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:mb-2">
-                    Lobby Chat
-                  </p>
-                  <LobbyChatPanel />
-                </div>
+                {/* Play Again — recent opponents, collapsible */}
+                <details className="group overflow-hidden rounded-2xl border border-zinc-800/60 bg-zinc-900/40">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 [&::-webkit-details-marker]:hidden">
+                    <span>Play Again</span>
+                    <span className="text-zinc-500 transition-transform group-open:rotate-180" aria-hidden>
+                      ▾
+                    </span>
+                  </summary>
+                  <div className="border-t border-zinc-800/60 p-2 sm:p-3">
+                    <EmptyState
+                      icon="🤝"
+                      title="Recent opponents appear here"
+                      subtitle="Play a match to start building your rematch list"
+                      compact
+                    />
+                  </div>
+                </details>
               </aside>
             </div>
 

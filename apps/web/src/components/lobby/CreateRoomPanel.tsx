@@ -281,19 +281,40 @@ export default function CreateRoomPanel({
   return (
     <div className="space-y-2 overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#0D1420] p-2 shadow-[0_0_28px_rgba(139,92,246,0.16)] sm:space-y-3 sm:p-3.5">
       <div>
-        <div className="flex items-center gap-2 sm:block">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#8B5CF6]/15 ring-1 ring-[#8B5CF6]/30 sm:mb-1.5">
-            <svg
-              className="h-3.5 w-3.5 text-[#C4B5FD]"
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path d="M12 4a1 1 0 011 1v6h6a1 1 0 110 2h-6v6a1 1 0 11-2 0v-6H5a1 1 0 011-1z" />
-            </svg>
+        <div className="flex items-center justify-between gap-2 sm:block">
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#8B5CF6]/15 ring-1 ring-[#8B5CF6]/30 sm:mb-1.5">
+              <svg
+                className="h-3.5 w-3.5 text-[#C4B5FD]"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M12 4a1 1 0 011 1v6h6a1 1 0 110 2h-6v6a1 1 0 11-2 0v-6H5a1 1 0 011-1z" />
+              </svg>
+            </div>
+            <h2 className="text-base font-black text-white sm:mt-0.5">Create Room</h2>
           </div>
-          <h2 className="text-base font-black text-white sm:mt-0.5">Create Room</h2>
+
+          {/* Mobile-only compact rounds toggle, merged into the header row */}
+          <div className="flex shrink-0 gap-1 sm:hidden">
+            {([3, 5] as const).map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setRounds(r)}
+                aria-label={`${r} rounds`}
+                className={`rounded-lg border px-2 py-1 text-xs font-black transition-colors ${
+                  rounds === r
+                    ? "border-[#8B5CF6]/60 bg-[#8B5CF6]/15 text-[#C4B5FD]"
+                    : "border-zinc-700 bg-zinc-950/60 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300"
+                }`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
         </div>
         <p className="hidden text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:block">
           Private Room
@@ -313,25 +334,24 @@ export default function CreateRoomPanel({
         </div>
       ) : null}
 
-      {/* Rounds selector */}
-      <div>
+      {/* Rounds selector — desktop only; mobile uses the header toggle above */}
+      <div className="hidden sm:block">
         <p className="mb-1 text-[10px] font-black uppercase tracking-[0.25em] text-zinc-500">
           Rounds
         </p>
-        <div className="flex gap-1.5 sm:gap-2">
+        <div className="flex gap-2">
           {([3, 5] as const).map((r) => (
             <button
               key={r}
               type="button"
               onClick={() => setRounds(r)}
-              className={`flex-1 rounded-xl border px-2 py-1.5 text-sm font-black transition-colors sm:px-3 ${
+              className={`flex-1 rounded-xl border px-3 py-1.5 text-sm font-black transition-colors ${
                 rounds === r
                   ? "border-[#8B5CF6]/60 bg-[#8B5CF6]/15 text-[#C4B5FD]"
                   : "border-zinc-700 bg-zinc-950/60 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300"
               }`}
             >
-              <span className="sm:hidden">{r}</span>
-              <span className="hidden sm:inline">{r} rounds</span>
+              {r} rounds
             </button>
           ))}
         </div>

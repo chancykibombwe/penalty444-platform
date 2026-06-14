@@ -193,7 +193,7 @@ export default function RankedMatchmakingPanel() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
 
         {/* Left zone — all interactive content */}
-        <div className="min-w-0 flex-1 space-y-1.5 sm:space-y-2.5">
+        <div className="min-w-0 flex-1 space-y-1 sm:space-y-2.5">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -216,17 +216,15 @@ export default function RankedMatchmakingPanel() {
                 Ranked Matchmaking
               </p>
 
-              <p className="mt-1 text-xs text-zinc-400 sm:mt-2 sm:text-sm">
-                Free Match · 3 rounds
-                <span className="hidden sm:inline">
-                  . You&apos;ll be paired with the next available player.
-                </span>
+              <p className="hidden text-xs text-zinc-400 sm:mt-2 sm:block sm:text-sm">
+                Free Match · 3 rounds. You&apos;ll be paired with the next
+                available player.
               </p>
               <p className="mt-1 hidden text-xs text-zinc-500 sm:block">
                 Results count toward your global stats and rank.
               </p>
 
-              <p className="mt-1 text-[11px] text-zinc-500 sm:mt-2 sm:text-xs">
+              <p className="text-[11px] text-zinc-500 sm:mt-2 sm:text-xs">
                 Realtime:{" "}
                 <span className={connected ? "text-emerald-400" : "text-red-400"}>
                   {connected ? "Connected" : "Disconnected"}

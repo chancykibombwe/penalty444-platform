@@ -35,16 +35,19 @@ export default function JoinRoomPanel() {
         Enter a private room code shared by another player.
       </p>
 
-      <input
-        value={roomCode}
-        onChange={(event) => setRoomCode(event.target.value)}
-        placeholder="Room code"
-        className="w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-3.5 py-2 font-mono text-sm uppercase tracking-widest text-white outline-none placeholder:text-zinc-600 placeholder:normal-case placeholder:tracking-normal focus:border-[#22C55E]/60 focus:ring-2 focus:ring-[#22C55E]/10"
-      />
+      <div className="flex gap-2">
+        <input
+          value={roomCode}
+          onChange={(event) => setRoomCode(event.target.value)}
+          placeholder="Room code"
+          className="w-full min-w-0 flex-1 rounded-xl border border-zinc-700/80 bg-zinc-950 px-3.5 py-2 font-mono text-sm uppercase tracking-widest text-white outline-none placeholder:text-zinc-600 placeholder:normal-case placeholder:tracking-normal focus:border-[#22C55E]/60 focus:ring-2 focus:ring-[#22C55E]/10"
+        />
 
-      <OutlineButton tone="positive" onClick={joinRoom} className="w-full !min-h-[40px] !py-2">
-        Join Room
-      </OutlineButton>
+        <OutlineButton tone="positive" onClick={joinRoom} className="shrink-0 !min-h-[40px] !px-3 !py-2">
+          <span className="sm:hidden">Join</span>
+          <span className="hidden sm:inline">Join Room</span>
+        </OutlineButton>
+      </div>
     </div>
   );
 }
