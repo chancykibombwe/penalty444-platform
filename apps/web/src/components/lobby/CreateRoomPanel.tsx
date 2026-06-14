@@ -197,21 +197,23 @@ export default function CreateRoomPanel({
     return (
       <div className="space-y-2 overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#0D1420] p-2.5 shadow-[0_0_28px_rgba(139,92,246,0.16)] sm:space-y-3 sm:p-3.5">
         <div>
-          <div className="mb-1.5 flex h-7 w-7 items-center justify-center rounded-xl bg-[#8B5CF6]/15 ring-1 ring-[#8B5CF6]/30">
-            <svg
-              className="h-3.5 w-3.5 text-[#C4B5FD]"
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path d="M12 4a1 1 0 011 1v6h6a1 1 0 110 2h-6v6a1 1 0 11-2 0v-6H5a1 1 0 110-2h6V5a1 1 0 011-1z" />
-            </svg>
+          <div className="flex items-center gap-2 sm:block">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#8B5CF6]/15 ring-1 ring-[#8B5CF6]/30 sm:mb-1.5">
+              <svg
+                className="h-3.5 w-3.5 text-[#C4B5FD]"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M12 4a1 1 0 011 1v6h6a1 1 0 110 2h-6v6a1 1 0 11-2 0v-6H5a1 1 0 110-2h6V5a1 1 0 011-1z" />
+              </svg>
+            </div>
+            <h2 className="text-base font-black text-white sm:mt-0.5">Room Created</h2>
           </div>
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
+          <p className="hidden text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:block">
             Private Room
           </p>
-          <h2 className="mt-0.5 text-base font-black text-white">Room Created</h2>
         </div>
 
         <div className="rounded-xl border border-[#8B5CF6]/25 bg-[#8B5CF6]/10 px-3 py-3">
@@ -279,21 +281,23 @@ export default function CreateRoomPanel({
   return (
     <div className="space-y-2 overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#0D1420] p-2.5 shadow-[0_0_28px_rgba(139,92,246,0.16)] sm:space-y-3 sm:p-3.5">
       <div>
-        <div className="mb-1.5 flex h-7 w-7 items-center justify-center rounded-xl bg-[#8B5CF6]/15 ring-1 ring-[#8B5CF6]/30">
-          <svg
-            className="h-3.5 w-3.5 text-[#C4B5FD]"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path d="M12 4a1 1 0 011 1v6h6a1 1 0 110 2h-6v6a1 1 0 11-2 0v-6H5a1 1 0 011-1z" />
-          </svg>
+        <div className="flex items-center gap-2 sm:block">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#8B5CF6]/15 ring-1 ring-[#8B5CF6]/30 sm:mb-1.5">
+            <svg
+              className="h-3.5 w-3.5 text-[#C4B5FD]"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M12 4a1 1 0 011 1v6h6a1 1 0 110 2h-6v6a1 1 0 11-2 0v-6H5a1 1 0 011-1z" />
+            </svg>
+          </div>
+          <h2 className="text-base font-black text-white sm:mt-0.5">Create Room</h2>
         </div>
-        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
+        <p className="hidden text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:block">
           Private Room
         </p>
-        <h2 className="mt-0.5 text-base font-black text-white">Create Room</h2>
       </div>
 
       <p className="hidden text-sm text-zinc-400 sm:block">

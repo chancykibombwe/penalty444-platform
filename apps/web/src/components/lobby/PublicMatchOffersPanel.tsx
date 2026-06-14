@@ -486,11 +486,11 @@ export default function PublicMatchOffersPanel() {
   return (
     <section className="space-y-2 overflow-hidden rounded-2xl border border-[#1B2433] bg-[#0D1420] p-2.5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] sm:space-y-2.5 sm:p-4">
       <div>
-        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
+        <p className="hidden text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:block">
           Active Rooms
         </p>
 
-        <h2 className="mt-0.5 text-base font-black tracking-tight text-white sm:mt-1 sm:text-xl">
+        <h2 className="text-base font-black tracking-tight text-white sm:mt-1 sm:text-xl">
           Open Challenges
         </h2>
 
@@ -498,7 +498,7 @@ export default function PublicMatchOffersPanel() {
           Create a visible room or join another player’s open match.
         </p>
 
-        <p className="mt-1.5 text-xs text-zinc-500 sm:mt-2">
+        <p className="mt-1 text-xs text-zinc-500 sm:mt-2">
           Realtime:{" "}
           <span className={connected ? "text-emerald-400" : "text-red-400"}>
             {connected ? "Connected" : "Disconnected"}
@@ -507,7 +507,7 @@ export default function PublicMatchOffersPanel() {
       </div>
 
       <div className="grid gap-2 rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-2.5 sm:gap-3 sm:p-3 md:grid-cols-3">
-        <div>
+        <div className="hidden sm:block">
           <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
             Stake
           </label>

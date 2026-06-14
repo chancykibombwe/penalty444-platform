@@ -193,35 +193,39 @@ export default function RankedMatchmakingPanel() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
 
         {/* Left zone — all interactive content */}
-        <div className="min-w-0 flex-1 space-y-2 sm:space-y-2.5">
+        <div className="min-w-0 flex-1 space-y-1.5 sm:space-y-2.5">
           <div>
-            <div className="mb-1.5 flex h-7 w-7 items-center justify-center rounded-2xl bg-[#3B9EFF]/15 ring-1 ring-[#3B9EFF]/30">
-              <svg className="h-3.5 w-3.5 text-[#9AD2FF]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M14.615 1.595a.75.75 0 01.359.852L12.982 9.75h7.268a.75.75 0 01.548 1.262l-10.5 11.25a.75.75 0 01-1.272-.71l1.992-7.302H3.818a.75.75 0 01-.548-1.262l10.5-11.25a.75.75 0 01.845-.143z" />
-              </svg>
+            <div className="flex items-center gap-2 sm:block">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-2xl bg-[#3B9EFF]/15 ring-1 ring-[#3B9EFF]/30 sm:mb-1.5">
+                <svg className="h-3.5 w-3.5 text-[#9AD2FF]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M14.615 1.595a.75.75 0 01.359.852L12.982 9.75h7.268a.75.75 0 01.548 1.262l-10.5 11.25a.75.75 0 01-1.272-.71l1.992-7.302H3.818a.75.75 0 01-.548-1.262l10.5-11.25a.75.75 0 01.845-.143z" />
+                </svg>
+              </div>
+
+              <h2 className="text-lg font-black tracking-tight text-white sm:mt-0.5 sm:text-xl md:text-2xl">
+                Quick Match
+              </h2>
             </div>
 
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#3B9EFF]/70">
+            <p className="hidden text-[10px] font-black uppercase tracking-[0.3em] text-[#3B9EFF]/70 sm:mt-1.5 sm:block">
               Ranked Arena
             </p>
-
-            <h2 className="mt-0.5 text-lg font-black tracking-tight text-white sm:text-xl md:text-2xl">
-              Quick Match
-            </h2>
 
             <p className="hidden text-sm font-semibold text-[#9AD2FF]/70 sm:block">
               Ranked Matchmaking
             </p>
 
-            <p className="mt-1.5 text-xs text-zinc-400 sm:mt-2 sm:text-sm">
-              Ranked Free Match · 3 rounds. You&apos;ll be paired with the next
-              available player.
+            <p className="mt-1 text-xs text-zinc-400 sm:mt-2 sm:text-sm">
+              Free Match · 3 rounds
+              <span className="hidden sm:inline">
+                . You&apos;ll be paired with the next available player.
+              </span>
             </p>
             <p className="mt-1 hidden text-xs text-zinc-500 sm:block">
               Results count toward your global stats and rank.
             </p>
 
-            <p className="mt-1.5 text-xs text-zinc-500 sm:mt-2">
+            <p className="mt-1 text-xs text-zinc-500 sm:mt-2">
               Realtime:{" "}
               <span className={connected ? "text-emerald-400" : "text-red-400"}>
                 {connected ? "Connected" : "Disconnected"}
@@ -238,13 +242,15 @@ export default function RankedMatchmakingPanel() {
               {enqueueing && !inQueue ? "Joining…" : "Find Ranked Match"}
             </GradientButton>
 
-            <OutlineButton
-              tone="muted"
-              onClick={cancelQueue}
-              disabled={!connected || cancelling || (!inQueue && !enqueueing)}
-            >
-              {cancelling ? "Leaving…" : "Cancel Queue"}
-            </OutlineButton>
+            {inQueue || enqueueing || cancelling ? (
+              <OutlineButton
+                tone="muted"
+                onClick={cancelQueue}
+                disabled={!connected || cancelling || (!inQueue && !enqueueing)}
+              >
+                {cancelling ? "Leaving…" : "Cancel Queue"}
+              </OutlineButton>
+            ) : null}
           </div>
 
           {inQueue ? (
