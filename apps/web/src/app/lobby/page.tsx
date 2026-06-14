@@ -77,14 +77,6 @@ function LobbyPageContent() {
                 {/* Ranked matchmaking — primary action */}
                 <RankedMatchmakingPanel />
 
-                {/* Lobby chat — important, kept near the top and always visible */}
-                <div>
-                  <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:mb-2">
-                    Lobby Chat
-                  </p>
-                  <LobbyChatPanel />
-                </div>
-
                 {/* Public match offers */}
                 <PublicMatchOffersPanel />
 
@@ -102,6 +94,14 @@ function LobbyPageContent() {
                     />
                     <JoinRoomPanel />
                   </div>
+                </div>
+
+                {/* Lobby chat — important, positioned between Private Rooms and Play Again */}
+                <div>
+                  <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:mb-2">
+                    Lobby Chat
+                  </p>
+                  <LobbyChatPanel />
                 </div>
               </div>
 
