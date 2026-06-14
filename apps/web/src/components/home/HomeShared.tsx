@@ -41,18 +41,6 @@ export default function HomeShared() {
 }
 .home-dot:nth-child(2) { animation-delay: 0.18s; }
 .home-dot:nth-child(3) { animation-delay: 0.36s; }
-.home-hero-indicators-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.25);
-  transition: all 0.25s ease;
-}
-.home-hero-indicators-dot[data-active="true"] {
-  width: 22px;
-  background: linear-gradient(90deg, rgba(34,211,238,0.95), rgba(251,191,36,0.85));
-  box-shadow: 0 0 12px rgba(34, 211, 238, 0.55);
-}
 .home-game-scroll {
   scrollbar-width: none;
 }

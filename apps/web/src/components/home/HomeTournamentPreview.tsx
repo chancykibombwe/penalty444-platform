@@ -50,7 +50,7 @@ export default function HomeTournamentPreview() {
   if (tournament === undefined) {
     return (
       <section
-        className="h-40 animate-pulse rounded-3xl border border-zinc-800/80 bg-zinc-950/65"
+        className="h-32 animate-pulse rounded-3xl border border-[#1B2433] bg-[#0D1420]/65"
         aria-label="Loading tournament preview"
         aria-hidden
       />
@@ -60,7 +60,7 @@ export default function HomeTournamentPreview() {
   if (tournament === null) {
     return (
       <section
-        className="rounded-3xl border border-dashed border-zinc-800 bg-zinc-950/60 px-5 py-6 text-center sm:px-6"
+        className="rounded-3xl border border-dashed border-[#1B2433] bg-[#0D1420]/60 px-5 py-6 text-center sm:px-6"
         aria-label="Tournament preview"
       >
         <p className="text-[10px] font-black uppercase tracking-[0.32em] text-zinc-500">
@@ -71,7 +71,7 @@ export default function HomeTournamentPreview() {
         </p>
         <Link
           href="/tournaments"
-          className="mt-4 inline-flex items-center justify-center gap-2 rounded-2xl border border-zinc-700 bg-zinc-900/70 px-5 py-2.5 text-xs font-black uppercase tracking-wider text-zinc-200 transition-colors hover:border-cyan-500/50 hover:text-cyan-200"
+          className="mt-4 inline-flex items-center justify-center gap-2 rounded-2xl border border-[#1B2433] bg-[#111827]/70 px-5 py-2.5 text-xs font-black uppercase tracking-wider text-zinc-200 transition-colors hover:border-cyan-500/50 hover:text-cyan-200"
         >
           View Tournaments
           <span aria-hidden>→</span>
@@ -87,7 +87,7 @@ export default function HomeTournamentPreview() {
 
   return (
     <section
-      className="relative overflow-hidden rounded-3xl border-2 border-cyan-500/40 bg-gradient-to-br from-zinc-950 via-zinc-950 to-black p-5 shadow-2xl sm:p-6"
+      className="relative overflow-hidden rounded-3xl border-2 border-cyan-500/40 bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-2.5 shadow-2xl sm:p-3"
       aria-label="Featured tournament"
     >
       <div
@@ -101,9 +101,9 @@ export default function HomeTournamentPreview() {
 
       <div className="relative flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <span
-              className={`home-live-pulse inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${
+              className={`home-live-pulse inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] ${
                 isLive
                   ? "border-cyan-400/60 bg-cyan-500/20 text-cyan-100"
                   : "border-amber-400/55 bg-amber-500/15 text-amber-100"
@@ -117,20 +117,20 @@ export default function HomeTournamentPreview() {
               />
               {statusLabel}
             </span>
-            <span className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-900/70 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-zinc-200">
+            <span className="hidden items-center rounded-full border border-[#1B2433] bg-[#111827]/70 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-200 sm:inline-flex">
               🏆 Featured
             </span>
           </div>
 
-          <p className="mt-3 text-[10px] font-black uppercase tracking-[0.32em] text-zinc-500">
+          <p className="mt-1 text-[9px] font-black uppercase tracking-[0.28em] text-zinc-500">
             Tournament
           </p>
-          <h2 className="mt-1 break-words text-2xl font-black tracking-tight text-white sm:text-3xl">
+          <h2 className="mt-0.5 break-words text-base font-black tracking-tight text-white sm:text-lg">
             <span className="bg-gradient-to-r from-cyan-200 via-white to-amber-200 bg-clip-text text-transparent">
               {tournament.name}
             </span>
           </h2>
-          <p className="mt-1 text-xs text-zinc-400 sm:text-sm">
+          <p className="mt-0.5 text-[11px] text-zinc-400 sm:text-xs">
             {tournament.playersCount}{" "}
             {tournament.playersCount === 1 ? "player" : "players"}
             {tournament.currentRound ? ` · Round ${tournament.currentRound}` : ""}
@@ -138,11 +138,11 @@ export default function HomeTournamentPreview() {
         </div>
 
         {countdown ? (
-          <div className="shrink-0 rounded-2xl border border-amber-400/45 bg-amber-950/40 px-4 py-3 text-center shadow-lg">
-            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-200/90">
+          <div className="shrink-0 rounded-2xl border border-amber-400/45 bg-amber-950/40 px-2.5 py-1.5 text-center shadow-lg">
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-200/90">
               Starts in
             </p>
-            <p className="mt-1 text-xl font-black tabular-nums text-amber-100 sm:text-2xl">
+            <p className="mt-0.5 text-base font-black tabular-nums text-amber-100 sm:text-lg">
               {countdown}
             </p>
           </div>
@@ -150,20 +150,20 @@ export default function HomeTournamentPreview() {
       </div>
 
       {isLive ? (
-        <dl className="relative mt-5 grid grid-cols-2 gap-2 border-t border-zinc-800/80 pt-4 sm:gap-4">
+        <dl className="relative mt-2 grid grid-cols-2 gap-2 border-t border-zinc-800/80 pt-2 sm:gap-4">
           <div>
-            <dt className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+            <dt className="text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-500">
               Players
             </dt>
-            <dd className="mt-1 text-lg font-black tabular-nums text-white sm:text-xl">
+            <dd className="mt-0.5 text-base font-black tabular-nums text-white sm:text-lg">
               {tournament.playersCount}
             </dd>
           </div>
           <div>
-            <dt className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+            <dt className="text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-500">
               Live matches
             </dt>
-            <dd className="mt-1 text-lg font-black tabular-nums text-white sm:text-xl">
+            <dd className="mt-0.5 text-base font-black tabular-nums text-white sm:text-lg">
               {tournament.liveMatches}
             </dd>
           </div>
@@ -172,7 +172,7 @@ export default function HomeTournamentPreview() {
 
       <Link
         href={href}
-        className="relative mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-amber-500 px-5 py-3 text-sm font-black tracking-wide text-zinc-950 shadow-[0_0_28px_rgba(34,211,238,0.32)] transition-transform hover:scale-[1.01] hover:from-cyan-300 hover:to-amber-400 sm:w-auto"
+        className="relative mt-2 inline-flex min-h-[38px] w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-400 to-amber-500 px-4 py-1.5 text-xs font-black tracking-wide text-zinc-950 shadow-[0_0_28px_rgba(34,211,238,0.32)] transition-transform hover:scale-[1.01] hover:from-cyan-300 hover:to-amber-400 sm:w-auto sm:text-sm"
       >
         View Tournament
         <span aria-hidden>→</span>

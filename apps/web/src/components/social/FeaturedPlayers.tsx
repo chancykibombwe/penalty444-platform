@@ -10,6 +10,7 @@ import {
 import { useVisibleInterval } from "../../lib/polling/useVisibleInterval";
 import LivePulseBadge from "../live/LivePulseBadge";
 import RankBadge from "../player/RankBadge";
+import ExpandToggle from "../ui/ExpandToggle";
 import { ViewProfileButton, ChallengePlayerButton } from "./SocialActions";
 
 /**
@@ -56,7 +57,7 @@ export default function FeaturedPlayers({
 
   return (
     <section
-      className="rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-950 via-zinc-950/65 to-black p-4 shadow-xl sm:p-5"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-2.5 shadow-xl sm:p-3"
       aria-label="Featured competitors"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -65,9 +66,9 @@ export default function FeaturedPlayers({
             label="Featured Players"
             tone="amber"
             pulsing={false}
-            size="md"
+            size="sm"
           />
-          <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+          <p className="hidden text-[10px] font-bold uppercase tracking-wider text-zinc-500 sm:inline">
             Ranked · Champions · Competitors
           </p>
         </div>
@@ -82,14 +83,29 @@ export default function FeaturedPlayers({
       {isLoading ? (
         <FeaturedSkeleton />
       ) : list.length === 0 ? (
-        <p className="mt-6 rounded-2xl border border-dashed border-zinc-800 bg-black/35 px-4 py-6 text-center text-sm font-semibold text-zinc-400">
+        <p className="mt-4 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-4 text-center text-sm font-semibold text-zinc-400">
           Rising competitors are warming up…
         </p>
       ) : (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 sm:gap-4">
-          {list.map((player) => (
-            <PlayerTile key={`${player.userId}:${player.reason}`} player={player} />
-          ))}
+        <div className="mt-2">
+          <div className="grid gap-2">
+            <PlayerTile
+              key={`${list[0].userId}:${list[0].reason}`}
+              player={list[0]}
+            />
+          </div>
+          {list.length > 1 ? (
+            <ExpandToggle
+              label={`+${list.length - 1} more player${list.length - 1 === 1 ? "" : "s"}`}
+              expandedLabel="Show less"
+            >
+              <div className="mt-2 grid gap-2 sm:grid-cols-2 sm:gap-3">
+                {list.slice(1).map((player) => (
+                  <PlayerTile key={`${player.userId}:${player.reason}`} player={player} />
+                ))}
+              </div>
+            </ExpandToggle>
+          ) : null}
         </div>
       )}
     </section>
@@ -101,10 +117,10 @@ function PlayerTile({ player }: { player: FeaturedPlayer }) {
 
   return (
     <article
-      className={`flex flex-col gap-3 rounded-2xl border px-4 py-4 ${accent}`}
+      className={`flex flex-col gap-1.5 rounded-2xl border px-2.5 py-2 ${accent}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-300">
+        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-300">
           {REASON_LABEL[player.reason]}
         </span>
         <RankBadge
@@ -119,7 +135,7 @@ function PlayerTile({ player }: { player: FeaturedPlayer }) {
         href={`/profile/${encodeURIComponent(player.username)}`}
         className="block min-w-0"
       >
-        <p className="truncate text-xl font-black tracking-tight text-white transition-colors hover:text-cyan-100 sm:text-2xl">
+        <p className="truncate text-sm font-black tracking-tight text-white transition-colors hover:text-cyan-100 sm:text-base">
           {player.username}
         </p>
         <p className="mt-0.5 truncate text-[11px] text-zinc-400">
@@ -127,7 +143,7 @@ function PlayerTile({ player }: { player: FeaturedPlayer }) {
         </p>
       </Link>
 
-      <dl className="grid grid-cols-3 gap-2 border-t border-zinc-800/60 pt-3">
+      <dl className="grid grid-cols-3 gap-2 border-t border-zinc-800/60 pt-1.5">
         <Stat label="Wins" value={player.wins} />
         <Stat
           label="Win Rate"
@@ -163,7 +179,7 @@ function FeaturedSkeleton() {
       {Array.from({ length: 4 }).map((_, idx) => (
         <div
           key={idx}
-          className="h-44 animate-pulse rounded-2xl border border-zinc-800/80 bg-zinc-950/65"
+          className="h-44 animate-pulse rounded-2xl border border-[#1B2433] bg-[#0D1420]/65"
         />
       ))}
     </div>

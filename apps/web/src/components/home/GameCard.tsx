@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import HexIconFrame from "../ui/HexIconFrame";
 
 export type GameCardStatus = "live" | "coming-soon";
 
@@ -26,12 +27,12 @@ const STATUS_LABEL: Record<GameCardStatus, string> = {
 };
 
 const STATUS_CLASS: Record<GameCardStatus, string> = {
-  live: "border-cyan-400/55 bg-cyan-500/15 text-cyan-100",
+  live: "border-[#3B9EFF]/55 bg-[#3B9EFF]/15 text-[#9AD2FF]",
   "coming-soon": "border-zinc-700 bg-zinc-800/60 text-zinc-300",
 };
 
 const STATUS_DOT: Record<GameCardStatus, string> = {
-  live: "bg-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.8)]",
+  live: "bg-[#3B9EFF] shadow-[0_0_8px_rgba(59,158,255,0.8)]",
   "coming-soon": "bg-zinc-400",
 };
 
@@ -40,10 +41,10 @@ type Props = { game: GameCardData };
 export default function GameCard({ game }: Props) {
   const card = (
     <div
-      className={`group relative h-full w-[78%] shrink-0 snap-start overflow-hidden rounded-2xl border bg-gradient-to-br from-zinc-950 via-zinc-950/65 to-black p-4 transition-transform sm:w-[62%] md:w-[300px] ${
+      className={`group relative h-full w-[78%] shrink-0 snap-start overflow-hidden rounded-2xl border bg-gradient-to-br from-zinc-950 via-zinc-950/65 to-black p-2.5 transition-transform sm:w-[62%] md:w-[300px] ${
         game.featured
-          ? "border-cyan-500/55 shadow-[0_0_28px_rgba(34,211,238,0.25)] hover:scale-[1.02]"
-          : "border-zinc-800 hover:scale-[1.015] hover:border-zinc-600"
+          ? "border-[#3B9EFF]/55 shadow-[0_0_28px_rgba(59,158,255,0.25)] hover:scale-[1.02]"
+          : "border-[#1B2433] hover:scale-[1.015] hover:border-zinc-600"
       } ${game.comingSoon ? "opacity-95" : ""}`}
     >
       <div
@@ -51,43 +52,45 @@ export default function GameCard({ game }: Props) {
         className="pointer-events-none absolute -top-12 -right-10 h-28 w-28 rounded-full opacity-25 blur-2xl transition-opacity group-hover:opacity-50"
         style={{
           background: game.featured
-            ? "radial-gradient(circle, rgba(34,211,238,0.55), transparent 70%)"
-            : "radial-gradient(circle, rgba(124,58,237,0.4), transparent 70%)",
+            ? "radial-gradient(circle, rgba(59,158,255,0.55), transparent 70%)"
+            : "radial-gradient(circle, rgba(139,92,246,0.4), transparent 70%)",
         }}
       />
 
       <div className="relative flex items-start justify-between gap-2">
-        <div
-          className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-black/35 text-2xl"
-          aria-hidden
-        >
+        <HexIconFrame tone={game.featured ? "primary" : "muted"} size="sm">
           {game.icon}
-        </div>
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] ${STATUS_CLASS[game.status]}`}
-        >
+        </HexIconFrame>
+        <div className="flex flex-col items-end gap-1">
           <span
-            className={`inline-block h-1.5 w-1.5 rounded-full ${game.comingSoon ? "" : "animate-pulse"} ${STATUS_DOT[game.status]}`}
-            aria-hidden
-          />
-          {STATUS_LABEL[game.status]}
-        </span>
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] ${STATUS_CLASS[game.status]}`}
+          >
+            <span
+              className={`inline-block h-1.5 w-1.5 rounded-full ${game.comingSoon ? "" : "animate-pulse"} ${STATUS_DOT[game.status]}`}
+              aria-hidden
+            />
+            {STATUS_LABEL[game.status]}
+          </span>
+          <span className="inline-flex items-center rounded-full border border-[#1B2433] bg-[#111827]/80 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            1v1
+          </span>
+        </div>
       </div>
 
-      <p className="mt-3 text-[10px] font-black uppercase tracking-[0.22em] text-zinc-500">
+      <p className="mt-1.5 text-[10px] font-black uppercase tracking-[0.22em] text-zinc-500">
         {game.subtitle}
       </p>
-      <h3 className="mt-1 truncate text-lg font-black tracking-tight text-white sm:text-xl">
+      <h3 className="mt-0.5 truncate text-sm font-black tracking-tight text-white sm:text-base">
         {game.title}
       </h3>
 
-      <div className="mt-3 flex items-center justify-end gap-2">
+      <div className="mt-1.5 flex items-center justify-end gap-2">
         <span
-          className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider ${
+          className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-wider ${
             game.comingSoon
-              ? "border border-zinc-700 bg-zinc-900/80 text-zinc-400"
+              ? "border border-[#1B2433] bg-[#111827]/80 text-zinc-400"
               : game.featured
-                ? "bg-gradient-to-r from-cyan-400 to-amber-500 text-zinc-950"
+                ? "bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] text-white"
                 : "bg-zinc-800 text-white"
           }`}
         >

@@ -33,11 +33,11 @@ export default function FeaturedLiveMatchCard({
       ? "border-amber-400/50 bg-amber-500/8 shadow-[0_0_22px_rgba(245,158,11,0.18)]"
       : isLive
         ? "border-cyan-400/45 bg-cyan-500/5 shadow-[0_0_22px_rgba(34,211,238,0.18)]"
-        : "border-zinc-800/80 bg-zinc-950/65";
+        : "border-[#1B2433] bg-[#0D1420]/65";
 
   const titleClass = isHero
-    ? "text-lg font-black sm:text-xl md:text-2xl"
-    : "text-base font-black sm:text-lg";
+    ? "text-sm font-black sm:text-base md:text-lg"
+    : "text-sm font-black sm:text-base";
 
   const tournamentNameClass = isHero
     ? "text-xs font-black uppercase tracking-[0.28em]"
@@ -52,7 +52,7 @@ export default function FeaturedLiveMatchCard({
 
   return (
     <article
-      className={`flex h-full flex-col gap-3 rounded-3xl border px-4 py-4 sm:px-5 sm:py-5 ${accentClass}`}
+      className={`flex h-full flex-col gap-1 rounded-2xl border px-2.5 py-2 sm:px-3 sm:py-2.5 ${accentClass}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className={`truncate ${tournamentNameClass} text-zinc-300`}>
@@ -119,12 +119,12 @@ export default function FeaturedLiveMatchCard({
             ▶ Watch
           </Link>
         ) : isCompleted ? (
-          <span className="rounded-lg border border-zinc-700 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-500">
+          <span className="rounded-lg border border-[#1B2433] px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-500">
             Final
           </span>
         ) : (
           <span
-            className="rounded-lg border border-zinc-700 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+            className="rounded-lg border border-[#1B2433] px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
             title="Waiting for room assignment"
           >
             Soon

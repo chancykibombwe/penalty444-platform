@@ -8,6 +8,7 @@ import RankedMatchmakingPanel from "../../components/lobby/RankedMatchmakingPane
 import CreateRoomPanel from "../../components/lobby/CreateRoomPanel";
 import JoinRoomPanel from "../../components/lobby/JoinRoomPanel";
 import { LobbyConnectionProvider } from "../../lib/socket/LobbyConnectionProvider";
+import EmptyState from "../../components/ui/EmptyState";
 
 function LobbyPageContent() {
   const searchParams = useSearchParams();
@@ -38,17 +39,17 @@ function LobbyPageContent() {
           </div>
 
           {/* Page content */}
-          <div className="relative mx-auto max-w-4xl space-y-8 px-6 pt-6">
+          <div className="relative mx-auto max-w-4xl space-y-4 px-4 pt-4 sm:space-y-5 sm:px-6">
 
             {/* Page header */}
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
                 444 ARENA · Penalty444
               </p>
-              <h1 className="mt-1 text-4xl font-black tracking-tight text-white sm:text-5xl">
+              <h1 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl md:text-4xl">
                 Match Hub
               </h1>
-              <p className="mt-2 text-sm text-zinc-400">
+              <p className="mt-1.5 text-sm text-zinc-400">
                 Find a ranked opponent, create a private room, or join an open
                 challenge.
               </p>
@@ -91,6 +92,18 @@ function LobbyPageContent() {
               </div>
             </div>
 
+            {/* Play Again — recent opponents */}
+            <div>
+              <p className="mb-3 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
+                Play Again
+              </p>
+              <EmptyState
+                icon="🤝"
+                title="Recent opponents appear here"
+                subtitle="Play a match to start building your rematch list"
+              />
+            </div>
+
           </div>
         </div>
       </LobbyConnectionProvider>
@@ -101,12 +114,12 @@ function LobbyPageContent() {
 function LobbyPageShell() {
   return (
     <div className="relative left-1/2 -mt-6 min-h-screen w-screen -translate-x-1/2 overflow-x-hidden bg-zinc-950 pb-28 md:pb-6">
-      <div className="relative mx-auto max-w-4xl px-6 pt-6">
+      <div className="relative mx-auto max-w-4xl px-4 pt-4 sm:px-6">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
             444 ARENA · Penalty444
           </p>
-          <h1 className="mt-1 text-4xl font-black tracking-tight text-white sm:text-5xl">
+          <h1 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl md:text-4xl">
             Match Hub
           </h1>
           <p className="mt-2 text-sm text-zinc-400">Loading match hub…</p>

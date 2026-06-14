@@ -8,6 +8,7 @@ import {
   type LiveMatchPreviewItem,
 } from "../../lib/live/activity";
 import { useVisibleInterval } from "../../lib/polling/useVisibleInterval";
+import ExpandToggle from "../ui/ExpandToggle";
 import LivePulseBadge from "./LivePulseBadge";
 
 /**
@@ -43,7 +44,7 @@ export default function LiveMatchPreview({
 
   return (
     <section
-      className="rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-950 via-zinc-950/70 to-black p-4 shadow-xl sm:p-5"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-2.5 shadow-xl sm:p-3"
       aria-label="Live tournament matches"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -51,10 +52,10 @@ export default function LiveMatchPreview({
           <LivePulseBadge
             label="Live Matches"
             tone="cyan"
-            size="md"
+            size="sm"
             pulsing={list.some((item) => item.status === "in_progress")}
           />
-          <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+          <p className="hidden text-[10px] font-bold uppercase tracking-wider text-zinc-500 sm:inline">
             Tournament bracket
           </p>
         </div>
@@ -69,15 +70,27 @@ export default function LiveMatchPreview({
       {isLoading ? (
         <PreviewSkeleton />
       ) : list.length === 0 ? (
-        <p className="mt-6 rounded-2xl border border-dashed border-zinc-800 bg-black/35 px-4 py-6 text-center text-sm font-semibold text-zinc-400">
+        <p className="mt-4 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-4 text-center text-sm font-semibold text-zinc-400">
           Preparing live arena matches…
         </p>
       ) : (
-        <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-          {list.map((item) => (
-            <LiveMatchCard key={item.id} item={item} />
-          ))}
-        </ul>
+        <div className="mt-2">
+          <ul className="grid gap-1.5">
+            <LiveMatchCard key={list[0].id} item={list[0]} />
+          </ul>
+          {list.length > 1 ? (
+            <ExpandToggle
+              label={`+${list.length - 1} more live match${list.length - 1 === 1 ? "" : "es"}`}
+              expandedLabel="Show less"
+            >
+              <ul className="mt-1.5 grid gap-1.5 sm:grid-cols-2">
+                {list.slice(1).map((item) => (
+                  <LiveMatchCard key={item.id} item={item} />
+                ))}
+              </ul>
+            </ExpandToggle>
+          ) : null}
+        </div>
       )}
     </section>
   );
@@ -87,12 +100,12 @@ function LiveMatchCard({ item }: { item: LiveMatchPreviewItem }) {
   const isLive = item.status === "in_progress";
   return (
     <li
-      className={`flex flex-col gap-3 rounded-2xl border px-3.5 py-3 ${
+      className={`flex flex-col gap-1 rounded-2xl border px-2.5 py-1.5 ${
         item.isFinal
           ? "border-yellow-300/55 bg-yellow-500/5 shadow-[0_0_24px_rgba(250,204,21,0.18)]"
           : isLive
             ? "border-cyan-400/45 bg-cyan-500/5 shadow-[0_0_18px_rgba(34,211,238,0.18)]"
-            : "border-zinc-800/80 bg-zinc-950/60"
+            : "border-[#1B2433] bg-[#0D1420]/80"
       }`}
     >
       <div className="flex items-center justify-between gap-2">
@@ -112,13 +125,13 @@ function LiveMatchCard({ item }: { item: LiveMatchPreviewItem }) {
       </div>
 
       <div className="flex items-center justify-between gap-3">
-        <span className="min-w-0 flex-1 truncate text-sm font-bold text-white sm:text-base">
+        <span className="min-w-0 flex-1 truncate text-sm font-bold text-white">
           {item.playerOne}
         </span>
         <span className="shrink-0 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
           vs
         </span>
-        <span className="min-w-0 flex-1 truncate text-right text-sm font-bold text-white sm:text-base">
+        <span className="min-w-0 flex-1 truncate text-right text-sm font-bold text-white">
           {item.playerTwo}
         </span>
       </div>
@@ -145,7 +158,7 @@ function LiveMatchCard({ item }: { item: LiveMatchPreviewItem }) {
         ) : (
           <Link
             href={`/tournaments/${item.tournamentId}`}
-            className="rounded-lg border border-zinc-700 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition-colors hover:bg-zinc-800/80"
+            className="rounded-lg border border-[#1B2433] px-2 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition-colors hover:bg-[#111827]/80"
           >
             Open
           </Link>
@@ -161,7 +174,7 @@ function PreviewSkeleton() {
       {Array.from({ length: 2 }).map((_, idx) => (
         <li
           key={idx}
-          className="space-y-3 rounded-2xl border border-zinc-800/80 bg-zinc-950/60 px-3.5 py-3"
+          className="space-y-3 rounded-2xl border border-[#1B2433] bg-[#0D1420]/80 px-3.5 py-3"
         >
           <div className="flex items-center justify-between">
             <div className="h-3 w-1/3 animate-pulse rounded bg-zinc-800/80" />

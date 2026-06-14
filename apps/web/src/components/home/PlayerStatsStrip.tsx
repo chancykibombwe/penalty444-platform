@@ -30,14 +30,12 @@ type LegacyStats = {
 };
 
 type Props = {
-  username?: string | null;
   stats?: CompetitiveStats | null;
   /** Deprecated: kept for back-compat with earlier home page wiring. */
   legacyStats?: LegacyStats;
 };
 
 export default function PlayerStatsStrip({
-  username = null,
   stats,
   legacyStats,
 }: Props) {
@@ -68,18 +66,13 @@ export default function PlayerStatsStrip({
 
   return (
     <section
-      className="rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-950 via-zinc-950/60 to-black p-4 shadow-xl sm:p-5"
+      className="rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black p-2.5 shadow-xl sm:p-3.5"
       aria-label="Your statistics"
     >
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-zinc-500">
-            Your Performance
-          </p>
-          <h2 className="mt-1 text-lg font-black tracking-tight text-white sm:text-xl">
-            {username ? `Welcome back, ${username}` : "Welcome to the arena"}
-          </h2>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-500 sm:text-[10px] sm:tracking-[0.28em]">
+          Your Performance
+        </p>
         <RankBadge
           tier={ranked ? tier : undefined}
           rating={effectiveStats.rating ?? null}
@@ -89,15 +82,12 @@ export default function PlayerStatsStrip({
         />
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+      <div className="mt-2 grid grid-cols-4 gap-1.5 sm:gap-3">
         <StatTile
+          compact
           label="Rank"
-          value={placement.inPlacement ? "Placement" : tier.label}
-          hint={
-            placement.inPlacement
-              ? `${placement.played} / ${placement.required}`
-              : "Climbing"
-          }
+          value={placement.inPlacement ? "Unranked" : tier.label}
+          hint={placement.inPlacement ? "Keep playing" : "Climbing"}
           tone={
             placement.inPlacement
               ? "cyan"
@@ -108,12 +98,14 @@ export default function PlayerStatsStrip({
           icon={placement.inPlacement ? "○" : tier.icon}
         />
         <StatTile
+          compact
           label="Win Rate"
           value={ranked ? `${winRate}%` : "—"}
           hint={ranked ? "Last season" : "After placements"}
           tone="violet"
         />
         <StatTile
+          compact
           label="Streak"
           value={formatStreakLabel(streak)}
           hint={
@@ -122,6 +114,7 @@ export default function PlayerStatsStrip({
           tone="amber"
         />
         <StatTile
+          compact
           label="Trophies"
           value={tournamentWins.toLocaleString()}
           hint={tournamentWins > 0 ? "Tournament wins" : "Start competing"}

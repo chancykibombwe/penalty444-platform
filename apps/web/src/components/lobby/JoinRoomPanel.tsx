@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { OutlineButton } from "../ui/OutlineButton";
 
 export default function JoinRoomPanel() {
   const [roomCode, setRoomCode] = useState("");
@@ -15,10 +16,10 @@ export default function JoinRoomPanel() {
   }
 
   return (
-    <div className="space-y-4 overflow-hidden rounded-2xl border border-emerald-500/25 bg-zinc-950/80 p-6 shadow-[0_0_24px_rgba(16,185,129,0.07),0_8px_24px_rgba(0,0,0,0.4)]">
+    <div className="space-y-4 overflow-hidden rounded-2xl border border-[#22C55E]/30 bg-[#0D1420] p-4 shadow-[0_0_24px_rgba(34,197,94,0.14)]">
       <div>
-        <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/20 ring-1 ring-emerald-500/25">
-          <svg className="h-4 w-4 text-emerald-300" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-[#22C55E]/15 ring-1 ring-[#22C55E]/30">
+          <svg className="h-4 w-4 text-[#86EFAC]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M16.72 7.72a.75.75 0 011.06 0l3.75 3.75a.75.75 0 010 1.06l-3.75 3.75a.75.75 0 11-1.06-1.06l2.47-2.47H3a.75.75 0 010-1.5h16.19l-2.47-2.47a.75.75 0 010-1.06z" />
           </svg>
         </div>
@@ -36,15 +37,12 @@ export default function JoinRoomPanel() {
         value={roomCode}
         onChange={(event) => setRoomCode(event.target.value)}
         placeholder="Room code"
-        className="w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-3 font-mono text-sm uppercase tracking-widest text-white outline-none placeholder:text-zinc-600 placeholder:normal-case placeholder:tracking-normal focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/10"
+        className="w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-3 font-mono text-sm uppercase tracking-widest text-white outline-none placeholder:text-zinc-600 placeholder:normal-case placeholder:tracking-normal focus:border-[#22C55E]/60 focus:ring-2 focus:ring-[#22C55E]/10"
       />
 
-      <button
-        onClick={joinRoom}
-        className="w-full rounded-xl border border-emerald-500/30 bg-emerald-950/20 px-4 py-3 text-sm font-black text-emerald-100 transition-colors hover:border-emerald-400/50 hover:bg-emerald-950/40"
-      >
+      <OutlineButton tone="positive" onClick={joinRoom} className="w-full">
         Join Room
-      </button>
+      </OutlineButton>
     </div>
   );
 }

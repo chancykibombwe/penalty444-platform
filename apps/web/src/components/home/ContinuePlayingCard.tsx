@@ -51,7 +51,7 @@ export default function ContinuePlayingCard({
 
   return (
     <article
-      className={`relative overflow-hidden rounded-2xl border-2 bg-gradient-to-br p-4 shadow-2xl sm:p-5 ${t.border} ${t.gradient} ${t.glow}`}
+      className={`relative overflow-hidden rounded-2xl border-2 bg-gradient-to-br p-3.5 shadow-2xl sm:p-4 ${t.border} ${t.gradient} ${t.glow}`}
     >
       <div
         aria-hidden
@@ -67,7 +67,7 @@ export default function ContinuePlayingCard({
       <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3 sm:items-center">
           <div
-            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-xl ${t.pill}`}
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border text-lg ${t.pill}`}
             aria-hidden
           >
             {icon}
@@ -91,7 +91,7 @@ export default function ContinuePlayingCard({
 
         <Link
           href={href}
-          className={`inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r px-5 py-3 text-sm font-black tracking-wide text-zinc-950 shadow-lg sm:w-auto ${t.cta}`}
+          className={`inline-flex min-h-[44px] w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r px-5 py-2.5 text-sm font-black tracking-wide text-zinc-950 shadow-lg sm:w-auto ${t.cta}`}
         >
           {cta}
           <span aria-hidden>→</span>

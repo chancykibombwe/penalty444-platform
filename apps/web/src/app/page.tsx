@@ -74,7 +74,6 @@ const MOCK_GAMES: GameCardData[] = [
 ];
 
 export default function HomePage() {
-  const [username, setUsername] = useState<string | null>(null);
   const [activeMatch, setActiveMatch] = useState<ActiveMatch | null>(null);
   const [activeTournament, setActiveTournament] =
     useState<ActiveTournament | null>(null);
@@ -89,7 +88,6 @@ export default function HomePage() {
 
     void getCurrentPlayerIdentity().then(async (identity) => {
       if (cancelled) return;
-      setUsername(identity?.username ?? null);
       setActiveTournament(
         getActiveTournament(identity?.playerId ?? undefined)
       );
@@ -241,7 +239,7 @@ export default function HomePage() {
   }, [activeMatch, activeTournament]);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8 px-1 pb-2 sm:px-2">
+    <div className="mx-auto max-w-6xl space-y-3 pb-2">
       <HomeShared />
 
       <HeroBanner primaryHref="/lobby" secondaryHref="/tournaments" />
@@ -267,14 +265,14 @@ export default function HomePage() {
       ) : null}
 
       <section
-        className="grid gap-3 sm:grid-cols-2 sm:gap-4"
+        className="grid grid-cols-2 gap-2 sm:gap-4"
         aria-label="Quick actions"
       >
         <QuickActionCard
           title="Quick Match"
           subtitle="Find an opponent instantly"
           href="/lobby"
-          cta="Find a match"
+          cta="Find Match"
           icon="⚡"
           tone="cyan"
         />
@@ -282,24 +280,17 @@ export default function HomePage() {
           title="Create Room"
           subtitle="Challenge your friends"
           href="/lobby"
-          cta="Create room"
+          cta="Create Room"
           icon="🎯"
-          tone="amber"
+          tone="purple"
         />
       </section>
 
-      <HomeTournamentPreview />
-
       <section aria-label="Games on 444 Arena">
-        <div className="flex items-end justify-between gap-2">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-zinc-500">
-              Games
-            </p>
-            <h2 className="mt-1 text-lg font-black tracking-tight text-white sm:text-xl">
-              Pick your arena
-            </h2>
-          </div>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-500 sm:text-[10px] sm:tracking-[0.28em]">
+            Games
+          </p>
           <Link
             href="/lobby"
             className="text-[11px] font-bold uppercase tracking-wider text-cyan-300/85 hover:text-cyan-200"
@@ -308,19 +299,21 @@ export default function HomePage() {
           </Link>
         </div>
 
-        <p className="mt-2 text-xs text-zinc-400">
+        <p className="mt-1 hidden text-xs text-zinc-400 sm:block">
           Free Play — no real money. Play ranked matches and climb the
           leaderboard.
         </p>
 
-        <div className="home-game-scroll relative mt-3 -mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-2 sm:gap-4">
+        <div className="home-game-scroll relative mt-2 -mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1.5 sm:gap-4">
           {MOCK_GAMES.map((game) => (
             <GameCard key={game.id} game={game} />
           ))}
         </div>
       </section>
 
-      <PlayerStatsStrip username={username} stats={playerStats} />
+      <PlayerStatsStrip stats={playerStats} />
+
+      <HomeTournamentPreview />
 
       <PlatformLiveStatus />
 
@@ -334,7 +327,7 @@ export default function HomePage() {
 
       <GlobalActivityFeed seeMoreHref="/tournaments" />
 
-      <footer className="rounded-2xl border border-zinc-800/80 bg-zinc-950/60 px-4 py-3 text-center text-[11px] text-zinc-500 sm:px-5">
+      <footer className="rounded-2xl border border-[#1B2433] bg-[#0D1420]/60 px-4 py-3 text-center text-[11px] text-zinc-500 sm:px-5">
         444 Arena · Competitive multiplayer · Skill over luck
       </footer>
     </div>

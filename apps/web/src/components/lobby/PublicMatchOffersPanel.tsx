@@ -6,6 +6,8 @@ import { getSocket } from "../../lib/socket/client";
 import { useLobbyConnection } from "../../lib/socket/LobbyConnectionProvider";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
 import { clearActiveMatch, saveActiveMatch } from "../../lib/match/activeMatch";
+import { GradientButton } from "../ui/GradientButton";
+import EmptyState from "../ui/EmptyState";
 
 type PublicMatchOffer = {
   offerId: string;
@@ -482,18 +484,18 @@ export default function PublicMatchOffersPanel() {
   }
 
   return (
-    <section className="space-y-5 overflow-hidden rounded-3xl border border-zinc-800/80 bg-zinc-950/80 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.5)] sm:p-7">
+    <section className="space-y-3.5 overflow-hidden rounded-2xl border border-[#1B2433] bg-[#0D1420] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.5)] sm:p-5">
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
-          Public Challenges
+          Active Rooms
         </p>
 
-        <h2 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl">
+        <h2 className="mt-1 text-xl font-black tracking-tight text-white sm:text-2xl">
           Open Challenges
         </h2>
 
         <p className="mt-2 text-sm text-zinc-400">
-          Create a visible challenge or join another player’s open match.
+          Create a visible room or join another player’s open match.
         </p>
 
         <p className="mt-3 text-xs text-zinc-500">
@@ -532,14 +534,14 @@ export default function PublicMatchOffersPanel() {
         </div>
 
         <div className="flex items-end">
-          <button
-            type="button"
+          <GradientButton
+            variant="primary"
             onClick={createOffer}
             disabled={creating || !connected || Boolean(cancellingOfferId)}
-            className="w-full rounded-xl bg-white px-4 py-3 text-sm font-black text-zinc-950 transition-opacity disabled:opacity-50"
+            className="w-full"
           >
             {creating ? "Creating..." : "Create Public Offer"}
-          </button>
+          </GradientButton>
         </div>
       </div>
 
@@ -573,9 +575,11 @@ export default function PublicMatchOffersPanel() {
         </p>
 
         {offers.length === 0 ? (
-          <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/80 px-5 py-6 text-sm text-zinc-500">
-            No public offers yet.
-          </div>
+          <EmptyState
+            icon="⚔"
+            title="No public rooms right now"
+            subtitle="Live rooms appear here"
+          />
         ) : (
           offers.map((offer) => {
             const isHostWaitingOffer =

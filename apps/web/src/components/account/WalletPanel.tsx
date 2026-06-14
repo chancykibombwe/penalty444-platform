@@ -116,20 +116,20 @@ export default function WalletPanel({ userId }: Props) {
 
   return (
     <section
-      className="overflow-hidden rounded-3xl border border-yellow-500/30 bg-gradient-to-br from-zinc-950 via-zinc-950/70 to-black shadow-[0_30px_80px_rgba(0,0,0,0.55)]"
+      className="overflow-hidden rounded-3xl border border-[#E0A000]/30 bg-gradient-to-br from-[#0A0E14] via-[#0A0E14]/70 to-black shadow-[0_30px_80px_rgba(0,0,0,0.55)]"
       aria-label="Arena Wallet"
     >
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 px-5 py-4">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1B2433] px-4 py-3">
         <div className="flex items-center gap-3">
           <span
-            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-yellow-400/50 bg-yellow-500/10 text-base font-black text-yellow-200 shadow-[0_0_18px_rgba(234,179,8,0.35)]"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#E0A000]/50 bg-[#E0A000]/10 text-base font-black text-[#F5C453] shadow-[0_0_18px_rgba(224,160,0,0.35)]"
             aria-hidden
           >
             ⌬
           </span>
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.32em] text-yellow-300/80">
-              Arena Wallet
+            <p className="text-[10px] font-black uppercase tracking-[0.32em] text-[#F5C453]/80">
+              Arena Wallet · Coming Soon
             </p>
             <p className="text-sm font-bold text-white">
               Competitive balance · {currency}
@@ -143,56 +143,56 @@ export default function WalletPanel({ userId }: Props) {
           >
             {modeMeta.label}
           </span>
-          <span className="inline-flex items-center rounded-full border border-zinc-700/80 bg-zinc-900/70 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-400">
+          <span className="inline-flex items-center rounded-full border border-[#1B2433] bg-[#0D1420] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#9AA4B2]">
             {wallet ? wallet.status : "Provisioning"}
           </span>
         </div>
       </header>
 
-      <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="relative overflow-hidden rounded-2xl border border-yellow-400/30 bg-yellow-500/8 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.35)] lg:col-span-1">
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-yellow-200">
+      <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="relative overflow-hidden rounded-2xl border border-[#E0A000]/30 bg-[#E0A000]/8 p-3.5 shadow-[0_18px_50px_rgba(0,0,0,0.35)] sm:p-4 lg:col-span-1">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#F5C453]">
             Total Balance
           </p>
-          <p className="mt-3 flex items-baseline gap-1 text-4xl font-black tabular-nums text-white">
+          <p className="mt-2 flex items-baseline gap-1 text-3xl font-black tabular-nums text-white">
             <span>{total.major}</span>
-            <span className="text-2xl text-zinc-400">.{total.cents}</span>
-            <span className="ml-2 text-xs font-bold uppercase tracking-[0.22em] text-yellow-200/80">
+            <span className="text-xl text-zinc-400">.{total.cents}</span>
+            <span className="ml-2 text-xs font-bold uppercase tracking-[0.22em] text-[#F5C453]/80">
               {currency}
             </span>
           </p>
-          <p className="mt-2 text-[11px] font-semibold text-zinc-500">
+          <p className="mt-1.5 text-[11px] font-semibold text-zinc-500">
             Available + reserved in escrow.
           </p>
         </div>
-        <div className="relative overflow-hidden rounded-2xl border border-emerald-400/30 bg-emerald-500/8 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-200">
+        <div className="relative overflow-hidden rounded-2xl border border-[#22C55E]/30 bg-[#22C55E]/8 p-3.5 shadow-[0_18px_50px_rgba(0,0,0,0.35)] sm:p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#86EFAC]">
             Available Balance
           </p>
-          <p className="mt-3 flex items-baseline gap-1 text-4xl font-black tabular-nums text-white">
+          <p className="mt-2 flex items-baseline gap-1 text-3xl font-black tabular-nums text-white">
             <span>{available.major}</span>
-            <span className="text-2xl text-zinc-400">.{available.cents}</span>
-            <span className="ml-2 text-xs font-bold uppercase tracking-[0.22em] text-emerald-200/80">
+            <span className="text-xl text-zinc-400">.{available.cents}</span>
+            <span className="ml-2 text-xs font-bold uppercase tracking-[0.22em] text-[#86EFAC]/80">
               {currency}
             </span>
           </p>
-          <p className="mt-2 text-[11px] font-semibold text-zinc-500">
+          <p className="mt-1.5 text-[11px] font-semibold text-zinc-500">
             Spendable in matches and tournaments.
           </p>
         </div>
 
-        <div className="relative overflow-hidden rounded-2xl border border-amber-400/30 bg-amber-500/8 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-200">
+        <div className="relative overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#8B5CF6]/8 p-3.5 shadow-[0_18px_50px_rgba(0,0,0,0.35)] sm:p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#C4B5FD]">
             Locked in Escrow
           </p>
-          <p className="mt-3 flex items-baseline gap-1 text-4xl font-black tabular-nums text-white">
+          <p className="mt-2 flex items-baseline gap-1 text-3xl font-black tabular-nums text-white">
             <span>{locked.major}</span>
-            <span className="text-2xl text-zinc-400">.{locked.cents}</span>
-            <span className="ml-2 text-xs font-bold uppercase tracking-[0.22em] text-amber-200/80">
+            <span className="text-xl text-zinc-400">.{locked.cents}</span>
+            <span className="ml-2 text-xs font-bold uppercase tracking-[0.22em] text-[#C4B5FD]/80">
               {currency}
             </span>
           </p>
-          <p className="mt-2 text-[11px] font-semibold text-zinc-500">
+          <p className="mt-1.5 text-[11px] font-semibold text-zinc-500">
             {pendingEscrowCount > 0
               ? `${pendingEscrowCount} active reservation${pendingEscrowCount === 1 ? "" : "s"}.`
               : "Reserved for live stakes and tournament entries."}
@@ -200,7 +200,7 @@ export default function WalletPanel({ userId }: Props) {
         </div>
       </div>
 
-      <div className="border-t border-zinc-800/80 px-5 py-4">
+      <div className="border-t border-[#1B2433] px-4 py-3.5">
         <div className="flex items-center justify-between gap-2">
           <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">
             Recent Activity
@@ -211,25 +211,25 @@ export default function WalletPanel({ userId }: Props) {
         </div>
 
         {loading ? (
-          <p className="mt-4 rounded-2xl border border-dashed border-zinc-800 bg-black/35 px-4 py-5 text-center text-sm font-semibold text-zinc-500">
+          <p className="mt-4 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-5 text-center text-sm font-semibold text-zinc-500">
             Loading wallet activity…
           </p>
         ) : !wallet ? (
-          <p className="mt-4 rounded-2xl border border-dashed border-yellow-500/30 bg-yellow-500/5 px-4 py-5 text-center text-sm font-semibold text-yellow-100/80">
-            Paid wallet features are not live yet. All beta matches and
-            tournaments are Free Play.
+          <p className="mt-4 rounded-2xl border border-dashed border-[#E0A000]/30 bg-[#E0A000]/5 px-4 py-5 text-center text-sm font-semibold text-[#F5C453]/80">
+            Wallet Coming Soon. Free Play only — no deposits or withdrawals
+            yet. Transaction history will appear here once available.
           </p>
         ) : ledger.length === 0 ? (
-          <p className="mt-4 rounded-2xl border border-dashed border-zinc-800 bg-black/35 px-4 py-5 text-center text-sm font-semibold text-zinc-500">
-            No transactions yet. Activity will appear here once paid features
-            launch.
+          <p className="mt-4 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-5 text-center text-sm font-semibold text-zinc-500">
+            No transactions yet. Transaction history will appear here once
+            available.
           </p>
         ) : (
           <ul className="mt-3 grid gap-2">
             {ledger.map((entry) => (
               <li
                 key={entry.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-800/80 bg-black/45 px-4 py-3"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#1B2433] bg-black/45 px-4 py-3"
               >
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-white">
@@ -259,26 +259,26 @@ export default function WalletPanel({ userId }: Props) {
         )}
       </div>
 
-      <div className="grid gap-2 border-t border-zinc-800/80 px-5 py-4 sm:grid-cols-2">
-        <div className="flex items-center justify-between rounded-2xl border border-zinc-800/80 bg-black/45 px-4 py-3">
+      <div className="grid gap-2 border-t border-[#1B2433] px-4 py-3.5 sm:grid-cols-2">
+        <div className="flex items-center justify-between rounded-2xl border border-[#1B2433] bg-black/45 px-4 py-3">
           <div>
             <p className="text-sm font-bold text-white">Deposits</p>
             <p className="mt-0.5 text-xs text-zinc-500">
-              Mobile money &amp; card top-ups.
+              Deposits will be available soon.
             </p>
           </div>
-          <span className="rounded-full border border-zinc-700/80 bg-zinc-900/80 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+          <span className="rounded-full border border-[#1B2433] bg-[#0D1420] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#9AA4B2]">
             Coming soon
           </span>
         </div>
-        <div className="flex items-center justify-between rounded-2xl border border-zinc-800/80 bg-black/45 px-4 py-3">
+        <div className="flex items-center justify-between rounded-2xl border border-[#1B2433] bg-black/45 px-4 py-3">
           <div>
             <p className="text-sm font-bold text-white">Withdrawals</p>
             <p className="mt-0.5 text-xs text-zinc-500">
-              Withdraw arena winnings.
+              Withdrawals will be available soon.
             </p>
           </div>
-          <span className="rounded-full border border-zinc-700/80 bg-zinc-900/80 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+          <span className="rounded-full border border-[#1B2433] bg-[#0D1420] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#9AA4B2]">
             Coming soon
           </span>
         </div>

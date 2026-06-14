@@ -101,12 +101,12 @@ function formatSeasonCountdown(endsAt: string) {
 
 function SettingRow({ title, description }: { title: string; description: string }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-t border-zinc-800/60 px-4 py-3.5 first:border-t-0">
+    <div className="flex items-center justify-between gap-4 border-t border-[#1B2433] px-4 py-3.5 first:border-t-0">
       <div>
         <p className="font-semibold text-white">{title}</p>
         <p className="mt-1 text-sm text-zinc-500">{description}</p>
       </div>
-      <span className="shrink-0 text-xs font-bold uppercase tracking-[0.18em] text-zinc-600">
+      <span className="shrink-0 text-xs font-bold uppercase tracking-[0.18em] text-[#5A6472]">
         Coming soon
       </span>
     </div>
@@ -367,7 +367,7 @@ export default function AccountPage() {
   }, [account, stats, recentMatches, tournamentWins]);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5 pb-24 sm:pb-6">
+    <div className="mx-auto max-w-4xl space-y-4 pb-24 sm:pb-6">
       <PromotionToast event={promotionEvent} />
 
       {activeSeason ? (
@@ -406,8 +406,8 @@ export default function AccountPage() {
 
           <RecentForm form={competitiveStats?.recentForm ?? []} className="!p-4" />
 
-          <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950/80 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
-            <div className="flex items-center justify-between border-b border-zinc-800/80 px-4 py-3">
+          <div className="overflow-hidden rounded-2xl border border-[#1B2433] bg-[#0D1420] shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+            <div className="flex items-center justify-between border-b border-[#1B2433] px-4 py-3">
               <h2 className="text-sm font-black uppercase tracking-widest text-white">
                 Recent Matches
               </h2>
@@ -418,7 +418,7 @@ export default function AccountPage() {
               ) : null}
             </div>
             {matchHistoryNotice ? (
-              <p className="border-b border-zinc-800/80 px-4 py-3 text-xs text-zinc-500">
+              <p className="border-b border-[#1B2433] px-4 py-3 text-xs text-zinc-500">
                 {matchHistoryNotice}
               </p>
             ) : null}
@@ -427,7 +427,7 @@ export default function AccountPage() {
                 {displayedMatches.map((match) => (
                   <li
                     key={match.key}
-                    className="flex items-center gap-3 border-t border-zinc-800/80 px-4 py-3 first:border-t-0"
+                    className="flex items-center gap-3 border-t border-[#1B2433] px-4 py-3 first:border-t-0"
                   >
                     <span
                       className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-xs font-black ${getResultBadgeClass(match.result)}`}
@@ -455,15 +455,15 @@ export default function AccountPage() {
 
           <AchievementGrid
             stats={competitiveStats}
-            className="!bg-zinc-950/80 !shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+            className="!border-[#1B2433] !bg-[#0D1420] !shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
           />
 
           <TrophiesPreview
             count={tournamentWins}
-            className="!bg-zinc-950/80 !shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+            className="!border-[#1B2433] !bg-[#0D1420] !shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
           />
 
-          <div className="inline-flex items-center gap-2 rounded-full border border-zinc-800/50 px-3 py-1.5">
+          <div className="inline-flex items-center gap-2 rounded-full border border-[#1B2433] px-3 py-1.5">
             <span className="text-xs font-semibold text-zinc-500">Season Rankings</span>
             <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-600">
               · Coming soon
@@ -474,7 +474,7 @@ export default function AccountPage() {
 
           {stats?.username ? (
             <section
-              className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-700/50 bg-zinc-900/40 px-4 py-3 sm:px-5"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#1B2433] bg-[#0D1420]/60 px-4 py-3 sm:px-5"
               aria-label="Public profile share"
             >
               <div className="min-w-0">
@@ -496,8 +496,8 @@ export default function AccountPage() {
 
           <RivalCard viewerUserId={account?.id ?? null} />
 
-          <div className="overflow-hidden rounded-2xl border border-zinc-800/60 bg-zinc-950/80 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
-            <div className="border-b border-zinc-800/60 px-4 py-3">
+          <div className="overflow-hidden rounded-2xl border border-[#1B2433] bg-[#0D1420] shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+            <div className="border-b border-[#1B2433] px-4 py-3">
               <h2 className="text-sm font-black uppercase tracking-widest text-white">
                 Settings
               </h2>
@@ -508,7 +508,7 @@ export default function AccountPage() {
             />
             <SettingRow
               title="Wallet Settings"
-              description="Manage arena wallet options and coin settings."
+              description="Wallet Coming Soon — Free Play only."
             />
             <SettingRow
               title="Game Settings"
@@ -516,7 +516,7 @@ export default function AccountPage() {
             />
             <SettingRow
               title="Security"
-              description="Password, sessions, and account security."
+              description="Password, sessions, and two-factor authentication."
             />
           </div>
 

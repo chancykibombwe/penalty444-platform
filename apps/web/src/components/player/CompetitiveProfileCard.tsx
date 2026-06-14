@@ -67,7 +67,7 @@ export default function CompetitiveProfileCard({
 
   return (
     <section
-      className={`relative overflow-hidden rounded-3xl border-2 p-5 shadow-2xl sm:p-7 ${tier.borderClass} ${tier.bgClass} ${tier.glowClass} ${className ?? ""}`}
+      className={`relative overflow-hidden rounded-3xl border-2 p-4 shadow-2xl sm:p-5 ${tier.borderClass} ${tier.bgClass} ${tier.glowClass} ${className ?? ""}`}
       aria-label="Competitive profile"
     >
       <div
@@ -79,10 +79,10 @@ export default function CompetitiveProfileCard({
         }}
       />
 
-      <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-start gap-4 sm:items-center">
+      <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-start gap-3 sm:items-center">
           <div
-            className={`flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl border-2 bg-black/55 text-3xl font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_18px_45px_rgba(0,0,0,0.5)] sm:h-24 sm:w-24 sm:text-4xl ${tier.borderClass}`}
+            className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border-2 bg-black/55 text-2xl font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_18px_45px_rgba(0,0,0,0.5)] sm:h-20 sm:w-20 sm:text-3xl ${tier.borderClass}`}
           >
             {getInitials(username)}
           </div>
@@ -91,7 +91,7 @@ export default function CompetitiveProfileCard({
               Competitive Identity
             </p>
             <h2
-              className={`mt-1 break-words text-3xl font-black tracking-tight sm:text-4xl ${tier.gradientText}`}
+              className={`mt-1 break-words text-2xl font-black tracking-tight sm:text-3xl ${tier.gradientText}`}
             >
               {username || "Player"}
             </h2>
@@ -100,7 +100,7 @@ export default function CompetitiveProfileCard({
                 {subline}
               </p>
             ) : null}
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <RankBadge
                 tier={ranked ? tier : undefined}
                 rating={rating}
@@ -126,10 +126,10 @@ export default function CompetitiveProfileCard({
           {placement.inPlacement ? (
             <>
               <div className="flex items-baseline gap-2">
-                <span className="text-5xl font-black tabular-nums text-cyan-100 drop-shadow-[0_0_18px_rgba(34,211,238,0.35)]">
+                <span className="text-4xl font-black tabular-nums text-cyan-100 drop-shadow-[0_0_18px_rgba(34,211,238,0.35)]">
                   {placement.played}
                 </span>
-                <span className="text-2xl font-black text-zinc-500">
+                <span className="text-xl font-black text-zinc-500">
                   / {placement.required}
                 </span>
               </div>
@@ -153,7 +153,7 @@ export default function CompetitiveProfileCard({
             <>
               <div className="flex items-baseline gap-2">
                 <span
-                  className={`text-5xl font-black tabular-nums ${tier.gradientText}`}
+                  className={`text-4xl font-black tabular-nums ${tier.gradientText}`}
                 >
                   {rating !== null ? Math.round(rating) : "—"}
                 </span>
@@ -183,7 +183,7 @@ export default function CompetitiveProfileCard({
         </div>
       </div>
 
-      <div className="relative mt-6 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
+      <div className="relative mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
         <StatTile
           label="Matches"
           value={matches.toLocaleString()}
@@ -212,7 +212,7 @@ export default function CompetitiveProfileCard({
         />
       </div>
 
-      <div className="relative mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+      <div className="relative mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
         <StatTile
           label="Tournament Wins"
           value={tournamentWins.toLocaleString()}
