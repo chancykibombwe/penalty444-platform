@@ -7,6 +7,7 @@ import PublicMatchOffersPanel from "../../components/lobby/PublicMatchOffersPane
 import RankedMatchmakingPanel from "../../components/lobby/RankedMatchmakingPanel";
 import CreateRoomPanel from "../../components/lobby/CreateRoomPanel";
 import JoinRoomPanel from "../../components/lobby/JoinRoomPanel";
+import LobbyChatPanel from "../../components/lobby/LobbyChatPanel";
 import { LobbyConnectionProvider } from "../../lib/socket/LobbyConnectionProvider";
 import EmptyState from "../../components/ui/EmptyState";
 
@@ -39,17 +40,17 @@ function LobbyPageContent() {
           </div>
 
           {/* Page content */}
-          <div className="relative mx-auto max-w-6xl space-y-3 px-4 pt-3 sm:space-y-4 sm:px-6 sm:pt-4 lg:pt-5">
+          <div className="relative mx-auto max-w-6xl space-y-2 px-4 pt-2.5 sm:space-y-3 sm:px-6 sm:pt-4 lg:pt-5">
 
             {/* Page header */}
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
                 444 ARENA · Penalty444
               </p>
-              <h1 className="mt-1 text-xl font-black tracking-tight text-white sm:text-2xl md:text-4xl">
+              <h1 className="mt-0.5 text-lg font-black tracking-tight text-white sm:text-2xl md:text-4xl">
                 Match Hub
               </h1>
-              <p className="mt-1 text-xs text-zinc-400 sm:text-sm">
+              <p className="mt-0.5 hidden text-xs text-zinc-400 sm:block sm:text-sm">
                 Find a ranked opponent, create a private room, or join an open
                 challenge.
               </p>
@@ -71,8 +72,8 @@ function LobbyPageContent() {
             ) : null}
 
             {/* Main column + sidebar on desktop; stacked on mobile */}
-            <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-5">
-              <div className="space-y-3 sm:space-y-4 lg:space-y-5">
+            <div className="grid gap-2 sm:gap-3 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-5">
+              <div className="space-y-2 sm:space-y-3 lg:space-y-5">
                 {/* Ranked matchmaking — primary action */}
                 <RankedMatchmakingPanel />
 
@@ -81,10 +82,10 @@ function LobbyPageContent() {
 
                 {/* Private rooms */}
                 <div>
-                  <p className="mb-2 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:mb-3">
+                  <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:mb-2">
                     Private Rooms
                   </p>
-                  <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
+                  <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
                     <CreateRoomPanel
                       challengeUserId={hasChallengeContext ? challengeUserId : undefined}
                       challengeUsername={
@@ -96,16 +97,27 @@ function LobbyPageContent() {
                 </div>
               </div>
 
-              {/* Play Again — recent opponents */}
-              <aside className="lg:sticky lg:top-20">
-                <p className="mb-2 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:mb-3">
-                  Play Again
-                </p>
-                <EmptyState
-                  icon="🤝"
-                  title="Recent opponents appear here"
-                  subtitle="Play a match to start building your rematch list"
-                />
+              {/* Sidebar (stacks below main column on mobile) */}
+              <aside className="space-y-2 sm:space-y-3 lg:sticky lg:top-20 lg:space-y-5">
+                {/* Play Again — recent opponents */}
+                <div>
+                  <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:mb-2">
+                    Play Again
+                  </p>
+                  <EmptyState
+                    icon="🤝"
+                    title="Recent opponents appear here"
+                    subtitle="Play a match to start building your rematch list"
+                  />
+                </div>
+
+                {/* Lobby chat — coming soon provision */}
+                <div>
+                  <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:mb-2">
+                    Lobby Chat
+                  </p>
+                  <LobbyChatPanel />
+                </div>
               </aside>
             </div>
 

@@ -195,11 +195,11 @@ export default function CreateRoomPanel({
   // ── Waiting state — room created, host stays in lobby ──────────────────
   if (waitingRoom) {
     return (
-      <div className="space-y-3 overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#0D1420] p-3.5 shadow-[0_0_28px_rgba(139,92,246,0.16)] sm:space-y-4 sm:p-4">
+      <div className="space-y-2 overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#0D1420] p-2.5 shadow-[0_0_28px_rgba(139,92,246,0.16)] sm:space-y-3 sm:p-3.5">
         <div>
-          <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-[#8B5CF6]/15 ring-1 ring-[#8B5CF6]/30">
+          <div className="mb-1.5 flex h-7 w-7 items-center justify-center rounded-xl bg-[#8B5CF6]/15 ring-1 ring-[#8B5CF6]/30">
             <svg
-              className="h-4 w-4 text-[#C4B5FD]"
+              className="h-3.5 w-3.5 text-[#C4B5FD]"
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
               fill="currentColor"
@@ -211,10 +211,10 @@ export default function CreateRoomPanel({
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
             Private Room
           </p>
-          <h2 className="mt-1 text-lg font-black text-white">Room Created</h2>
+          <h2 className="mt-0.5 text-base font-black text-white">Room Created</h2>
         </div>
 
-        <div className="rounded-xl border border-[#8B5CF6]/25 bg-[#8B5CF6]/10 px-4 py-4">
+        <div className="rounded-xl border border-[#8B5CF6]/25 bg-[#8B5CF6]/10 px-3 py-3">
           <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#C4B5FD]/70">
             Room Code
           </p>
@@ -277,11 +277,11 @@ export default function CreateRoomPanel({
 
   // ── Setup state ──────────────────────────────────────────────────────────
   return (
-    <div className="space-y-3 overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#0D1420] p-3.5 shadow-[0_0_28px_rgba(139,92,246,0.16)] sm:space-y-4 sm:p-4">
+    <div className="space-y-2 overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#0D1420] p-2.5 shadow-[0_0_28px_rgba(139,92,246,0.16)] sm:space-y-3 sm:p-3.5">
       <div>
-        <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-[#8B5CF6]/15 ring-1 ring-[#8B5CF6]/30">
+        <div className="mb-1.5 flex h-7 w-7 items-center justify-center rounded-xl bg-[#8B5CF6]/15 ring-1 ring-[#8B5CF6]/30">
           <svg
-            className="h-4 w-4 text-[#C4B5FD]"
+            className="h-3.5 w-3.5 text-[#C4B5FD]"
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
             fill="currentColor"
@@ -293,10 +293,10 @@ export default function CreateRoomPanel({
         <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
           Private Room
         </p>
-        <h2 className="mt-1 text-lg font-black text-white">Create Room</h2>
+        <h2 className="mt-0.5 text-base font-black text-white">Create Room</h2>
       </div>
 
-      <p className="text-sm text-zinc-400">
+      <p className="hidden text-sm text-zinc-400 sm:block">
         Start a private match and share the room code with your opponent.
       </p>
 
@@ -311,7 +311,7 @@ export default function CreateRoomPanel({
 
       {/* Rounds selector */}
       <div>
-        <p className="mb-2 text-[10px] font-black uppercase tracking-[0.25em] text-zinc-500">
+        <p className="mb-1 text-[10px] font-black uppercase tracking-[0.25em] text-zinc-500">
           Rounds
         </p>
         <div className="flex gap-2">
@@ -320,7 +320,7 @@ export default function CreateRoomPanel({
               key={r}
               type="button"
               onClick={() => setRounds(r)}
-              className={`flex-1 rounded-xl border px-3 py-2 text-sm font-black transition-colors ${
+              className={`flex-1 rounded-xl border px-3 py-1.5 text-sm font-black transition-colors ${
                 rounds === r
                   ? "border-[#8B5CF6]/60 bg-[#8B5CF6]/15 text-[#C4B5FD]"
                   : "border-zinc-700 bg-zinc-950/60 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300"
@@ -333,11 +333,11 @@ export default function CreateRoomPanel({
       </div>
 
       {/* Stake — locked to Free for this version */}
-      <div>
-        <p className="mb-2 text-[10px] font-black uppercase tracking-[0.25em] text-zinc-500">
+      <div className="hidden sm:block">
+        <p className="mb-1 text-[10px] font-black uppercase tracking-[0.25em] text-zinc-500">
           Stake
         </p>
-        <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+        <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-1.5">
           <span className="text-sm font-black text-emerald-300">Free</span>
           <span className="text-xs text-zinc-600">
             — Private rooms are Free Play for now.

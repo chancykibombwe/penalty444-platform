@@ -16,20 +16,20 @@ export default function JoinRoomPanel() {
   }
 
   return (
-    <div className="space-y-3 overflow-hidden rounded-2xl border border-[#22C55E]/30 bg-[#0D1420] p-3.5 shadow-[0_0_24px_rgba(34,197,94,0.14)] sm:space-y-4 sm:p-4">
+    <div className="space-y-2 overflow-hidden rounded-2xl border border-[#22C55E]/30 bg-[#0D1420] p-2.5 shadow-[0_0_24px_rgba(34,197,94,0.14)] sm:space-y-3 sm:p-3.5">
       <div>
-        <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-[#22C55E]/15 ring-1 ring-[#22C55E]/30">
-          <svg className="h-4 w-4 text-[#86EFAC]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <div className="mb-1.5 flex h-7 w-7 items-center justify-center rounded-xl bg-[#22C55E]/15 ring-1 ring-[#22C55E]/30">
+          <svg className="h-3.5 w-3.5 text-[#86EFAC]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M16.72 7.72a.75.75 0 011.06 0l3.75 3.75a.75.75 0 010 1.06l-3.75 3.75a.75.75 0 11-1.06-1.06l2.47-2.47H3a.75.75 0 010-1.5h16.19l-2.47-2.47a.75.75 0 010-1.06z" />
           </svg>
         </div>
         <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
           Room Code
         </p>
-        <h2 className="mt-1 text-lg font-black text-white">Join Room</h2>
+        <h2 className="mt-0.5 text-base font-black text-white">Join Room</h2>
       </div>
 
-      <p className="text-sm text-zinc-400">
+      <p className="hidden text-sm text-zinc-400 sm:block">
         Enter a private room code shared by another player.
       </p>
 
@@ -37,7 +37,7 @@ export default function JoinRoomPanel() {
         value={roomCode}
         onChange={(event) => setRoomCode(event.target.value)}
         placeholder="Room code"
-        className="w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-3 font-mono text-sm uppercase tracking-widest text-white outline-none placeholder:text-zinc-600 placeholder:normal-case placeholder:tracking-normal focus:border-[#22C55E]/60 focus:ring-2 focus:ring-[#22C55E]/10"
+        className="w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-3.5 py-2.5 font-mono text-sm uppercase tracking-widest text-white outline-none placeholder:text-zinc-600 placeholder:normal-case placeholder:tracking-normal focus:border-[#22C55E]/60 focus:ring-2 focus:ring-[#22C55E]/10"
       />
 
       <OutlineButton tone="positive" onClick={joinRoom} className="w-full">

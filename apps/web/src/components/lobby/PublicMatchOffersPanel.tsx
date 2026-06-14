@@ -484,21 +484,21 @@ export default function PublicMatchOffersPanel() {
   }
 
   return (
-    <section className="space-y-3 overflow-hidden rounded-2xl border border-[#1B2433] bg-[#0D1420] p-3.5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] sm:space-y-3.5 sm:p-5">
+    <section className="space-y-2 overflow-hidden rounded-2xl border border-[#1B2433] bg-[#0D1420] p-2.5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] sm:space-y-2.5 sm:p-4">
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
           Active Rooms
         </p>
 
-        <h2 className="mt-1 text-lg font-black tracking-tight text-white sm:text-2xl">
+        <h2 className="mt-0.5 text-base font-black tracking-tight text-white sm:mt-1 sm:text-xl">
           Open Challenges
         </h2>
 
-        <p className="mt-1.5 hidden text-sm text-zinc-400 sm:block">
+        <p className="mt-1 hidden text-sm text-zinc-400 sm:block">
           Create a visible room or join another player’s open match.
         </p>
 
-        <p className="mt-2 text-xs text-zinc-500 sm:mt-3">
+        <p className="mt-1.5 text-xs text-zinc-500 sm:mt-2">
           Realtime:{" "}
           <span className={connected ? "text-emerald-400" : "text-red-400"}>
             {connected ? "Connected" : "Disconnected"}
@@ -506,19 +506,19 @@ export default function PublicMatchOffersPanel() {
         </p>
       </div>
 
-      <div className="grid gap-3 rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-3 sm:gap-4 sm:p-4 md:grid-cols-3">
+      <div className="grid gap-2 rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-2.5 sm:gap-3 sm:p-3 md:grid-cols-3">
         <div>
-          <label className="mb-2 block text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
+          <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
             Stake
           </label>
-          <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+          <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2">
             <span className="text-sm font-black text-emerald-300">Free</span>
             <span className="text-xs text-zinc-600">— Paid stakes coming soon.</span>
           </div>
         </div>
 
         <div>
-          <label className="mb-2 block text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
+          <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
             Rounds
           </label>
 
@@ -526,7 +526,7 @@ export default function PublicMatchOffersPanel() {
             value={rounds}
             onChange={(event) => setRounds(Number(event.target.value))}
             disabled={creating || Boolean(cancellingOfferId)}
-            className="w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-4 py-3 text-sm text-white outline-none transition-colors focus:border-zinc-500 disabled:opacity-50"
+            className="w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-3 py-2 text-sm text-white outline-none transition-colors focus:border-zinc-500 disabled:opacity-50"
           >
             <option value={3}>3 rounds</option>
             <option value={5}>5 rounds</option>
@@ -545,7 +545,7 @@ export default function PublicMatchOffersPanel() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-5 border-t border-zinc-800/80 pt-4">
+      <div className="flex flex-wrap items-center gap-4 border-t border-zinc-800/80 pt-3">
         <button
           type="button"
           onClick={clearSavedMatch}
@@ -564,12 +564,12 @@ export default function PublicMatchOffersPanel() {
       </div>
 
       {status ? (
-        <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-400">
+        <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-400">
           {status}
         </div>
       ) : null}
 
-      <div className="space-y-3">
+      <div className="space-y-2">
         <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
           Open Offers
         </p>
