@@ -185,15 +185,15 @@ export default function RankedMatchmakingPanel() {
   }
 
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-[#3B9EFF]/30 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-4 shadow-[0_0_60px_rgba(59,158,255,0.15),0_8px_32px_rgba(0,0,0,0.5)] sm:p-6 md:p-8">
+    <section className="relative overflow-hidden rounded-3xl border border-[#3B9EFF]/30 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-3.5 shadow-[0_0_60px_rgba(59,158,255,0.15),0_8px_32px_rgba(0,0,0,0.5)] sm:p-6 md:p-8">
       <div aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-[#3B9EFF]/15 blur-[80px]" />
       <div aria-hidden className="pointer-events-none absolute -bottom-12 left-4 h-48 w-48 rounded-full bg-[#1E6FE0]/10 blur-[60px]" />
 
       {/* Two-zone layout: left content + right decorative arena art */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-8">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-8">
 
         {/* Left zone — all interactive content */}
-        <div className="min-w-0 flex-1 space-y-3.5">
+        <div className="min-w-0 flex-1 space-y-3 sm:space-y-3.5">
           <div>
             <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-2xl bg-[#3B9EFF]/15 ring-1 ring-[#3B9EFF]/30">
               <svg className="h-4 w-4 text-[#9AD2FF]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -205,7 +205,7 @@ export default function RankedMatchmakingPanel() {
               Ranked Arena
             </p>
 
-            <h2 className="mt-0.5 text-2xl font-black tracking-tight text-white sm:text-3xl">
+            <h2 className="mt-0.5 text-xl font-black tracking-tight text-white sm:text-2xl md:text-3xl">
               Quick Match
             </h2>
 
@@ -213,15 +213,15 @@ export default function RankedMatchmakingPanel() {
               Ranked Matchmaking
             </p>
 
-            <p className="mt-3 text-sm text-zinc-400">
+            <p className="mt-2 text-sm text-zinc-400 sm:mt-3">
               Ranked Free Match · 3 rounds. You&apos;ll be paired with the next
               available player.
             </p>
-            <p className="mt-1 text-xs text-zinc-500">
+            <p className="mt-1 hidden text-xs text-zinc-500 sm:block">
               Results count toward your global stats and rank.
             </p>
 
-            <p className="mt-3 text-xs text-zinc-500">
+            <p className="mt-2 text-xs text-zinc-500 sm:mt-3">
               Realtime:{" "}
               <span className={connected ? "text-emerald-400" : "text-red-400"}>
                 {connected ? "Connected" : "Disconnected"}
@@ -229,7 +229,7 @@ export default function RankedMatchmakingPanel() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
             <GradientButton
               variant="primary"
               onClick={findRankedMatch}

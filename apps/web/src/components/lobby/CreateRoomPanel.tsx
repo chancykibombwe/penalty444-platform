@@ -195,7 +195,7 @@ export default function CreateRoomPanel({
   // ── Waiting state — room created, host stays in lobby ──────────────────
   if (waitingRoom) {
     return (
-      <div className="space-y-4 overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#0D1420] p-4 shadow-[0_0_28px_rgba(139,92,246,0.16)]">
+      <div className="space-y-3 overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#0D1420] p-3.5 shadow-[0_0_28px_rgba(139,92,246,0.16)] sm:space-y-4 sm:p-4">
         <div>
           <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-[#8B5CF6]/15 ring-1 ring-[#8B5CF6]/30">
             <svg
@@ -277,7 +277,7 @@ export default function CreateRoomPanel({
 
   // ── Setup state ──────────────────────────────────────────────────────────
   return (
-    <div className="space-y-4 overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#0D1420] p-4 shadow-[0_0_28px_rgba(139,92,246,0.16)]">
+    <div className="space-y-3 overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#0D1420] p-3.5 shadow-[0_0_28px_rgba(139,92,246,0.16)] sm:space-y-4 sm:p-4">
       <div>
         <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-[#8B5CF6]/15 ring-1 ring-[#8B5CF6]/30">
           <svg

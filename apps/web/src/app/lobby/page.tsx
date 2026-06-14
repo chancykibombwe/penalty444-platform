@@ -39,17 +39,17 @@ function LobbyPageContent() {
           </div>
 
           {/* Page content */}
-          <div className="relative mx-auto max-w-4xl space-y-4 px-4 pt-4 sm:space-y-5 sm:px-6">
+          <div className="relative mx-auto max-w-6xl space-y-3 px-4 pt-3 sm:space-y-4 sm:px-6 sm:pt-4 lg:pt-5">
 
             {/* Page header */}
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
                 444 ARENA · Penalty444
               </p>
-              <h1 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl md:text-4xl">
+              <h1 className="mt-1 text-xl font-black tracking-tight text-white sm:text-2xl md:text-4xl">
                 Match Hub
               </h1>
-              <p className="mt-1.5 text-sm text-zinc-400">
+              <p className="mt-1 text-xs text-zinc-400 sm:text-sm">
                 Find a ranked opponent, create a private room, or join an open
                 challenge.
               </p>
@@ -70,38 +70,43 @@ function LobbyPageContent() {
               </div>
             ) : null}
 
-            {/* Ranked matchmaking — primary action */}
-            <RankedMatchmakingPanel />
+            {/* Main column + sidebar on desktop; stacked on mobile */}
+            <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-5">
+              <div className="space-y-3 sm:space-y-4 lg:space-y-5">
+                {/* Ranked matchmaking — primary action */}
+                <RankedMatchmakingPanel />
 
-            {/* Public match offers */}
-            <PublicMatchOffersPanel />
+                {/* Public match offers */}
+                <PublicMatchOffersPanel />
 
-            {/* Private rooms */}
-            <div>
-              <p className="mb-3 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
-                Private Rooms
-              </p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <CreateRoomPanel
-                  challengeUserId={hasChallengeContext ? challengeUserId : undefined}
-                  challengeUsername={
-                    hasChallengeContext ? challengeUsername : undefined
-                  }
-                />
-                <JoinRoomPanel />
+                {/* Private rooms */}
+                <div>
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:mb-3">
+                    Private Rooms
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
+                    <CreateRoomPanel
+                      challengeUserId={hasChallengeContext ? challengeUserId : undefined}
+                      challengeUsername={
+                        hasChallengeContext ? challengeUsername : undefined
+                      }
+                    />
+                    <JoinRoomPanel />
+                  </div>
+                </div>
               </div>
-            </div>
 
-            {/* Play Again — recent opponents */}
-            <div>
-              <p className="mb-3 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
-                Play Again
-              </p>
-              <EmptyState
-                icon="🤝"
-                title="Recent opponents appear here"
-                subtitle="Play a match to start building your rematch list"
-              />
+              {/* Play Again — recent opponents */}
+              <aside className="lg:sticky lg:top-20">
+                <p className="mb-2 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:mb-3">
+                  Play Again
+                </p>
+                <EmptyState
+                  icon="🤝"
+                  title="Recent opponents appear here"
+                  subtitle="Play a match to start building your rematch list"
+                />
+              </aside>
             </div>
 
           </div>
@@ -114,15 +119,15 @@ function LobbyPageContent() {
 function LobbyPageShell() {
   return (
     <div className="relative left-1/2 -mt-6 min-h-screen w-screen -translate-x-1/2 overflow-x-hidden bg-zinc-950 pb-28 md:pb-6">
-      <div className="relative mx-auto max-w-4xl px-4 pt-4 sm:px-6">
+      <div className="relative mx-auto max-w-6xl px-4 pt-3 sm:px-6 sm:pt-4">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
             444 ARENA · Penalty444
           </p>
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl md:text-4xl">
+          <h1 className="mt-1 text-xl font-black tracking-tight text-white sm:text-2xl md:text-4xl">
             Match Hub
           </h1>
-          <p className="mt-2 text-sm text-zinc-400">Loading match hub…</p>
+          <p className="mt-1 text-xs text-zinc-400 sm:text-sm">Loading match hub…</p>
         </div>
       </div>
     </div>
