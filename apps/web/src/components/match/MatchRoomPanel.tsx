@@ -2706,7 +2706,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-1 p-2 sm:gap-3 sm:p-4 md:gap-4 md:p-6">
+        <div className="grid grid-cols-2 gap-1 p-2 sm:gap-3 sm:p-4 md:gap-4 md:p-6">
           <div className="min-w-0 rounded-xl border border-zinc-800 bg-black/40 p-1.5 sm:rounded-2xl sm:p-3 md:rounded-3xl md:p-5">
             <p className="truncate text-[8px] font-bold uppercase tracking-[0.1em] text-zinc-500 sm:text-[10px] sm:tracking-[0.18em] md:text-xs">
               Role
@@ -2746,30 +2746,6 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               }`}
             >
               {roundLabel}
-            </p>
-          </div>
-
-          <div className="min-w-0 rounded-xl border border-zinc-800 bg-black/40 p-1.5 sm:rounded-2xl sm:p-3 md:rounded-3xl md:p-5">
-            <p className="truncate text-[8px] font-bold uppercase tracking-[0.1em] text-zinc-500 sm:text-[10px] sm:tracking-[0.18em] md:text-xs">
-              Players
-            </p>
-            <p className="mt-0.5 truncate text-sm font-black sm:mt-2 sm:text-xl md:mt-3 md:text-2xl">
-              {playerCount}/2
-            </p>
-          </div>
-
-          <div className="min-w-0 rounded-xl border border-zinc-800 bg-black/40 p-1.5 sm:rounded-2xl sm:p-3 md:rounded-3xl md:p-5">
-            <p className="truncate text-[8px] font-bold uppercase tracking-[0.1em] text-zinc-500 sm:text-[10px] sm:tracking-[0.18em] md:text-xs">
-              Pick
-            </p>
-            <p className="mt-0.5 truncate text-sm font-black sm:mt-2 sm:text-xl md:mt-3 md:text-2xl">
-              {revealStage === "LOCKED"
-                ? "Locked"
-                : revealStage === "REVEALING"
-                  ? "Revealing"
-                  : revealStage === "REVEALED"
-                    ? "Revealed"
-                    : "Open"}
             </p>
           </div>
         </div>
