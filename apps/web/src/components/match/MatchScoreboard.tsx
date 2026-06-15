@@ -39,7 +39,7 @@ export default function MatchScoreboard({
 
   return (
     <section
-      className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-2 md:gap-6"
+      className="grid grid-cols-2 gap-2 sm:gap-5 md:grid-cols-2 md:gap-6"
       aria-label="Match score"
     >
       <PlayerCard
@@ -115,15 +115,15 @@ function PlayerCard({
 
   return (
     <div
-      className={`min-w-0 rounded-3xl border bg-zinc-950/95 p-4 shadow-xl transition-all duration-300 sm:p-5 md:rounded-[2rem] md:p-7 ${baseBorder}`}
+      className={`min-w-0 rounded-2xl border bg-zinc-950/95 p-3 shadow-xl transition-all duration-300 sm:rounded-3xl sm:p-5 md:rounded-[2rem] md:p-7 ${baseBorder}`}
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 md:text-xs">
+        <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-500 sm:text-[10px] sm:tracking-[0.18em] md:text-xs">
           {isYou ? "Your Score" : "Opponent"}
         </p>
         {isActive ? (
           <span
-            className={`p444-kicker-badge-pulse rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.22em] ${
+            className={`p444-kicker-badge-pulse rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.18em] sm:text-[9px] sm:tracking-[0.22em] ${
               isFinal
                 ? "bg-yellow-400/20 text-yellow-100 ring-1 ring-yellow-300/60"
                 : goldTrim
@@ -135,7 +135,7 @@ function PlayerCard({
             • Kicker
           </span>
         ) : roleLabel ? (
-          <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.22em] text-zinc-300">
+          <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.18em] text-zinc-300 sm:text-[9px] sm:tracking-[0.22em]">
             {roleLabel}
           </span>
         ) : null}
@@ -143,9 +143,9 @@ function PlayerCard({
       <p className="mt-1 truncate text-xs text-zinc-400 sm:text-sm md:mt-2">
         {name}
       </p>
-      <div className="mt-3 flex items-end justify-between gap-2 md:mt-4 md:gap-4">
+      <div className="mt-2 flex items-end justify-between gap-2 sm:mt-3 md:mt-4 md:gap-4">
         <p
-          className={`text-5xl font-black tabular-nums transition-all duration-500 ease-out sm:text-6xl md:text-7xl ${
+          className={`text-4xl font-black tabular-nums transition-all duration-500 ease-out sm:text-6xl md:text-7xl ${
             scorePulse
               ? "match-score-pulse scale-[1.24] text-white drop-shadow-[0_0_22px_rgba(255,255,255,0.65)]"
               : "text-white"
