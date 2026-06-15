@@ -39,11 +39,14 @@ const DEV_DEFAULT_ORIGINS = [
  * Vercel preview deployments get a fresh hash-based subdomain per branch
  * (e.g. `penalty444-platform-at1y-git-ui-94262e-chancykibombwes-projects.vercel.app`),
  * so a static ALLOWED_ORIGINS entry can never cover every preview URL.
- * Any HTTPS origin under this team's Vercel project suffix is allowed in
- * both dev and prod — it's scoped to a single Vercel account, not a
- * general wildcard.
+ *
+ * To avoid widening this into a general `*.vercel.app` or
+ * `*-chancykibombwes-projects.vercel.app` wildcard, an origin must match
+ * BOTH a required prefix (this project's slug) AND a required suffix
+ * (this team's Vercel account), and must be `https:`.
  */
-const VERCEL_PREVIEW_HOST_SUFFIXES = ["-chancykibombwes-projects.vercel.app"];
+const VERCEL_PREVIEW_HOST_PREFIX = "penalty444-platform-at1y-git-";
+const VERCEL_PREVIEW_HOST_SUFFIX = "-chancykibombwes-projects.vercel.app";
 
 function isAllowedVercelPreviewOrigin(origin: string): boolean {
   let url: URL;
@@ -57,8 +60,9 @@ function isAllowedVercelPreviewOrigin(origin: string): boolean {
     return false;
   }
 
-  return VERCEL_PREVIEW_HOST_SUFFIXES.some((suffix) =>
-    url.hostname.endsWith(suffix)
+  return (
+    url.hostname.startsWith(VERCEL_PREVIEW_HOST_PREFIX) &&
+    url.hostname.endsWith(VERCEL_PREVIEW_HOST_SUFFIX)
   );
 }
 
