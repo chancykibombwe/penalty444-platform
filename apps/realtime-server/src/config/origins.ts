@@ -35,6 +35,33 @@ const DEV_DEFAULT_ORIGINS = [
   "http://127.0.0.1:4000",
 ];
 
+/**
+ * Vercel preview deployments get a fresh hash-based subdomain per branch
+ * (e.g. `penalty444-platform-at1y-git-ui-94262e-chancykibombwes-projects.vercel.app`),
+ * so a static ALLOWED_ORIGINS entry can never cover every preview URL.
+ * Any HTTPS origin under this team's Vercel project suffix is allowed in
+ * both dev and prod — it's scoped to a single Vercel account, not a
+ * general wildcard.
+ */
+const VERCEL_PREVIEW_HOST_SUFFIXES = ["-chancykibombwes-projects.vercel.app"];
+
+function isAllowedVercelPreviewOrigin(origin: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return false;
+  }
+
+  if (url.protocol !== "https:") {
+    return false;
+  }
+
+  return VERCEL_PREVIEW_HOST_SUFFIXES.some((suffix) =>
+    url.hostname.endsWith(suffix)
+  );
+}
+
 function parseAllowedOriginsEnv(): string[] {
   const raw = process.env.ALLOWED_ORIGINS ?? "";
   return raw
@@ -90,7 +117,7 @@ export function isOriginAllowed(origin: string | undefined): boolean {
   }
 
   const list = allowedOriginsCached;
-  return list.includes(origin);
+  return list.includes(origin) || isAllowedVercelPreviewOrigin(origin);
 }
 
 /**
