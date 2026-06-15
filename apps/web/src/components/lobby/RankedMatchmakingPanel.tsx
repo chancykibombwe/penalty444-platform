@@ -185,70 +185,77 @@ export default function RankedMatchmakingPanel() {
   }
 
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-[#3B9EFF]/30 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-4 shadow-[0_0_60px_rgba(59,158,255,0.15),0_8px_32px_rgba(0,0,0,0.5)] sm:p-6 md:p-8">
+    <section className="relative overflow-hidden rounded-3xl border border-[#3B9EFF]/30 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black p-2.5 shadow-[0_0_60px_rgba(59,158,255,0.15),0_8px_32px_rgba(0,0,0,0.5)] sm:p-4 md:p-5">
       <div aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-[#3B9EFF]/15 blur-[80px]" />
       <div aria-hidden className="pointer-events-none absolute -bottom-12 left-4 h-48 w-48 rounded-full bg-[#1E6FE0]/10 blur-[60px]" />
 
       {/* Two-zone layout: left content + right decorative arena art */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-8">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
 
         {/* Left zone — all interactive content */}
-        <div className="min-w-0 flex-1 space-y-3.5">
-          <div>
-            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-2xl bg-[#3B9EFF]/15 ring-1 ring-[#3B9EFF]/30">
-              <svg className="h-4 w-4 text-[#9AD2FF]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M14.615 1.595a.75.75 0 01.359.852L12.982 9.75h7.268a.75.75 0 01.548 1.262l-10.5 11.25a.75.75 0 01-1.272-.71l1.992-7.302H3.818a.75.75 0 01-.548-1.262l10.5-11.25a.75.75 0 01.845-.143z" />
-              </svg>
+        <div className="min-w-0 flex-1 space-y-1 sm:space-y-2.5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-2xl bg-[#3B9EFF]/15 ring-1 ring-[#3B9EFF]/30">
+                  <svg className="h-3.5 w-3.5 text-[#9AD2FF]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M14.615 1.595a.75.75 0 01.359.852L12.982 9.75h7.268a.75.75 0 01.548 1.262l-10.5 11.25a.75.75 0 01-1.272-.71l1.992-7.302H3.818a.75.75 0 01-.548-1.262l10.5-11.25a.75.75 0 01.845-.143z" />
+                  </svg>
+                </div>
+
+                <h2 className="text-lg font-black tracking-tight text-white sm:text-xl md:text-2xl">
+                  Quick Match
+                </h2>
+              </div>
+
+              <p className="hidden text-[10px] font-black uppercase tracking-[0.3em] text-[#3B9EFF]/70 sm:mt-1.5 sm:block">
+                Ranked Arena
+              </p>
+
+              <p className="hidden text-sm font-semibold text-[#9AD2FF]/70 sm:block">
+                Ranked Matchmaking
+              </p>
+
+              <p className="hidden text-xs text-zinc-400 sm:mt-2 sm:block sm:text-sm">
+                Free Match · 3 rounds. You&apos;ll be paired with the next
+                available player.
+              </p>
+              <p className="mt-1 hidden text-xs text-zinc-500 sm:block">
+                Results count toward your global stats and rank.
+              </p>
+
+              <p className="text-[11px] text-zinc-500 sm:mt-2 sm:text-xs">
+                Realtime:{" "}
+                <span className={connected ? "text-emerald-400" : "text-red-400"}>
+                  {connected ? "Connected" : "Disconnected"}
+                </span>
+              </p>
             </div>
 
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#3B9EFF]/70">
-              Ranked Arena
-            </p>
-
-            <h2 className="mt-0.5 text-2xl font-black tracking-tight text-white sm:text-3xl">
-              Quick Match
-            </h2>
-
-            <p className="text-sm font-semibold text-[#9AD2FF]/70">
-              Ranked Matchmaking
-            </p>
-
-            <p className="mt-3 text-sm text-zinc-400">
-              Ranked Free Match · 3 rounds. You&apos;ll be paired with the next
-              available player.
-            </p>
-            <p className="mt-1 text-xs text-zinc-500">
-              Results count toward your global stats and rank.
-            </p>
-
-            <p className="mt-3 text-xs text-zinc-500">
-              Realtime:{" "}
-              <span className={connected ? "text-emerald-400" : "text-red-400"}>
-                {connected ? "Connected" : "Disconnected"}
-              </span>
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             <GradientButton
               variant="primary"
               onClick={findRankedMatch}
               disabled={!connected || enqueueing || inQueue}
+              className="shrink-0 !min-h-[40px] !py-2"
             >
-              {enqueueing && !inQueue ? "Joining…" : "Find Ranked Match"}
+              <span className="sm:hidden">{enqueueing && !inQueue ? "Joining…" : "Find Match"}</span>
+              <span className="hidden sm:inline">{enqueueing && !inQueue ? "Joining…" : "Find Ranked Match"}</span>
             </GradientButton>
+          </div>
 
+          {inQueue || enqueueing || cancelling ? (
             <OutlineButton
               tone="muted"
               onClick={cancelQueue}
               disabled={!connected || cancelling || (!inQueue && !enqueueing)}
+              className="w-full sm:w-auto"
             >
               {cancelling ? "Leaving…" : "Cancel Queue"}
             </OutlineButton>
-          </div>
+          ) : null}
 
           {inQueue ? (
-            <div className="rounded-2xl border border-[#3B9EFF]/30 bg-[#3B9EFF]/10 px-4 py-3">
+            <div className="rounded-2xl border border-[#3B9EFF]/30 bg-[#3B9EFF]/10 px-3 py-2">
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 animate-pulse rounded-full bg-[#3B9EFF]" />
                 <p className="text-sm font-black text-[#9AD2FF]">
@@ -263,7 +270,7 @@ export default function RankedMatchmakingPanel() {
           ) : null}
 
           {status ? (
-            <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-400">
+            <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-400">
               {status}
             </div>
           ) : null}

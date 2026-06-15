@@ -7,6 +7,7 @@ import PublicMatchOffersPanel from "../../components/lobby/PublicMatchOffersPane
 import RankedMatchmakingPanel from "../../components/lobby/RankedMatchmakingPanel";
 import CreateRoomPanel from "../../components/lobby/CreateRoomPanel";
 import JoinRoomPanel from "../../components/lobby/JoinRoomPanel";
+import LobbyChatPanel from "../../components/lobby/LobbyChatPanel";
 import { LobbyConnectionProvider } from "../../lib/socket/LobbyConnectionProvider";
 import EmptyState from "../../components/ui/EmptyState";
 
@@ -39,17 +40,17 @@ function LobbyPageContent() {
           </div>
 
           {/* Page content */}
-          <div className="relative mx-auto max-w-4xl space-y-4 px-4 pt-4 sm:space-y-5 sm:px-6">
+          <div className="relative mx-auto max-w-6xl space-y-2 px-4 pt-2.5 sm:space-y-3 sm:px-6 sm:pt-4 lg:pt-5">
 
             {/* Page header */}
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
                 444 ARENA · Penalty444
               </p>
-              <h1 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl md:text-4xl">
+              <h1 className="mt-0.5 text-lg font-black tracking-tight text-white sm:text-2xl md:text-4xl">
                 Match Hub
               </h1>
-              <p className="mt-1.5 text-sm text-zinc-400">
+              <p className="mt-0.5 hidden text-xs text-zinc-400 sm:block sm:text-sm">
                 Find a ranked opponent, create a private room, or join an open
                 challenge.
               </p>
@@ -70,38 +71,60 @@ function LobbyPageContent() {
               </div>
             ) : null}
 
-            {/* Ranked matchmaking — primary action */}
-            <RankedMatchmakingPanel />
+            {/* Main column + sidebar on desktop; stacked on mobile */}
+            <div className="grid gap-2 sm:gap-3 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-5">
+              <div className="space-y-2 sm:space-y-3 lg:space-y-5">
+                {/* Ranked matchmaking — primary action */}
+                <RankedMatchmakingPanel />
 
-            {/* Public match offers */}
-            <PublicMatchOffersPanel />
+                {/* Public match offers */}
+                <PublicMatchOffersPanel />
 
-            {/* Private rooms */}
-            <div>
-              <p className="mb-3 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
-                Private Rooms
-              </p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <CreateRoomPanel
-                  challengeUserId={hasChallengeContext ? challengeUserId : undefined}
-                  challengeUsername={
-                    hasChallengeContext ? challengeUsername : undefined
-                  }
-                />
-                <JoinRoomPanel />
+                {/* Private rooms */}
+                <div>
+                  <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:mb-2">
+                    Private Rooms
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                    <CreateRoomPanel
+                      challengeUserId={hasChallengeContext ? challengeUserId : undefined}
+                      challengeUsername={
+                        hasChallengeContext ? challengeUsername : undefined
+                      }
+                    />
+                    <JoinRoomPanel />
+                  </div>
+                </div>
+
+                {/* Lobby chat — important, positioned between Private Rooms and Play Again */}
+                <div>
+                  <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:mb-2">
+                    Lobby Chat
+                  </p>
+                  <LobbyChatPanel />
+                </div>
               </div>
-            </div>
 
-            {/* Play Again — recent opponents */}
-            <div>
-              <p className="mb-3 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
-                Play Again
-              </p>
-              <EmptyState
-                icon="🤝"
-                title="Recent opponents appear here"
-                subtitle="Play a match to start building your rematch list"
-              />
+              {/* Sidebar (stacks below main column on mobile) */}
+              <aside className="space-y-2 sm:space-y-3 lg:sticky lg:top-20 lg:space-y-5">
+                {/* Play Again — recent opponents, collapsible */}
+                <details className="group overflow-hidden rounded-2xl border border-zinc-800/60 bg-zinc-900/40">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 [&::-webkit-details-marker]:hidden">
+                    <span>Play Again</span>
+                    <span className="text-zinc-500 transition-transform group-open:rotate-180" aria-hidden>
+                      ▾
+                    </span>
+                  </summary>
+                  <div className="border-t border-zinc-800/60 p-2 sm:p-3">
+                    <EmptyState
+                      icon="🤝"
+                      title="Recent opponents appear here"
+                      subtitle="Play a match to start building your rematch list"
+                      compact
+                    />
+                  </div>
+                </details>
+              </aside>
             </div>
 
           </div>
@@ -114,15 +137,15 @@ function LobbyPageContent() {
 function LobbyPageShell() {
   return (
     <div className="relative left-1/2 -mt-6 min-h-screen w-screen -translate-x-1/2 overflow-x-hidden bg-zinc-950 pb-28 md:pb-6">
-      <div className="relative mx-auto max-w-4xl px-4 pt-4 sm:px-6">
+      <div className="relative mx-auto max-w-6xl px-4 pt-3 sm:px-6 sm:pt-4">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
             444 ARENA · Penalty444
           </p>
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl md:text-4xl">
+          <h1 className="mt-1 text-xl font-black tracking-tight text-white sm:text-2xl md:text-4xl">
             Match Hub
           </h1>
-          <p className="mt-2 text-sm text-zinc-400">Loading match hub…</p>
+          <p className="mt-1 text-xs text-zinc-400 sm:text-sm">Loading match hub…</p>
         </div>
       </div>
     </div>
