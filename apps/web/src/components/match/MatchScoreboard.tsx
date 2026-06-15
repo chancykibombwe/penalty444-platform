@@ -2,12 +2,14 @@
 
 import type { Role } from "./matchPresentation";
 
+export type RoundOutcome = "goal" | "miss" | "pending";
+
 /**
  * Match scoreboard.
  *
- * Presentation-only. Highlights the active KICKER (gold ring + pulse) and
- * keeps a strong score hierarchy. Mobile layout stacks vertically; desktop
- * splits side-by-side.
+ * Presentation-only. Single-row layout: player (with round checklist) on
+ * each side, score/round/timer in the center. Highlights the active
+ * KICKER (gold ring + pulse) and keeps a strong score hierarchy.
  *
  * The parent must already own `myRole` / `opponentRole` / `scorePulse` etc.
  * — this component does not touch sockets, gameplay rules, or persistence.
@@ -23,6 +25,11 @@ export default function MatchScoreboard({
   isSuddenDeath,
   isTournament,
   isFinal,
+  roundLabel,
+  timer,
+  isTimerUrgent,
+  myRoundResults,
+  opponentRoundResults,
 }: {
   myName: string;
   opponentName: string;
@@ -34,29 +41,78 @@ export default function MatchScoreboard({
   isSuddenDeath: boolean;
   isTournament: boolean;
   isFinal: boolean;
+  roundLabel: string;
+  timer: number | null;
+  isTimerUrgent: boolean;
+  myRoundResults: RoundOutcome[];
+  opponentRoundResults: RoundOutcome[];
 }) {
   const goldTrim = isTournament || isFinal;
 
   return (
     <section
-      className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-2 md:gap-6"
+      className="flex items-center justify-between gap-2 rounded-3xl border border-zinc-800 bg-zinc-950/95 p-3 shadow-xl sm:gap-4 sm:p-5 md:rounded-[2rem] md:p-7"
       aria-label="Match score"
     >
-      <PlayerCard
+      <PlayerSide
         name={myName}
-        score={myScore}
         role={myRole}
         roleLabel={myRole === "KICKER" ? "Kicker" : myRole === "KEEPER" ? "Keeper" : null}
         isYou
         isActive={myRole === "KICKER"}
-        scorePulse={scorePulse === "p1"}
         isSuddenDeath={isSuddenDeath}
         isFinal={isFinal}
         goldTrim={goldTrim}
+        roundResults={myRoundResults}
+        align="left"
       />
-      <PlayerCard
+
+      <div className="flex min-w-0 flex-col items-center gap-1 px-1 text-center sm:gap-1.5">
+        <p className="flex items-baseline gap-1.5 text-3xl font-black tabular-nums sm:gap-2 sm:text-4xl md:text-5xl">
+          <span
+            className={`transition-all duration-500 ease-out ${
+              scorePulse === "p1"
+                ? "match-score-pulse scale-[1.2] text-white drop-shadow-[0_0_18px_rgba(255,255,255,0.6)]"
+                : "text-white"
+            }`}
+          >
+            {myScore}
+          </span>
+          <span className="text-zinc-600">-</span>
+          <span
+            className={`transition-all duration-500 ease-out ${
+              scorePulse === "p2"
+                ? "match-score-pulse scale-[1.2] text-white drop-shadow-[0_0_18px_rgba(255,255,255,0.6)]"
+                : "text-white"
+            }`}
+          >
+            {opponentScore}
+          </span>
+        </p>
+
+        <p
+          className={`text-[10px] font-black uppercase tracking-[0.18em] sm:text-xs ${
+            isSuddenDeath ? "text-amber-300/90" : "text-zinc-500"
+          }`}
+        >
+          Round {roundLabel}
+        </p>
+
+        <p
+          className={`text-base font-black tabular-nums sm:text-lg ${
+            isTimerUrgent
+              ? "text-red-300"
+              : isSuddenDeath
+                ? "text-yellow-200"
+                : "text-zinc-300"
+          }`}
+        >
+          {timer !== null ? `${timer}s` : "—"}
+        </p>
+      </div>
+
+      <PlayerSide
         name={opponentName}
-        score={opponentScore}
         role={opponentRole}
         roleLabel={
           opponentRole === "KICKER"
@@ -67,47 +123,48 @@ export default function MatchScoreboard({
         }
         isYou={false}
         isActive={opponentRole === "KICKER"}
-        scorePulse={scorePulse === "p2"}
         isSuddenDeath={isSuddenDeath}
         isFinal={isFinal}
         goldTrim={goldTrim}
+        roundResults={opponentRoundResults}
+        align="right"
       />
     </section>
   );
 }
 
-function PlayerCard({
+function PlayerSide({
   name,
-  score,
   role: _role,
   roleLabel,
   isYou,
   isActive,
-  scorePulse,
   isSuddenDeath,
   isFinal,
   goldTrim,
+  roundResults,
+  align,
 }: {
   name: string;
-  score: number;
   role: Role | null;
   roleLabel: string | null;
   isYou: boolean;
   isActive: boolean;
-  scorePulse: boolean;
   isSuddenDeath: boolean;
   isFinal: boolean;
   goldTrim: boolean;
+  roundResults: RoundOutcome[];
+  align: "left" | "right";
 }) {
-  const baseBorder = isActive
+  const ringClass = isActive
     ? isFinal
-      ? "border-yellow-300/65 shadow-[0_0_28px_rgba(234,179,8,0.28)]"
+      ? "ring-2 ring-yellow-300/65 shadow-[0_0_18px_rgba(234,179,8,0.25)]"
       : goldTrim
-        ? "border-amber-400/55 shadow-[0_0_24px_rgba(251,191,36,0.22)]"
-        : "border-cyan-400/55 shadow-[0_0_24px_rgba(56,189,248,0.22)]"
+        ? "ring-2 ring-amber-400/55 shadow-[0_0_16px_rgba(251,191,36,0.2)]"
+        : "ring-2 ring-cyan-400/55 shadow-[0_0_16px_rgba(56,189,248,0.2)]"
     : isSuddenDeath
-      ? "border-yellow-500/45 shadow-[0_0_18px_rgba(234,179,8,0.16)]"
-      : "border-zinc-800";
+      ? "ring-1 ring-yellow-500/40"
+      : "";
 
   const badgeClass = isYou
     ? "bg-white text-black"
@@ -115,49 +172,63 @@ function PlayerCard({
 
   return (
     <div
-      className={`min-w-0 rounded-3xl border bg-zinc-950/95 p-4 shadow-xl transition-all duration-300 sm:p-5 md:rounded-[2rem] md:p-7 ${baseBorder}`}
+      className={`min-w-0 flex-1 rounded-2xl p-1.5 transition-all duration-300 sm:p-2 ${ringClass} ${
+        align === "right" ? "text-right" : "text-left"
+      }`}
     >
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 md:text-xs">
-          {isYou ? "Your Score" : "Opponent"}
-        </p>
-        {isActive ? (
-          <span
-            className={`p444-kicker-badge-pulse rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.22em] ${
-              isFinal
-                ? "bg-yellow-400/20 text-yellow-100 ring-1 ring-yellow-300/60"
-                : goldTrim
-                  ? "bg-amber-500/20 text-amber-100 ring-1 ring-amber-400/55"
-                  : "bg-cyan-400/15 text-cyan-100 ring-1 ring-cyan-400/55"
-            }`}
-            aria-label="Kicker this round"
-          >
-            • Kicker
-          </span>
-        ) : roleLabel ? (
-          <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.22em] text-zinc-300">
-            {roleLabel}
-          </span>
-        ) : null}
-      </div>
-      <p className="mt-1 truncate text-xs text-zinc-400 sm:text-sm md:mt-2">
-        {name}
-      </p>
-      <div className="mt-3 flex items-end justify-between gap-2 md:mt-4 md:gap-4">
-        <p
-          className={`text-5xl font-black tabular-nums transition-all duration-500 ease-out sm:text-6xl md:text-7xl ${
-            scorePulse
-              ? "match-score-pulse scale-[1.24] text-white drop-shadow-[0_0_22px_rgba(255,255,255,0.65)]"
-              : "text-white"
-          }`}
-        >
-          {score}
+      <div
+        className={`flex items-center gap-1 ${
+          align === "right" ? "flex-row-reverse justify-start" : ""
+        }`}
+      >
+        <p className="truncate text-xs font-bold text-zinc-200 sm:text-sm">
+          {name}
         </p>
         <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black sm:px-3 sm:py-1 sm:text-xs ${badgeClass}`}
+          className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-black sm:px-2 ${badgeClass}`}
         >
           {isYou ? "YOU" : "OPP"}
         </span>
+      </div>
+
+      {isActive ? (
+        <span
+          className={`p444-kicker-badge-pulse mt-1 inline-block rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.2em] sm:text-[9px] ${
+            isFinal
+              ? "bg-yellow-400/20 text-yellow-100 ring-1 ring-yellow-300/60"
+              : goldTrim
+                ? "bg-amber-500/20 text-amber-100 ring-1 ring-amber-400/55"
+                : "bg-cyan-400/15 text-cyan-100 ring-1 ring-cyan-400/55"
+          }`}
+          aria-label="Kicker this round"
+        >
+          • Kicker
+        </span>
+      ) : roleLabel ? (
+        <span className="mt-1 inline-block rounded-full border border-zinc-700 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.2em] text-zinc-300 sm:text-[9px]">
+          {roleLabel}
+        </span>
+      ) : null}
+
+      <div
+        className={`mt-1.5 flex flex-wrap gap-1 sm:mt-2 sm:gap-1.5 ${
+          align === "right" ? "justify-end" : "justify-start"
+        }`}
+        aria-label="Round results"
+      >
+        {roundResults.map((outcome, index) => (
+          <span
+            key={index}
+            className={`h-2.5 w-2.5 shrink-0 rounded-full sm:h-3 sm:w-3 ${
+              outcome === "goal"
+                ? "bg-emerald-500"
+                : outcome === "miss"
+                  ? "bg-red-500"
+                  : "bg-zinc-700"
+            }`}
+            aria-hidden
+          />
+        ))}
       </div>
     </div>
   );

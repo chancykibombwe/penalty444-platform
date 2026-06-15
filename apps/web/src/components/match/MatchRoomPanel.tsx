@@ -428,6 +428,11 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const [result, setResult] = useState<MatchResultPayload | null>(null);
   const [pendingResult, setPendingResult] =
     useState<MatchResultPayload | null>(null);
+  // Per-round outcome log, keyed by round number, for the scoreboard's
+  // goal/miss checklist. Populated as authoritative results land.
+  const [roundHistory, setRoundHistory] = useState<
+    Record<number, { result: ShotResult; kickerPlayerId: string | null }>
+  >({});
   const [revealStage, setRevealStage] = useState<RevealStage>("IDLE");
   const [hasSubmittedPick, setHasSubmittedPick] = useState(false);
   const [status, setStatus] = useState("Connecting...");
@@ -1205,6 +1210,16 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
       setResult(authoritative);
       setPendingResult(authoritative);
+      if (typeof authoritative.round === "number") {
+        const completedRound = authoritative.round;
+        setRoundHistory((prev) => ({
+          ...prev,
+          [completedRound]: {
+            result: authoritative.result,
+            kickerPlayerId: authoritative.kickerPlayerId ?? null,
+          },
+        }));
+      }
       setRevealStage("REVEALED");
       setStatus(
         authoritative.statusMessage || `Result: ${authoritative.result}`
@@ -2113,6 +2128,35 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const isLateGame = round >= maxRounds * 2 - 2;
   const isSuddenDeath = phase === "SUDDEN_DEATH";
 
+  // Per-player round-by-round checklist (goal/miss/pending) derived from
+  // `roundHistory`, used by the scoreboard's result circles. Outcome is
+  // from each player's own perspective: scoring as kicker or saving as
+  // keeper is "goal", conceding is "miss". A DRAW (lane mismatch edge
+  // case) shows as pending for both.
+  const { myRoundResults, opponentRoundResults } = useMemo(() => {
+    const total = Math.max(1, normalTurns);
+    const mine: Array<"goal" | "miss" | "pending"> = [];
+    const opp: Array<"goal" | "miss" | "pending"> = [];
+
+    for (let r = 1; r <= total; r += 1) {
+      const entry = roundHistory[r];
+      if (!entry || entry.result === "DRAW") {
+        mine.push("pending");
+        opp.push("pending");
+        continue;
+      }
+
+      const iWasKicker = entry.kickerPlayerId === myPlayerId;
+      const kickerOutcome = entry.result === "GOAL" ? "goal" : "miss";
+      const keeperOutcome = entry.result === "SAVE" ? "goal" : "miss";
+
+      mine.push(iWasKicker ? kickerOutcome : keeperOutcome);
+      opp.push(iWasKicker ? keeperOutcome : kickerOutcome);
+    }
+
+    return { myRoundResults: mine, opponentRoundResults: opp };
+  }, [roundHistory, normalTurns, myPlayerId]);
+
   const roundLabel =
     phase === "SUDDEN_DEATH"
       ? `Sudden Death ${
@@ -2522,256 +2566,143 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                     : "border-zinc-800 from-zinc-950 via-zinc-900 to-black"
         }`}
       >
-        <div className="border-b border-zinc-800 px-4 py-4 md:px-6 md:py-5">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`rounded-full px-3 py-1 font-black uppercase tracking-[0.2em] ${
-                    isSuddenDeath
-                      ? "bg-amber-400 px-4 py-1.5 text-sm text-black shadow-[0_0_18px_rgba(251,191,36,0.45)]"
-                      : "bg-emerald-400 text-xs text-black"
-                  }`}
-                >
-                  {phaseLabel}
-                </span>
-
-                <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs font-bold text-zinc-300">
-                  Room {roomCode}
-                </span>
-
-                {isTournamentMatch ? (
-                  <span
-                    className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest ${
-                      isFinalTournamentMatch
-                        ? "border-yellow-300/60 bg-yellow-500/15 text-yellow-100 shadow-[0_0_18px_rgba(234,179,8,0.25)]"
-                        : "border-amber-500/45 bg-amber-950/40 text-amber-200"
-                    }`}
-                  >
-                    {isFinalTournamentMatch
-                      ? "🏆 Championship"
-                      : tournamentRoundDisplayLabel ?? "Tournament"}
-                  </span>
-                ) : null}
-
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-bold ${
-                    connected
-                      ? "bg-emerald-500/15 text-emerald-300"
-                      : "bg-red-500/15 text-red-300"
-                  }`}
-                >
-                  {connected ? "Online" : "Offline"}
-                </span>
-              </div>
-
-              {tournamentIntroVisible && isTournamentMatch ? (
-                <div
-                  className={`tournament-intro-pill mt-3 flex flex-wrap items-center gap-2 rounded-2xl border px-3 py-2 ${
-                    isFinalTournamentMatch
-                      ? "border-yellow-300/55 bg-yellow-500/10 text-yellow-100"
-                      : "border-amber-500/40 bg-amber-950/30 text-amber-100"
-                  }`}
-                  aria-live="polite"
-                >
-                  <span className="text-[10px] font-black uppercase tracking-[0.25em] opacity-90">
-                    {tournamentRoundDisplayLabel ?? "Tournament"}
-                  </span>
-                  <span className="text-sm font-bold">
-                    {myFirstRoleLabel}
-                  </span>
-                  <span className="text-xs font-semibold opacity-80">
-                    · First to finish the shootout advances
-                  </span>
-                </div>
-              ) : null}
-              <h1 className="mt-3 break-words text-2xl font-black sm:text-3xl md:mt-4 md:text-5xl">
-                {myName}{" "}
-                <span
-                  className={
-                    isSuddenDeath
-                      ? "text-amber-200/90"
-                      : isLateGame
-                        ? "text-zinc-300"
-                        : "text-zinc-500"
-                  }
-                >
-                  vs
-                </span>{" "}
-                {opponentName}
-              </h1>
-
-              <p
-                className={`mt-3 max-w-2xl text-sm ${
-                  isSuddenDeath
-                    ? "text-zinc-100"
-                    : isLateGame
-                      ? "text-zinc-200"
-                      : "text-zinc-400"
-                }`}
-              >
-                {status}
-              </p>
-              {opponentStatus ? (
-                <p className="mt-1 text-xs font-semibold text-amber-300/85">
-                  {opponentStatus}
-                </p>
-              ) : null}
-              {disconnectCountdown !== null ? (
-                <div className="mt-2 max-w-2xl rounded-xl border border-red-500/40 bg-red-950/35 px-3 py-2">
-                  <p className="text-sm font-semibold text-red-200">
-                    Opponent disconnected. Aborting match in{" "}
-                    {disconnectCountdown}s...
-                  </p>
-                </div>
-              ) : null}
-
-              {showLeaveMatchControls ? (
-                <div className="mt-3 flex max-w-2xl flex-wrap items-center gap-3">
-                  {isEarlyCancelWindow ? (
-                    <button
-                      type="button"
-                      onClick={abortEarlyMatch}
-                      disabled={leaveMatchBusy}
-                      className="rounded-xl border border-zinc-500 bg-zinc-900 px-4 py-2 text-sm font-bold text-zinc-100 hover:border-zinc-300 disabled:opacity-50"
-                    >
-                      {leaveMatchBusy ? "Cancelling..." : "Cancel Match"}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={forfeitMatch}
-                      disabled={leaveMatchBusy}
-                      className="rounded-xl border border-red-500/50 bg-red-950/40 px-4 py-2 text-sm font-bold text-red-100 hover:border-red-400/70 disabled:opacity-50"
-                    >
-                      {leaveMatchBusy ? "Leaving..." : "Forfeit"}
-                    </button>
-                  )}
-                  {isEarlyCancelWindow ? (
-                    <span className="text-xs text-zinc-400">
-                      No penalty for {earlyCancelSecondsLeft}s
-                    </span>
-                  ) : (
-                    <span className="text-xs text-zinc-500">
-                      Counts as a loss
-                    </span>
-                  )}
-                </div>
-              ) : null}
+        <div className="border-b border-zinc-800 px-4 py-3 md:px-6 md:py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-baseline gap-2">
+              <span className="text-lg font-black tracking-tight sm:text-xl md:text-2xl">
+                PENALTY<span className="text-emerald-400">444</span>
+              </span>
+              <span className="hidden text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:inline">
+                Arena
+              </span>
             </div>
 
-            <div
-              className={`w-full self-stretch rounded-3xl border px-5 py-4 text-center shadow-lg transition-all duration-300 md:w-auto md:min-w-[9.5rem] md:self-auto md:px-6 md:py-5 ${
-                isTimerUrgent
-                  ? "match-timer-urgent border-red-400/90 bg-red-500/20"
-                  : isSuddenDeath
-                    ? "match-timer-sudden-death border-yellow-400/80 bg-yellow-500/15"
-                    : "border-zinc-700 bg-zinc-900"
+            {showLeaveMatchControls ? (
+              isEarlyCancelWindow ? (
+                <button
+                  type="button"
+                  onClick={abortEarlyMatch}
+                  disabled={leaveMatchBusy}
+                  className="shrink-0 rounded-xl border border-zinc-500 bg-zinc-900 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-zinc-100 hover:border-zinc-300 disabled:opacity-50 sm:px-4 sm:py-2 sm:text-xs"
+                >
+                  {leaveMatchBusy ? "Cancelling..." : "Cancel match"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={forfeitMatch}
+                  disabled={leaveMatchBusy}
+                  className="shrink-0 rounded-xl border border-red-500/50 bg-red-950/40 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-red-100 hover:border-red-400/70 disabled:opacity-50 sm:px-4 sm:py-2 sm:text-xs"
+                >
+                  {leaveMatchBusy ? "Leaving..." : "Leave match"}
+                </button>
+              )
+            ) : (
+              <span
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${
+                  connected
+                    ? "bg-emerald-500/15 text-emerald-300"
+                    : "bg-red-500/15 text-red-300"
+                }`}
+              >
+                {connected ? "Online" : "Offline"}
+              </span>
+            )}
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-full px-3 py-1 font-black uppercase tracking-[0.2em] ${
+                isSuddenDeath
+                  ? "bg-amber-400 px-4 py-1.5 text-sm text-black shadow-[0_0_18px_rgba(251,191,36,0.45)]"
+                  : "bg-emerald-400 text-xs text-black"
               }`}
             >
-              <p
-                className={`text-xs font-black uppercase tracking-[0.22em] ${
-                  isTimerUrgent
-                    ? "text-red-200"
-                    : isSuddenDeath
-                      ? "text-yellow-200/90"
-                      : "text-zinc-400"
+              {phaseLabel}
+            </span>
+
+            <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs font-bold text-zinc-300">
+              Match ID: {roomCode}
+            </span>
+
+            {isTournamentMatch ? (
+              <span
+                className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest ${
+                  isFinalTournamentMatch
+                    ? "border-yellow-300/60 bg-yellow-500/15 text-yellow-100 shadow-[0_0_18px_rgba(234,179,8,0.25)]"
+                    : "border-amber-500/45 bg-amber-950/40 text-amber-200"
                 }`}
               >
-                {isTimerUrgent ? "Lock in!" : "Timer"}
-              </p>
-              <p
-                className={`mt-1 text-5xl font-black tabular-nums transition-transform duration-300 md:text-6xl ${
-                  isTimerUrgent
-                    ? "text-red-200"
-                    : isSuddenDeath
-                      ? "text-yellow-100"
-                      : "text-white"
+                {isFinalTournamentMatch
+                  ? "🏆 Championship"
+                  : tournamentRoundDisplayLabel ?? "Tournament"}
+              </span>
+            ) : null}
+
+            {showLeaveMatchControls ? (
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-bold ${
+                  connected
+                    ? "bg-emerald-500/15 text-emerald-300"
+                    : "bg-red-500/15 text-red-300"
                 }`}
               >
-                {timer !== null ? timer : "—"}
-              </p>
-              <p
-                className={`text-[11px] font-bold uppercase tracking-wider ${
-                  isTimerUrgent
-                    ? "text-red-200/85"
-                    : isSuddenDeath
-                      ? "text-yellow-200/70"
-                      : "text-zinc-500"
-                }`}
-              >
-                {isTimerUrgent ? "Hurry" : "seconds"}
-              </p>
+                {connected ? "Online" : "Offline"}
+              </span>
+            ) : null}
+          </div>
+
+          {tournamentIntroVisible && isTournamentMatch ? (
+            <div
+              className={`tournament-intro-pill mt-3 flex flex-wrap items-center gap-2 rounded-2xl border px-3 py-2 ${
+                isFinalTournamentMatch
+                  ? "border-yellow-300/55 bg-yellow-500/10 text-yellow-100"
+                  : "border-amber-500/40 bg-amber-950/30 text-amber-100"
+              }`}
+              aria-live="polite"
+            >
+              <span className="text-[10px] font-black uppercase tracking-[0.25em] opacity-90">
+                {tournamentRoundDisplayLabel ?? "Tournament"}
+              </span>
+              <span className="text-sm font-bold">{myFirstRoleLabel}</span>
+              <span className="text-xs font-semibold opacity-80">
+                · First to finish the shootout advances
+              </span>
             </div>
-          </div>
-        </div>
+          ) : null}
 
-        <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4 md:gap-4 md:p-6">
-          <div className="rounded-2xl border border-zinc-800 bg-black/40 p-3 md:rounded-3xl md:p-5">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 md:text-xs">
-              Your Role
-            </p>
-            <p className="mt-2 text-xl font-black md:mt-3 md:text-2xl">
-              {myRole || "—"}
-            </p>
-          </div>
-
-          <div
-            className={`rounded-2xl border bg-black/40 p-3 md:rounded-3xl md:p-5 ${
+          <p
+            className={`mt-2 max-w-2xl text-sm ${
               isSuddenDeath
-                ? "border-amber-400/45 shadow-[inset_0_0_24px_rgba(251,191,36,0.06)]"
+                ? "text-zinc-100"
                 : isLateGame
-                  ? "border-red-400/30"
-                  : "border-zinc-800"
+                  ? "text-zinc-200"
+                  : "text-zinc-400"
             }`}
           >
-            <p
-              className={`text-[10px] font-bold uppercase tracking-[0.18em] md:text-xs ${
-                isSuddenDeath
-                  ? "text-amber-300/90"
-                  : isLateGame
-                    ? "text-zinc-300"
-                    : "text-zinc-500"
-              }`}
-            >
-              Round
+            {status}
+          </p>
+          {opponentStatus ? (
+            <p className="mt-1 text-xs font-semibold text-amber-300/85">
+              {opponentStatus}
             </p>
-            <p
-              className={`mt-2 font-black md:mt-3 ${
-                isSuddenDeath
-                  ? "text-2xl text-amber-200 md:text-4xl"
-                  : isLateGame
-                    ? "text-xl text-zinc-100 md:text-2xl"
-                    : "text-xl md:text-2xl"
-              }`}
-            >
-              {roundLabel}
-            </p>
-          </div>
+          ) : null}
+          {disconnectCountdown !== null ? (
+            <div className="mt-2 max-w-2xl rounded-xl border border-red-500/40 bg-red-950/35 px-3 py-2">
+              <p className="text-sm font-semibold text-red-200">
+                Opponent disconnected. Aborting match in{" "}
+                {disconnectCountdown}s...
+              </p>
+            </div>
+          ) : null}
 
-          <div className="rounded-2xl border border-zinc-800 bg-black/40 p-3 md:rounded-3xl md:p-5">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 md:text-xs">
-              Players
+          {showLeaveMatchControls ? (
+            <p className="mt-1 text-[11px] text-zinc-500">
+              {isEarlyCancelWindow
+                ? `No penalty for ${earlyCancelSecondsLeft}s`
+                : "Leaving counts as a loss"}
             </p>
-            <p className="mt-2 text-xl font-black md:mt-3 md:text-2xl">
-              {playerCount}/2
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-800 bg-black/40 p-3 md:rounded-3xl md:p-5">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 md:text-xs">
-              Pick Status
-            </p>
-            <p className="mt-2 text-xl font-black md:mt-3 md:text-2xl">
-              {revealStage === "LOCKED"
-                ? "Locked"
-                : revealStage === "REVEALING"
-                  ? "Revealing"
-                  : revealStage === "REVEALED"
-                    ? "Revealed"
-                    : "Open"}
-            </p>
-          </div>
+          ) : null}
         </div>
       </section>
 
@@ -2801,7 +2732,23 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         isSuddenDeath={isSuddenDeath}
         isTournament={isTournamentMatch}
         isFinal={isFinalTournamentMatch}
+        roundLabel={roundLabel}
+        timer={timer}
+        isTimerUrgent={isTimerUrgent}
+        myRoundResults={myRoundResults}
+        opponentRoundResults={opponentRoundResults}
       />
+
+      <section
+        className="relative aspect-[4/3] w-full overflow-hidden rounded-[2rem] border border-zinc-800 bg-black/60 sm:aspect-video"
+        aria-hidden
+      >
+        <div className="absolute inset-0 flex items-center justify-center">
+          <p className="text-[10px] font-black uppercase tracking-[0.32em] text-zinc-600 sm:text-xs">
+            3D Visualization Coming Soon
+          </p>
+        </div>
+      </section>
 
       {!matchEnded ? (
         <section className="relative rounded-[2rem] border border-zinc-800 bg-zinc-900/95 p-5 shadow-xl md:p-7">
@@ -2829,7 +2776,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                   ? "Pick locked"
                   : hasSubmittedPick || myPick
                     ? "Pick locked in"
-                    : "Choose your lane"}
+                    : myRole === "KEEPER"
+                      ? "Choose your save"
+                      : "Choose your shot"}
               </h2>
               <p className="mt-2 text-sm text-zinc-400">
                 {hasSubmittedPick || myPick
@@ -3050,6 +2999,22 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           </div>
         </div>
       </section>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 sm:rounded-3xl">
+          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-400 sm:text-xs">
+            Prize Pool
+          </p>
+          <p className="mt-2 text-sm text-zinc-500">Coming soon</p>
+        </section>
+
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 sm:rounded-3xl">
+          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-400 sm:text-xs">
+            Chat
+          </p>
+          <p className="mt-2 text-sm text-zinc-500">Coming soon</p>
+        </section>
+      </div>
 
       {matchEnded && matchEndOutcome ? (
         <section
