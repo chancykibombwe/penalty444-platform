@@ -40,7 +40,7 @@ export default function MatchScoreboard({
 
   return (
     <section
-      className="flex items-center justify-between gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/95 px-3 py-2.5 shadow-xl sm:gap-4 sm:rounded-3xl sm:px-5 sm:py-4 md:rounded-[2rem] md:px-7 md:py-5"
+      className="flex items-center justify-between gap-1.5 rounded-xl border border-zinc-800 bg-zinc-950/95 px-2 py-1.5 shadow-xl sm:gap-4 sm:rounded-3xl sm:px-5 sm:py-4 md:rounded-[2rem] md:px-7 md:py-5"
       aria-label="Match score"
     >
       <PlayerSide
@@ -128,11 +128,11 @@ function PlayerSide({
         </span>
         {!isRight ? roleBadge() : null}
       </div>
-      <p className="mt-0.5 truncate text-[11px] text-zinc-400 sm:text-sm">
+      <p className="truncate text-[10px] text-zinc-400 sm:mt-0.5 sm:text-sm">
         {name}
       </p>
       <p
-        className={`text-2xl font-black tabular-nums leading-none transition-all duration-500 ease-out sm:text-4xl md:text-5xl ${
+        className={`text-xl font-black tabular-nums leading-none transition-all duration-500 ease-out sm:text-4xl md:text-5xl ${
           scorePulse
             ? "match-score-pulse scale-[1.24] text-white drop-shadow-[0_0_22px_rgba(255,255,255,0.65)]"
             : "text-white"
