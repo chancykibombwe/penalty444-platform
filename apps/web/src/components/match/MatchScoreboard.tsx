@@ -40,7 +40,7 @@ export default function MatchScoreboard({
 
   return (
     <section
-      className="flex items-center justify-between gap-1.5 rounded-xl border border-zinc-800 bg-zinc-950/95 px-2 py-1.5 shadow-xl sm:gap-4 sm:rounded-3xl sm:px-5 sm:py-4 md:rounded-[2rem] md:px-7 md:py-5"
+      className="flex items-center justify-between gap-1 rounded-lg border border-zinc-800 bg-zinc-950/95 px-1.5 py-1 shadow-xl sm:gap-4 sm:rounded-3xl sm:px-5 sm:py-4 md:rounded-[2rem] md:px-7 md:py-5"
       aria-label="Match score"
     >
       <PlayerSide
@@ -116,23 +116,23 @@ function PlayerSide({
   return (
     <div className={`min-w-0 flex-1 ${isRight ? "text-right" : "text-left"}`}>
       <div
-        className={`flex items-center gap-1.5 ${
+        className={`flex items-center gap-1 ${
           isRight ? "justify-end" : "justify-start"
         }`}
       >
         {isRight ? roleBadge() : null}
         <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-black sm:px-2.5 sm:text-[10px] ${badgeClass}`}
+          className={`shrink-0 rounded-full px-1.5 py-0.5 text-[8px] font-black sm:px-2.5 sm:text-[10px] ${badgeClass}`}
         >
           {isYou ? "YOU" : "OPP"}
         </span>
         {!isRight ? roleBadge() : null}
       </div>
-      <p className="truncate text-[10px] text-zinc-400 sm:mt-0.5 sm:text-sm">
+      <p className="truncate text-[9px] text-zinc-400 sm:mt-0.5 sm:text-sm">
         {name}
       </p>
       <p
-        className={`text-xl font-black tabular-nums leading-none transition-all duration-500 ease-out sm:text-4xl md:text-5xl ${
+        className={`text-lg font-black tabular-nums leading-none transition-all duration-500 ease-out sm:text-4xl md:text-5xl ${
           scorePulse
             ? "match-score-pulse scale-[1.24] text-white drop-shadow-[0_0_22px_rgba(255,255,255,0.65)]"
             : "text-white"
@@ -147,7 +147,7 @@ function PlayerSide({
     if (isActive) {
       return (
         <span
-          className={`p444-kicker-badge-pulse rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.18em] sm:text-[9px] sm:tracking-[0.22em] ${
+          className={`p444-kicker-badge-pulse rounded-full px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.18em] sm:text-[9px] sm:tracking-[0.22em] ${
             isFinal
               ? "bg-yellow-400/20 text-yellow-100 ring-1 ring-yellow-300/60"
               : goldTrim
@@ -162,7 +162,7 @@ function PlayerSide({
     }
     if (roleLabel) {
       return (
-        <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.18em] text-zinc-300 sm:text-[9px] sm:tracking-[0.22em]">
+        <span className="rounded-full border border-zinc-700 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.18em] text-zinc-300 sm:text-[9px] sm:tracking-[0.22em]">
           {roleLabel}
         </span>
       );
