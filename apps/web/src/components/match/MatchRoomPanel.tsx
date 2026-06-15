@@ -2706,7 +2706,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-1.5 p-2.5 sm:gap-3 sm:p-4 md:gap-4 md:p-6">
+        <div className="grid grid-cols-2 gap-1.5 p-2.5 sm:gap-3 sm:p-4 md:gap-4 md:p-6">
           <div className="min-w-0 rounded-xl border border-zinc-800 bg-black/40 p-2 sm:rounded-2xl sm:p-3 md:rounded-3xl md:p-5">
             <p className="truncate text-[8px] font-bold uppercase tracking-[0.1em] text-zinc-500 sm:text-[10px] sm:tracking-[0.18em] md:text-xs">
               Role
@@ -2748,30 +2748,6 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               {roundLabel}
             </p>
           </div>
-
-          <div className="min-w-0 rounded-xl border border-zinc-800 bg-black/40 p-2 sm:rounded-2xl sm:p-3 md:rounded-3xl md:p-5">
-            <p className="truncate text-[8px] font-bold uppercase tracking-[0.1em] text-zinc-500 sm:text-[10px] sm:tracking-[0.18em] md:text-xs">
-              Players
-            </p>
-            <p className="mt-1 truncate text-sm font-black sm:mt-2 sm:text-xl md:mt-3 md:text-2xl">
-              {playerCount}/2
-            </p>
-          </div>
-
-          <div className="min-w-0 rounded-xl border border-zinc-800 bg-black/40 p-2 sm:rounded-2xl sm:p-3 md:rounded-3xl md:p-5">
-            <p className="truncate text-[8px] font-bold uppercase tracking-[0.1em] text-zinc-500 sm:text-[10px] sm:tracking-[0.18em] md:text-xs">
-              Pick
-            </p>
-            <p className="mt-1 truncate text-sm font-black sm:mt-2 sm:text-xl md:mt-3 md:text-2xl">
-              {revealStage === "LOCKED"
-                ? "Locked"
-                : revealStage === "REVEALING"
-                  ? "Revealing"
-                  : revealStage === "REVEALED"
-                    ? "Revealed"
-                    : "Open"}
-            </p>
-          </div>
         </div>
       </section>
 
@@ -2804,7 +2780,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       />
 
       {!matchEnded ? (
-        <section className="relative rounded-2xl border border-zinc-800 bg-zinc-900/95 p-3 shadow-xl sm:rounded-[2rem] sm:p-5 md:p-7">
+        <section
+          data-stage="true"
+          className="relative flex min-h-[46vh] flex-col justify-center rounded-2xl border border-zinc-800 bg-zinc-900/95 p-3 shadow-xl sm:min-h-[50vh] sm:rounded-[2rem] sm:p-5 md:min-h-[55vh] md:p-7"
+        >
           {revealStage === "LOCKED" && !isRevealLocked ? (
             <div
               className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-black/50 backdrop-blur-[2px] sm:rounded-[2rem]"
@@ -2879,6 +2858,15 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                   Opponent locked
                 </span>
               ) : null}
+              <button
+                type="button"
+                disabled
+                title="Match chat — coming soon"
+                aria-label="Match chat — coming soon"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 bg-black/40 text-sm text-zinc-500 opacity-60 sm:h-9 sm:w-9"
+              >
+                💬
+              </button>
             </div>
           </div>
 
