@@ -2493,7 +2493,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         </div>
       ) : null}
       <div
-        className={`relative z-10 main-container mx-auto max-w-6xl space-y-1 px-1 py-1 text-white sm:space-y-5 sm:px-4 sm:py-6 md:space-y-8 md:px-6 md:py-8 ${
+        className={`relative z-10 main-container flex flex-col gap-0.5 px-1 py-1 text-white h-svh max-h-svh ${matchEnded ? "overflow-y-auto" : "overflow-hidden"} sm:px-4 sm:py-3 md:px-6 md:py-4 sm:gap-2 ${
           screenEffect === "GOAL"
             ? "zoom-impact scale-[1.06] transition-transform duration-300 ease-out ring-2 ring-green-400/80 shadow-[0_0_40px_rgba(34,197,94,0.55)]"
             : screenEffect === "SAVE"
@@ -2508,7 +2508,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         }`}
       >
       <section
-        className={`match-container overflow-hidden rounded-[2rem] border bg-gradient-to-br shadow-2xl transition-all duration-300 ease-out ${
+        className={`match-container shrink-0 overflow-hidden rounded-xl sm:rounded-[2rem] border bg-gradient-to-br shadow-2xl transition-all duration-300 ease-out ${
           impactResult === "GOAL"
             ? "border-zinc-800 from-zinc-950 via-zinc-900 to-black goal-flash ring-4 ring-green-400 scale-[1.05] shadow-[0_0_44px_rgba(34,197,94,0.65)]"
             : impactResult === "SAVE"
@@ -2752,7 +2752,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       </section>
 
       {isSuddenDeath && !matchEnded ? (
-        <section className="rounded-2xl border border-yellow-400 bg-yellow-500/10 p-3 shadow-xl sm:rounded-3xl sm:p-6 md:rounded-[2rem]">
+        <section className="shrink-0 rounded-xl border border-yellow-400 bg-yellow-500/10 px-2 py-1.5 shadow-xl sm:rounded-3xl sm:p-6 md:rounded-[2rem]">
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-yellow-300 sm:text-sm">
             Sudden Death
           </p>
@@ -2766,21 +2766,34 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         </section>
       ) : null}
 
-      <MatchScoreboard
-        myName={myName}
-        opponentName={opponentName}
-        myScore={myScore}
-        opponentScore={opponentScore}
-        myRole={myRoleNow}
-        opponentRole={opponentRoleNow}
-        scorePulse={scorePulse}
-        isSuddenDeath={isSuddenDeath}
-        isTournament={isTournamentMatch}
-        isFinal={isFinalTournamentMatch}
-      />
+      <div className="shrink-0">
+        <MatchScoreboard
+          myName={myName}
+          opponentName={opponentName}
+          myScore={myScore}
+          opponentScore={opponentScore}
+          myRole={myRoleNow}
+          opponentRole={opponentRoleNow}
+          scorePulse={scorePulse}
+          isSuddenDeath={isSuddenDeath}
+          isTournament={isTournamentMatch}
+          isFinal={isFinalTournamentMatch}
+        />
+      </div>
+
+      <section
+        className="relative shrink-0 h-[34vh] sm:h-[44vh] md:h-[52vh] w-full overflow-hidden rounded-xl sm:rounded-2xl border border-zinc-800 bg-black/60"
+        aria-hidden
+      >
+        <div className="absolute inset-0 flex items-center justify-center">
+          <p className="text-[9px] font-black uppercase tracking-[0.32em] text-zinc-600">
+            3D View
+          </p>
+        </div>
+      </section>
 
       {!matchEnded ? (
-        <section className="relative rounded-lg border border-zinc-800 bg-zinc-900/95 p-1.5 shadow-xl sm:rounded-[2rem] sm:p-5 md:p-7">
+        <section className="relative shrink-0 rounded-lg border border-zinc-800 bg-zinc-900/95 p-1.5 shadow-xl sm:rounded-[2rem] sm:p-5 md:p-7">
           {revealStage === "LOCKED" && !isRevealLocked ? (
             <div
               className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-black/50 backdrop-blur-[2px] sm:rounded-[2rem]"
@@ -2895,7 +2908,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       ) : null}
 
       <section
-        className={`rounded-lg border p-1.5 shadow-2xl transition-all duration-300 sm:rounded-[2rem] sm:p-5 md:p-7 ${resultStyle(
+        className={`shrink-0 rounded-lg border p-1.5 shadow-2xl transition-all duration-300 sm:rounded-[2rem] sm:p-5 md:p-7 ${resultStyle(
           shownResult?.result
         )} ${
           revealStage === "REVEALED"
@@ -3027,9 +3040,26 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         </div>
       </section>
 
+      {!matchEnded ? (
+        <div className="grid grid-cols-2 gap-1.5 shrink-0" style={{height:"12vh"}}>
+          <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-2 py-1.5 flex flex-col justify-center">
+            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400">
+              Prize Pool
+            </p>
+            <p className="mt-0.5 text-[10px] text-zinc-500">Coming soon</p>
+          </section>
+          <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-2 py-1.5 flex flex-col justify-center">
+            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400">
+              Chat
+            </p>
+            <p className="mt-0.5 text-[10px] text-zinc-500">Coming soon</p>
+          </section>
+        </div>
+      ) : null}
+
       {matchEnded && matchEndOutcome ? (
         <section
-          className={`rounded-2xl border p-3 shadow-2xl sm:rounded-3xl sm:p-7 md:rounded-[2rem] md:p-10 ${
+          className={`shrink-0 rounded-2xl border p-3 shadow-2xl sm:rounded-3xl sm:p-5 md:rounded-[2rem] md:p-10 pb-[max(0.75rem,env(safe-area-inset-bottom,0.75rem))] ${
             matchEndOutcome === "victory"
               ? "border-emerald-400/70 bg-gradient-to-br from-emerald-950/55 via-zinc-950 to-amber-950/35 ring-2 ring-emerald-400/25 shadow-[0_0_48px_rgba(16,185,129,0.22)]"
               : matchEndOutcome === "defeat"
@@ -3080,7 +3110,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           </h2>
 
           <p
-            className={`mt-2 max-w-xl text-sm font-semibold leading-relaxed sm:mt-3 sm:text-base md:text-lg ${
+            className={`mt-1 max-w-xl text-xs font-semibold leading-snug sm:mt-2 sm:text-sm md:text-lg ${
               isFinalTournamentMatch && matchEndOutcome === "victory"
                 ? "text-yellow-100"
                 : matchEndOutcome === "victory"
@@ -3094,7 +3124,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           </p>
 
           <div
-            className={`mt-4 rounded-2xl border px-3 py-4 sm:mt-8 sm:px-6 sm:py-6 md:px-8 md:py-8 ${
+            className={`mt-2 rounded-xl border px-2 py-2 sm:mt-6 sm:rounded-2xl sm:px-6 sm:py-6 md:px-8 md:py-8 ${
               matchEndOutcome === "victory"
                 ? "border-emerald-400/30 bg-black/35"
                 : matchEndOutcome === "defeat"
@@ -3110,18 +3140,18 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                 <p className="truncate text-[10px] font-semibold text-zinc-400 sm:text-sm">
                   {myName}
                 </p>
-                <p className="mt-1 text-4xl font-black tabular-nums text-white sm:text-6xl md:text-8xl">
+                <p className="mt-0.5 text-3xl font-black tabular-nums text-white sm:text-6xl md:text-8xl">
                   {myScore}
                 </p>
               </div>
-              <span className="text-2xl font-black text-zinc-600 sm:text-4xl md:text-5xl">
+              <span className="text-xl font-black text-zinc-600 sm:text-4xl md:text-5xl">
                 —
               </span>
               <div className="min-w-[4.5rem] sm:min-w-[7rem]">
                 <p className="truncate text-[10px] font-semibold text-zinc-400 sm:text-sm">
                   {opponentName}
                 </p>
-                <p className="mt-1 text-4xl font-black tabular-nums text-white sm:text-6xl md:text-8xl">
+                <p className="mt-0.5 text-3xl font-black tabular-nums text-white sm:text-6xl md:text-8xl">
                   {opponentScore}
                 </p>
               </div>
