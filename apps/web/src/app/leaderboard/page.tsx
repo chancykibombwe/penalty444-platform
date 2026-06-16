@@ -80,24 +80,24 @@ const PODIUM: PodiumStyle[] = [
   {
     // ── Silver — #2 (left) ──────────────────────────────────────────────────
     cardBg: [
-      "radial-gradient(ellipse at 50% 0%, rgba(148,163,184,0.18) 0%, transparent 52%)",
-      "linear-gradient(175deg, rgba(72,88,108,0.92) 0%, rgba(22,27,38,1) 36%, rgba(5,6,8,1) 100%)",
+      "radial-gradient(ellipse at 50% 0%, rgba(200,218,240,0.28) 0%, transparent 52%)",
+      "linear-gradient(175deg, rgba(96,118,145,0.96) 0%, rgba(28,34,46,1) 36%, rgba(6,7,10,1) 100%)",
     ].join(", "),
-    cardBorder: "rgba(148,163,184,0.75)",
+    cardBorder: "rgba(190,210,235,0.90)",
     cardShadow:
-      "0 0 0 1px rgba(148,163,184,0.28), 0 20px 55px rgba(148,163,184,0.48), inset 0 1px 0 rgba(210,225,240,0.22), inset 0 -1px 0 rgba(148,163,184,0.14)",
-    hexBg: "linear-gradient(145deg, #dceeff 0%, #4a6488 100%)",
+      "0 0 0 1px rgba(190,210,235,0.38), 0 20px 70px rgba(180,200,230,0.70), inset 0 1px 0 rgba(230,240,255,0.30), inset 0 -1px 0 rgba(180,200,230,0.18)",
+    hexBg: "linear-gradient(145deg, #f0f8ff 0%, #6a8ab0 100%)",
     hexFilter:
-      "drop-shadow(0 0 12px rgba(148,163,184,1)) drop-shadow(0 0 24px rgba(148,163,184,0.78))",
-    avBg: "linear-gradient(175deg, rgba(85,108,130,0.80) 0%, rgba(16,20,28,1) 100%)",
+      "drop-shadow(0 0 14px rgba(200,218,240,1)) drop-shadow(0 0 28px rgba(180,200,230,0.90))",
+    avBg: "linear-gradient(175deg, rgba(110,138,168,0.88) 0%, rgba(18,22,32,1) 100%)",
     avShadow:
-      "0 0 0 3px rgba(148,163,184,0.98), 0 0 0 7px rgba(148,163,184,0.28), 0 0 32px rgba(148,163,184,0.55)",
-    accentColor: "#e2e8f0",
-    accentFilter: "drop-shadow(0 0 8px rgba(148,163,184,0.90))",
+      "0 0 0 3px rgba(200,218,240,1), 0 0 0 7px rgba(180,200,230,0.38), 0 0 38px rgba(180,200,230,0.70)",
+    accentColor: "#f0f8ff",
+    accentFilter: "drop-shadow(0 0 10px rgba(200,218,240,1))",
     pedestalLine:
-      "linear-gradient(90deg, transparent 0%, rgba(148,163,184,1) 50%, transparent 100%)",
-    pedestalGlow: "rgba(148,163,184,0.62)",
-    ambientBg: "rgba(148,163,184,0.12)",
+      "linear-gradient(90deg, transparent 0%, rgba(200,218,240,1) 50%, transparent 100%)",
+    pedestalGlow: "rgba(200,218,240,0.75)",
+    ambientBg: "rgba(180,200,230,0.20)",
   },
   {
     // ── Bronze — #3 (right) ─────────────────────────────────────────────────
@@ -395,10 +395,11 @@ export default async function LeaderboardPage({
               <div className="flex flex-none items-center gap-2">
                 <Link
                   href="/"
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition hover:opacity-80"
                   style={{
-                    background: "rgba(255,255,255,0.07)",
-                    color: "#71717a",
+                    background: "rgba(255,255,255,0.12)",
+                    color: "#d4d4d8",
+                    border: "1px solid rgba(255,255,255,0.12)",
                   }}
                   aria-label="Back"
                 >
@@ -609,18 +610,18 @@ export default async function LeaderboardPage({
                         isFirst ? "order-2" : index === 1 ? "order-1" : "order-3";
 
                       // Sizes scale with position
-                      const badgeW = isFirst ? 58 : 48;
-                      const badgeH = isFirst ? 66 : 55;
-                      const badgeFs = isFirst ? 22 : 17;
-                      const avSize = isFirst ? 76 : 62;
-                      const avFs = isFirst ? 16 : 12;
+                      const badgeW = isFirst ? 50 : 42;
+                      const badgeH = isFirst ? 58 : 48;
+                      const badgeFs = isFirst ? 20 : 16;
+                      const avSize = isFirst ? 62 : 50;
+                      const avFs = isFirst ? 13 : 11;
                       const overlap = Math.round(badgeH * 0.44);
 
                       return (
                         <div
                           key={player.id}
                           className={`${orderClass} flex flex-col items-center`}
-                          style={{ paddingTop: isFirst ? 0 : "52px" }}
+                          style={{ paddingTop: isFirst ? 0 : "34px" }}
                         >
                           {/* Hex rank badge — floats above card */}
                           <div
@@ -661,8 +662,8 @@ export default async function LeaderboardPage({
                             <div
                               className="flex flex-col items-center px-2 sm:px-3"
                               style={{
-                                paddingTop: `${overlap + 12}px`,
-                                paddingBottom: "12px",
+                                paddingTop: `${overlap + 10}px`,
+                                paddingBottom: "10px",
                               }}
                             >
                               {/* Avatar shell with medal ring */}
@@ -762,7 +763,7 @@ export default async function LeaderboardPage({
                                     className="font-black tabular-nums"
                                     style={{
                                       color: ps.accentColor,
-                                      fontSize: isFirst ? "24px" : "20px",
+                                      fontSize: isFirst ? "20px" : "17px",
                                       lineHeight: 1,
                                       filter: ps.accentFilter,
                                     }}
