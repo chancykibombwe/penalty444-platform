@@ -6,11 +6,14 @@ import {
   UNRANKED_MATCHES_THRESHOLD,
   type RankTier,
 } from "../../lib/player/ranks";
+import YourRankBar from "./YourRankBar";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
 );
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 type PlayerStatsRow = {
   user_id: string;
@@ -35,6 +38,8 @@ type LeaderboardPlayer = {
   winRate: number;
 };
 
+// ─── Pure helpers (no side-effects, no data mutation) ────────────────────────
+
 function resolveTierForRow(row: LeaderboardPlayer): RankTier {
   return resolvePlayerTier({
     rating: row.rankPoints,
@@ -42,44 +47,34 @@ function resolveTierForRow(row: LeaderboardPlayer): RankTier {
   });
 }
 
-function getPodiumClass(index: number) {
-  switch (index) {
-    case 0:
-      return "border-yellow-300/70 bg-[linear-gradient(180deg,_rgba(113,63,18,0.55),_rgba(9,9,11,0.96))] shadow-[inset_0_1px_0_rgba(255,255,255,0.10),0_36px_90px_rgba(234,179,8,0.22)] ring-1 ring-yellow-200/15";
-    case 1:
-      return "border-slate-300/60 bg-[linear-gradient(180deg,_rgba(51,65,85,0.48),_rgba(9,9,11,0.95))] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_28px_70px_rgba(148,163,184,0.12)] ring-1 ring-white/10";
-    case 2:
-      return "border-amber-600/70 bg-[linear-gradient(180deg,_rgba(120,53,15,0.44),_rgba(9,9,11,0.95))] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_28px_70px_rgba(180,83,9,0.16)] ring-1 ring-amber-200/10";
-    default:
-      return "border-zinc-800 bg-zinc-950";
-  }
-}
-
 function getInitials(username: string) {
-  const initials = username
-    .trim()
-    .split(/\s+/)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
-  return initials || "?";
+  return (
+    username
+      .trim()
+      .split(/\s+/)
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "?"
+  );
 }
 
 function buildLeaderboard(rows: PlayerStatsRow[]): LeaderboardPlayer[] {
   return rows
-    .map((row): LeaderboardPlayer => ({
-      id: row.user_id,
-      username: row.username,
-      wins: row.wins,
-      losses: row.losses,
-      draws: row.draws,
-      matches: row.matches,
-      goalsFor: row.goals_for,
-      rankPoints: row.rank_points,
-      winRate: row.matches > 0 ? Math.round((row.wins / row.matches) * 100) : 0,
-    }))
+    .map(
+      (row): LeaderboardPlayer => ({
+        id: row.user_id,
+        username: row.username,
+        wins: row.wins,
+        losses: row.losses,
+        draws: row.draws,
+        matches: row.matches,
+        goalsFor: row.goals_for,
+        rankPoints: row.rank_points,
+        winRate:
+          row.matches > 0 ? Math.round((row.wins / row.matches) * 100) : 0,
+      })
+    )
     .sort((a, b) => {
       if (b.rankPoints !== a.rankPoints) return b.rankPoints - a.rankPoints;
       if (b.wins !== a.wins) return b.wins - a.wins;
@@ -101,23 +96,12 @@ function parseLimit(value: string | undefined) {
 }
 
 function buildLeaderboardHref(
-  options: {
-    search?: string;
-    page?: number;
-    limit?: number;
-  } = {}
+  options: { search?: string; page?: number; limit?: number } = {}
 ) {
   const page = options.page ?? 1;
   const limit = options.limit ?? 100;
-  const params = new URLSearchParams({
-    page: String(page),
-    limit: String(limit),
-  });
-
-  if (options.search) {
-    params.set("search", options.search);
-  }
-
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (options.search) params.set("search", options.search);
   return `/leaderboard?${params.toString()}`;
 }
 
@@ -126,28 +110,56 @@ function hasValidUserId(userId: string) {
 }
 
 function buildChallengeHref(userId: string, username: string) {
-  const params = new URLSearchParams({
-    challengeUserId: userId,
-    challengeUsername: username,
-  });
-
-  return `/lobby?${params.toString()}`;
+  return `/lobby?${new URLSearchParams({ challengeUserId: userId, challengeUsername: username }).toString()}`;
 }
 
 function buildPlayerProfileHref(userId: string, username?: string | null) {
   const trimmed = (username ?? "").trim();
-  if (trimmed.length > 0) {
-    return `/profile/${encodeURIComponent(trimmed)}`;
-  }
-  return `/players/${userId}`;
+  return trimmed.length > 0
+    ? `/profile/${encodeURIComponent(trimmed)}`
+    : `/players/${userId}`;
 }
 
-function rankNumberColor(rank: number) {
+function rankColor(rank: number) {
   if (rank === 1) return "text-yellow-300";
   if (rank === 2) return "text-zinc-300";
   if (rank === 3) return "text-amber-400";
   return "text-zinc-500";
 }
+
+// ─── Podium card styling per index (0=gold, 1=silver, 2=bronze) ──────────────
+
+const PODIUM = [
+  {
+    accent: "text-yellow-300",
+    border: "border-yellow-400/40",
+    bg: "bg-gradient-to-b from-yellow-900/20 to-zinc-950/95",
+    glow: "shadow-[0_0_28px_rgba(234,179,8,0.15),inset_0_1px_0_rgba(255,255,255,0.06)]",
+    avatarBg: "from-yellow-600/50 to-amber-900/70",
+    avatarBorder: "border-yellow-400/30",
+    label: "#1",
+  },
+  {
+    accent: "text-zinc-200",
+    border: "border-zinc-400/30",
+    bg: "bg-gradient-to-b from-zinc-700/20 to-zinc-950/95",
+    glow: "shadow-[0_0_18px_rgba(148,163,184,0.08),inset_0_1px_0_rgba(255,255,255,0.04)]",
+    avatarBg: "from-zinc-500/50 to-zinc-800/70",
+    avatarBorder: "border-zinc-400/25",
+    label: "#2",
+  },
+  {
+    accent: "text-amber-400",
+    border: "border-amber-600/40",
+    bg: "bg-gradient-to-b from-amber-900/18 to-zinc-950/95",
+    glow: "shadow-[0_0_18px_rgba(217,119,6,0.12),inset_0_1px_0_rgba(255,255,255,0.04)]",
+    avatarBg: "from-amber-600/50 to-amber-900/70",
+    avatarBorder: "border-amber-500/30",
+    label: "#3",
+  },
+] as const;
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function LeaderboardPage({
   searchParams,
@@ -169,7 +181,6 @@ export default async function LeaderboardPage({
 
   const statsSelect =
     "user_id, username, matches, wins, losses, draws, goals_for, rank_points";
-
   const RANKED_MATCH_FLOOR = UNRANKED_MATCHES_THRESHOLD;
 
   let statsQuery = supabase
@@ -198,11 +209,8 @@ export default async function LeaderboardPage({
   ]);
 
   const placementPlayerCount = placementCountResult.count ?? 0;
-
   const error = statsResult.error;
-  if (error) {
-    console.error("Failed to load leaderboard stats:", error.message);
-  }
+  if (error) console.error("Failed to load leaderboard stats:", error.message);
 
   const leaderboard = buildLeaderboard(
     (statsResult.data ?? []) as PlayerStatsRow[]
@@ -210,378 +218,321 @@ export default async function LeaderboardPage({
   const topPlayers = leaderboard.slice(0, 3);
 
   const clearSearchHref = buildLeaderboardHref({ page, limit });
-  const previousPageHref = buildLeaderboardHref({
-    search,
-    page: page - 1,
-    limit,
-  });
-  const nextPageHref = buildLeaderboardHref({
-    search,
-    page: page + 1,
-    limit,
-  });
+  const previousPageHref = buildLeaderboardHref({ search, page: page - 1, limit });
+  const nextPageHref = buildLeaderboardHref({ search, page: page + 1, limit });
   const showNextPage = leaderboard.length === limit;
 
-  // Show podium only on page 1 with no active search
-  const showPodium = !error && topPlayers.length > 0 && page === 1 && !hasActiveSearch;
-  // When podium is shown, the list starts from rank 4
+  // Podium only on page 1, no active search, no error, at least 1 top player
+  const showPodium =
+    !error && topPlayers.length > 0 && page === 1 && !hasActiveSearch;
+  // When podium is visible the list starts at rank 4
   const listPlayers = showPodium ? leaderboard.slice(topPlayers.length) : leaderboard;
   const listRankOffset = showPodium ? topPlayers.length : from;
 
   return (
-    <section
-      className="space-y-3 rounded-[1.75rem] border border-zinc-800/80 bg-[radial-gradient(circle_at_top,_rgba(234,179,8,0.08),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(34,211,238,0.06),_transparent_28%),linear-gradient(180deg,_#050505,_#09090b_42%,_#020202)] p-3 shadow-[0_40px_120px_rgba(0,0,0,0.65)] sm:space-y-4 sm:p-5 md:rounded-[2rem] md:p-6 lg:p-8"
-      aria-label="444 ARENA Leaderboard"
-    >
-      {/* ── Header ── */}
-      <header className="flex flex-col gap-2 sm:gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.32em] text-yellow-300/70 sm:text-xs">
-            Competitive Arena
-          </p>
-          <h1 className="mt-1 text-xl font-black tracking-tight text-white sm:text-3xl md:text-4xl">
-            444 ARENA Rankings
-          </h1>
-          <p className="mt-1 text-xs text-zinc-500 sm:mt-2 sm:text-sm">
-            Global rankings from verified Penalty444 match results.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-          <span className="rounded-lg border border-yellow-600/35 bg-yellow-900/20 px-2.5 py-1 text-xs font-bold text-yellow-200/90 sm:rounded-xl sm:px-4 sm:py-1.5">
-            Global · All Time
-          </span>
-          <span className="rounded-lg border border-zinc-700/50 bg-zinc-800/30 px-2.5 py-1 text-xs font-bold text-zinc-400 sm:rounded-xl sm:px-4 sm:py-1.5">
-            Season: Coming Soon
-          </span>
-          {placementPlayerCount > 0 ? (
-            <span
-              className="rounded-lg border border-cyan-500/40 bg-cyan-900/20 px-2.5 py-1 text-xs font-bold text-cyan-200 shadow-[0_0_14px_rgba(34,211,238,0.14)] sm:rounded-xl sm:px-4 sm:py-1.5"
-              title="Players still completing their placement matches"
-            >
-              {placementPlayerCount} in placement
-            </span>
-          ) : null}
-        </div>
-      </header>
-
-      {/* ── Error state ── */}
-      {error ? (
-        <div className="rounded-2xl border border-red-800/60 bg-red-950/40 p-4 text-sm text-red-200 sm:p-5">
-          Could not load leaderboard. Please refresh.
-        </div>
-      ) : null}
-
-      {/* ── Podium — top 3 — page 1 only, no search ── */}
-      {showPodium ? (
-        <div className="grid grid-cols-3 items-end gap-2 sm:gap-3 md:gap-5">
-          {topPlayers.map((player, index) => {
-            const rank = index + 1;
-            const rankColor = rankNumberColor(rank);
-            // Visual podium order: silver(2) left, gold(1) center, bronze(3) right
-            const orderClass =
-              index === 0 ? "order-2" : index === 1 ? "order-1" : "order-3";
-            const liftClass =
-              index === 0
-                ? "-mt-3 sm:-mt-5 md:-mt-7"
-                : "mt-3 sm:mt-5 md:mt-7";
-            return (
-              <div
-                key={player.id}
-                className={`${orderClass} ${liftClass} flex flex-col rounded-2xl border p-2.5 sm:p-4 md:rounded-[1.75rem] md:p-6 ${getPodiumClass(index)}`}
-              >
-                <div className="flex items-start justify-between gap-1">
-                  <span
-                    className={`text-base font-black leading-none sm:text-xl md:text-3xl ${rankColor}`}
-                  >
-                    #{rank}
-                  </span>
-                  <RankBadge
-                    tier={resolveTierForRow(player)}
-                    rating={player.rankPoints}
-                    matchesPlayed={player.matches}
-                    showRating={false}
-                    variant="chip"
-                  />
-                </div>
-
-                <div className="mt-2.5 flex flex-col items-center text-center sm:mt-4">
-                  {hasValidUserId(player.id) ? (
-                    <Link
-                      href={buildPlayerProfileHref(player.id, player.username)}
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/70 text-xs font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] transition hover:border-white/30 sm:h-14 sm:w-14 sm:text-base md:h-20 md:w-20 md:text-xl"
-                    >
-                      {getInitials(player.username)}
-                    </Link>
-                  ) : (
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/70 text-xs font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] sm:h-14 sm:w-14 sm:text-base md:h-20 md:w-20 md:text-xl">
-                      {getInitials(player.username)}
-                    </div>
-                  )}
-
-                  {hasValidUserId(player.id) ? (
-                    <Link
-                      href={buildPlayerProfileHref(player.id, player.username)}
-                      className="mt-1.5 max-w-full truncate text-xs font-black text-white transition hover:text-yellow-100 sm:mt-2 sm:text-sm md:text-xl"
-                    >
-                      {player.username}
-                    </Link>
-                  ) : (
-                    <p className="mt-1.5 max-w-full truncate text-xs font-black text-white sm:mt-2 sm:text-sm md:text-xl">
-                      {player.username}
-                    </p>
-                  )}
-
-                  <p className="mt-0.5 text-xl font-black tabular-nums text-white sm:mt-1 sm:text-3xl md:text-5xl">
-                    {player.rankPoints}
-                  </p>
-                  <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-500 sm:text-[10px]">
-                    pts
-                  </p>
-                </div>
-
-                <div className="mt-2 rounded-xl border border-white/10 bg-black/30 px-2 py-1.5 text-center text-[9px] font-semibold text-zinc-400 sm:mt-3 sm:text-xs">
-                  {player.wins}W · {player.losses}L · {player.draws}D
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
-
-      {/* ── Search ── */}
-      <form
-        action="/leaderboard"
-        method="get"
-        className="flex flex-col gap-2 rounded-xl border border-zinc-800/70 bg-black/40 p-3 sm:flex-row sm:items-center sm:gap-3 sm:rounded-2xl sm:p-4"
+    <>
+      <section
+        className="relative space-y-3 rounded-2xl border border-zinc-800/50 bg-[linear-gradient(160deg,#060814_0%,#09090b_40%,#050508_100%)] p-3 pb-6 shadow-[0_40px_120px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.03)] sm:space-y-4 sm:rounded-[1.75rem] sm:p-4 sm:pb-8 md:rounded-[2rem] md:p-6 md:pb-10 lg:p-8"
+        aria-label="444 ARENA Leaderboard"
       >
-        <input type="hidden" name="page" value="1" />
-        <input type="hidden" name="limit" value={limit} />
-        <input
-          type="search"
-          name="search"
-          defaultValue={search}
-          placeholder="Search player username…"
-          className="w-full rounded-lg border border-zinc-700/80 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none sm:rounded-xl sm:px-4 sm:py-2.5"
-        />
-        <div className="flex items-center gap-2">
-          <button
-            type="submit"
-            className="rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold text-white transition hover:border-zinc-500 sm:rounded-xl sm:px-4 sm:py-2.5"
-          >
-            Search
-          </button>
-          {hasActiveSearch ? (
-            <Link
-              href={clearSearchHref}
-              className="text-sm font-semibold text-yellow-200/80 hover:text-yellow-100"
+        {/* ── Header ─────────────────────────────────────────────────────── */}
+        <header className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-[0.38em] text-cyan-400/60 sm:text-[10px]">
+              Leaderboard
+            </p>
+            <h1 className="mt-0.5 text-2xl font-black tracking-tight text-white sm:text-3xl md:text-4xl">
+              444 ARENA Rankings
+            </h1>
+            <p className="mt-0.5 text-[11px] text-zinc-500 sm:text-xs">
+              Global rankings from verified Penalty444 match results.
+            </p>
+          </div>
+          {placementPlayerCount > 0 ? (
+            <div
+              className="shrink-0 rounded-lg border border-cyan-500/30 bg-cyan-900/15 px-2.5 py-1.5 text-right"
+              title="Players currently completing placement matches"
             >
-              Clear
-            </Link>
+              <p className="text-[9px] font-black uppercase tracking-[0.22em] text-cyan-400/70">
+                In placement
+              </p>
+              <p className="text-sm font-black tabular-nums text-white">
+                {placementPlayerCount}
+              </p>
+            </div>
           ) : null}
-        </div>
-      </form>
+        </header>
 
-      {/* ── Mobile card list — hidden on md+ ── */}
-      {(!showPodium || listPlayers.length > 0) ? (
-        <div className="space-y-1.5 md:hidden">
-          {listPlayers.length === 0 ? (
-            hasActiveSearch ? (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-5 text-center text-sm text-zinc-400">
-                {`No players found for "${search}".`}
+        {/* ── Filter pills ───────────────────────────────────────────────── */}
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5">
+          {(
+            [
+              { icon: "🌐", label: "Global" },
+              { icon: "⚽", label: "Penalty444" },
+              { icon: "🗓", label: "All Time" },
+            ] as const
+          ).map((pill) => (
+            <div
+              key={pill.label}
+              className="flex items-center justify-between gap-1.5 rounded-xl border border-zinc-700/55 bg-zinc-900/60 px-2.5 py-2 sm:px-3.5 sm:py-2.5"
+            >
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="shrink-0 text-sm">{pill.icon}</span>
+                <span className="min-w-0 truncate text-[10px] font-black uppercase tracking-[0.14em] text-zinc-200 sm:text-[11px]">
+                  {pill.label}
+                </span>
               </div>
-            ) : (
-              <div className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-6 text-center">
-                <p className="text-sm text-zinc-400">
-                  No ranked players yet. Complete 10 placement matches to appear.
-                </p>
-                <Link
-                  href="/lobby"
-                  className="inline-flex rounded-xl border border-zinc-700 px-4 py-2.5 text-sm font-semibold text-white hover:border-zinc-500"
-                >
-                  Start Playing
-                </Link>
-              </div>
-            )
-          ) : (
-            listPlayers.map((player, index) => {
-              const rank = listRankOffset + index + 1;
+              <svg
+                className="h-3 w-3 shrink-0 text-zinc-600"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                aria-hidden="true"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Error ──────────────────────────────────────────────────────── */}
+        {error ? (
+          <div className="rounded-2xl border border-red-800/50 bg-red-950/30 px-4 py-3.5 text-sm text-red-300">
+            Could not load leaderboard. Please refresh.
+          </div>
+        ) : null}
+
+        {/* ── Podium ─────────────────────────────────────────────────────── */}
+        {showPodium ? (
+          <div className="grid grid-cols-3 items-end gap-2 sm:gap-3 md:gap-4">
+            {topPlayers.map((player, index) => {
+              const p = PODIUM[index];
+              const rank = index + 1;
+              // visual order: #1 center, #2 left, #3 right
+              const orderClass =
+                index === 0
+                  ? "order-2"
+                  : index === 1
+                    ? "order-1"
+                    : "order-3";
+              const liftClass =
+                index === 0
+                  ? "-mt-5 sm:-mt-8"
+                  : "mt-5 sm:mt-8";
+
               return (
                 <div
                   key={player.id}
-                  className="flex items-center gap-2.5 rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3"
+                  className={`${orderClass} ${liftClass} flex flex-col rounded-2xl border p-2.5 sm:p-4 md:rounded-[1.5rem] ${p.border} ${p.bg} ${p.glow}`}
                 >
-                  <div
-                    className={`w-6 shrink-0 text-center text-sm font-black sm:w-8 sm:text-base ${rankNumberColor(rank)}`}
-                  >
-                    {rank}
+                  {/* rank badge */}
+                  <div className="flex justify-center">
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[11px] font-black sm:text-xs ${p.border} ${p.accent}`}
+                    >
+                      {p.label}
+                    </span>
                   </div>
 
-                  {hasValidUserId(player.id) ? (
-                    <Link
-                      href={buildPlayerProfileHref(player.id, player.username)}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-zinc-700/80 bg-black/60 text-xs font-black text-white transition hover:border-zinc-500 sm:h-10 sm:w-10"
-                    >
-                      {getInitials(player.username)}
-                    </Link>
-                  ) : (
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-zinc-700/80 bg-black/60 text-xs font-black text-white sm:h-10 sm:w-10">
-                      {getInitials(player.username)}
-                    </div>
-                  )}
-
-                  <div className="min-w-0 flex-1">
+                  {/* avatar */}
+                  <div className="mt-2 flex justify-center sm:mt-3">
                     {hasValidUserId(player.id) ? (
                       <Link
                         href={buildPlayerProfileHref(player.id, player.username)}
-                        className="block truncate text-sm font-bold text-white transition hover:text-yellow-100"
+                        className={`flex h-10 w-10 items-center justify-center rounded-full border bg-gradient-to-b ${p.avatarBg} ${p.avatarBorder} text-xs font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15)] transition hover:brightness-110 sm:h-14 sm:w-14 sm:text-sm md:h-16 md:w-16`}
+                      >
+                        {getInitials(player.username)}
+                      </Link>
+                    ) : (
+                      <div
+                        className={`flex h-10 w-10 items-center justify-center rounded-full border bg-gradient-to-b ${p.avatarBg} ${p.avatarBorder} text-xs font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15)] sm:h-14 sm:w-14 sm:text-sm md:h-16 md:w-16`}
+                      >
+                        {getInitials(player.username)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* name */}
+                  <div className="mt-1.5 text-center sm:mt-2">
+                    {hasValidUserId(player.id) ? (
+                      <Link
+                        href={buildPlayerProfileHref(player.id, player.username)}
+                        className="block truncate text-[11px] font-black text-white transition hover:text-yellow-100 sm:text-sm md:text-base"
                       >
                         {player.username}
                       </Link>
                     ) : (
-                      <span className="block truncate text-sm font-bold text-white">
+                      <p className="truncate text-[11px] font-black text-white sm:text-sm md:text-base">
                         {player.username}
-                      </span>
+                      </p>
                     )}
+                  </div>
+
+                  {/* tier */}
+                  <div className="mt-1 flex justify-center">
                     <RankBadge
                       tier={resolveTierForRow(player)}
                       rating={player.rankPoints}
                       matchesPlayed={player.matches}
                       showRating={false}
                       variant="chip"
-                      className="mt-0.5"
                     />
                   </div>
 
-                  <div className="shrink-0 text-right">
-                    <p className="text-sm font-black tabular-nums text-yellow-200 sm:text-base">
+                  {/* points block */}
+                  <div className="mt-2 rounded-xl border border-white/8 bg-black/30 px-2 py-1.5 text-center sm:mt-2.5">
+                    <p
+                      className={`text-xl font-black tabular-nums leading-none sm:text-2xl md:text-3xl ${p.accent}`}
+                    >
                       {player.rankPoints}
                     </p>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                      {player.wins}W {player.losses}L
+                    <p className="mt-0.5 text-[8px] font-bold uppercase tracking-[0.18em] text-zinc-600 sm:text-[9px]">
+                      pts
                     </p>
                   </div>
 
-                  {hasActiveSearch && hasValidUserId(player.id) ? (
-                    <Link
-                      href={buildChallengeHref(player.id, player.username)}
-                      className="shrink-0 rounded-lg border border-cyan-400/40 bg-cyan-950/20 px-2 py-1 text-xs font-semibold text-cyan-100 hover:border-cyan-300/60 sm:px-2.5"
-                    >
-                      Challenge
-                    </Link>
-                  ) : null}
+                  {/* win rate */}
+                  <p className="mt-1.5 text-center text-[9px] text-zinc-500 sm:text-[10px]">
+                    {player.winRate}% WR · {player.wins}W {player.losses}L
+                  </p>
                 </div>
               );
-            })
-          )}
-        </div>
-      ) : null}
+            })}
+          </div>
+        ) : null}
 
-      {/* ── Desktop table — hidden below md ── */}
-      {(!showPodium || listPlayers.length > 0) ? (
-        <div className="hidden overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950/60 shadow-[0_28px_80px_rgba(0,0,0,0.45)] md:block">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-zinc-900/60">
-                <tr className="border-b border-zinc-800 text-xs uppercase tracking-wider text-zinc-500">
-                  <th className="px-5 py-3.5 font-black">Rank</th>
-                  <th className="px-5 py-3.5 font-black">Player</th>
-                  <th className="px-5 py-3.5 font-black">Tier</th>
-                  <th className="px-5 py-3.5 font-black tabular-nums">Points</th>
-                  <th className="px-5 py-3.5 font-black">W</th>
-                  <th className="px-5 py-3.5 font-black">L</th>
-                  <th className="px-5 py-3.5 font-black">D</th>
-                  <th className="px-5 py-3.5 font-black">Played</th>
-                  <th className="px-5 py-3.5 font-black">Win %</th>
-                </tr>
-              </thead>
+        {/* ── Search ─────────────────────────────────────────────────────── */}
+        <form
+          action="/leaderboard"
+          method="get"
+          className="flex gap-2 rounded-xl border border-zinc-800/60 bg-black/35 p-2.5 sm:gap-3 sm:rounded-2xl sm:p-3"
+        >
+          <input type="hidden" name="page" value="1" />
+          <input type="hidden" name="limit" value={limit} />
+          <input
+            type="search"
+            name="search"
+            defaultValue={search}
+            placeholder="Search player username…"
+            className="min-w-0 flex-1 rounded-lg border border-zinc-700/70 bg-black/50 px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none sm:rounded-xl sm:px-4"
+          />
+          <button
+            type="submit"
+            className="shrink-0 rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold text-white transition hover:border-zinc-500 sm:rounded-xl sm:px-4"
+          >
+            Search
+          </button>
+          {hasActiveSearch ? (
+            <Link
+              href={clearSearchHref}
+              className="flex shrink-0 items-center text-sm font-semibold text-yellow-200/80 hover:text-yellow-100"
+            >
+              Clear
+            </Link>
+          ) : null}
+        </form>
 
-              <tbody>
-                {listPlayers.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={9}
-                      className="px-5 py-10 text-center text-zinc-400"
+        {/* ── Ranked list ────────────────────────────────────────────────── */}
+        {(!showPodium || listPlayers.length > 0) ? (
+          <div className="overflow-hidden rounded-2xl border border-zinc-800/60 bg-zinc-950/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
+            {/* table header — sm+ only */}
+            {listPlayers.length > 0 ? (
+              <div className="hidden border-b border-zinc-800/60 bg-zinc-900/40 sm:flex sm:items-center sm:gap-3 sm:px-4 sm:py-2.5">
+                <div className="w-9 shrink-0 text-[9px] font-black uppercase tracking-[0.18em] text-zinc-600">
+                  #
+                </div>
+                <div className="flex-1 text-[9px] font-black uppercase tracking-[0.18em] text-zinc-600">
+                  Player
+                </div>
+                <div className="hidden w-24 text-[9px] font-black uppercase tracking-[0.18em] text-zinc-600 md:block">
+                  Tier
+                </div>
+                <div className="w-16 shrink-0 text-right text-[9px] font-black uppercase tracking-[0.18em] text-zinc-600 sm:w-20">
+                  Points
+                </div>
+                <div className="hidden w-14 shrink-0 text-right text-[9px] font-black uppercase tracking-[0.18em] text-zinc-600 sm:block">
+                  Win %
+                </div>
+                <div className="hidden w-8 shrink-0 text-center text-[9px] font-black text-zinc-600 md:block">
+                  △
+                </div>
+              </div>
+            ) : null}
+
+            {/* empty state */}
+            {listPlayers.length === 0 ? (
+              <div className="px-4 py-10 text-center">
+                {hasActiveSearch ? (
+                  <p className="text-sm text-zinc-400">
+                    {`No players found for "${search}".`}
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-zinc-400">
+                      No ranked players yet. Complete{" "}
+                      {UNRANKED_MATCHES_THRESHOLD} placement matches to appear.
+                    </p>
+                    <Link
+                      href="/lobby"
+                      className="inline-flex rounded-xl border border-zinc-700 px-4 py-2.5 text-sm font-semibold text-white hover:border-zinc-500"
                     >
-                      {hasActiveSearch ? (
-                        <p className="text-sm">{`No players found for "${search}".`}</p>
+                      Start Playing
+                    </Link>
+                  </div>
+                )}
+              </div>
+            ) : (
+              listPlayers.map((player, index) => {
+                const rank = listRankOffset + index + 1;
+                return (
+                  <div
+                    key={player.id}
+                    className="group flex items-center gap-3 border-b border-zinc-800/40 px-3 py-2.5 last:border-b-0 transition-colors hover:bg-zinc-800/20 sm:px-4"
+                  >
+                    {/* rank number */}
+                    <div
+                      className={`w-9 shrink-0 text-sm font-black tabular-nums ${rankColor(rank)}`}
+                    >
+                      {rank}
+                    </div>
+
+                    {/* player: avatar + name + tier (mobile) */}
+                    <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                      {hasValidUserId(player.id) ? (
+                        <Link
+                          href={buildPlayerProfileHref(
+                            player.id,
+                            player.username
+                          )}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-zinc-700/60 bg-gradient-to-b from-zinc-700/40 to-zinc-900 text-[10px] font-black text-white transition hover:border-zinc-500"
+                        >
+                          {getInitials(player.username)}
+                        </Link>
                       ) : (
-                        <div className="space-y-4">
-                          <p className="text-sm">
-                            No ranked players yet. Complete 10 placement matches
-                            to appear.
-                          </p>
-                          <Link
-                            href="/lobby"
-                            className="inline-flex rounded-xl border border-zinc-700 px-4 py-2.5 text-sm font-semibold text-white hover:border-zinc-500"
-                          >
-                            Start Playing
-                          </Link>
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-zinc-700/60 bg-gradient-to-b from-zinc-700/40 to-zinc-900 text-[10px] font-black text-white">
+                          {getInitials(player.username)}
                         </div>
                       )}
-                    </td>
-                  </tr>
-                ) : (
-                  listPlayers.map((player, index) => {
-                    const rank = listRankOffset + index + 1;
-                    return (
-                      <tr
-                        key={player.id}
-                        className="border-t border-zinc-800/60 transition hover:bg-zinc-800/30"
-                      >
-                        <td
-                          className={`px-5 py-4 text-base font-black tabular-nums ${rankNumberColor(rank)}`}
-                        >
-                          #{rank}
-                        </td>
 
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-3">
-                            {hasValidUserId(player.id) ? (
-                              <Link
-                                href={buildPlayerProfileHref(
-                                  player.id,
-                                  player.username
-                                )}
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700/80 bg-black/60 text-xs font-black text-white shadow-inner transition hover:border-zinc-500 hover:text-yellow-100"
-                              >
-                                {getInitials(player.username)}
-                              </Link>
-                            ) : (
-                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700/80 bg-black/60 text-xs font-black text-white shadow-inner">
-                                {getInitials(player.username)}
-                              </div>
+                      <div className="min-w-0">
+                        {hasValidUserId(player.id) ? (
+                          <Link
+                            href={buildPlayerProfileHref(
+                              player.id,
+                              player.username
                             )}
-                            {hasValidUserId(player.id) ? (
-                              <Link
-                                href={buildPlayerProfileHref(
-                                  player.id,
-                                  player.username
-                                )}
-                                className="font-bold text-white transition hover:text-yellow-100"
-                              >
-                                {player.username}
-                              </Link>
-                            ) : (
-                              <span className="font-bold text-white">
-                                {player.username}
-                              </span>
-                            )}
-                            {hasActiveSearch && hasValidUserId(player.id) ? (
-                              <Link
-                                href={buildChallengeHref(
-                                  player.id,
-                                  player.username
-                                )}
-                                className="shrink-0 rounded-lg border border-cyan-400/40 bg-cyan-950/20 px-2.5 py-1 text-xs font-semibold text-cyan-100 shadow-[0_0_16px_rgba(34,211,238,0.12)] hover:border-cyan-300/60 hover:text-cyan-50"
-                              >
-                                Challenge
-                              </Link>
-                            ) : null}
-                          </div>
-                        </td>
-
-                        <td className="px-5 py-4">
+                            className="block truncate text-sm font-bold text-white transition hover:text-yellow-100"
+                          >
+                            {player.username}
+                          </Link>
+                        ) : (
+                          <span className="block truncate text-sm font-bold text-white">
+                            {player.username}
+                          </span>
+                        )}
+                        {/* tier under name — hidden on md+ (replaced by separate column) */}
+                        <div className="mt-0.5 md:hidden">
                           <RankBadge
                             tier={resolveTierForRow(player)}
                             rating={player.rankPoints}
@@ -589,52 +540,85 @@ export default async function LeaderboardPage({
                             showRating={false}
                             variant="chip"
                           />
-                        </td>
-                        <td className="px-5 py-4 text-lg font-black tabular-nums text-yellow-100">
-                          {player.rankPoints}
-                        </td>
-                        <td className="px-5 py-4 text-white">{player.wins}</td>
-                        <td className="px-5 py-4 text-white">
-                          {player.losses}
-                        </td>
-                        <td className="px-5 py-4 text-white">{player.draws}</td>
-                        <td className="px-5 py-4 text-zinc-400">
-                          {player.matches}
-                        </td>
-                        <td className="px-5 py-4 font-bold text-white">
-                          {player.winRate}%
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : null}
+                        </div>
+                      </div>
+                    </div>
 
-      {/* ── Pagination ── */}
-      <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800/70 bg-black/40 px-4 py-3 sm:rounded-2xl">
-        {page > 1 ? (
-          <Link
-            href={previousPageHref}
-            className="rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold text-white transition hover:border-zinc-500 sm:rounded-xl sm:px-4 sm:py-2.5"
-          >
-            ← Previous
-          </Link>
-        ) : (
-          <span />
-        )}
-        {showNextPage ? (
-          <Link
-            href={nextPageHref}
-            className="rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold text-white transition hover:border-zinc-500 sm:rounded-xl sm:px-4 sm:py-2.5"
-          >
-            Next →
-          </Link>
+                    {/* tier column — md+ only */}
+                    <div className="hidden w-24 shrink-0 md:block">
+                      <RankBadge
+                        tier={resolveTierForRow(player)}
+                        rating={player.rankPoints}
+                        matchesPlayed={player.matches}
+                        showRating={false}
+                        variant="chip"
+                      />
+                    </div>
+
+                    {/* points */}
+                    <div className="w-16 shrink-0 text-right sm:w-20">
+                      <p className="text-sm font-black tabular-nums text-yellow-200">
+                        {player.rankPoints}
+                      </p>
+                      {/* win rate under points — mobile only */}
+                      <p className="text-[10px] tabular-nums text-zinc-600 sm:hidden">
+                        {player.winRate}%
+                      </p>
+                    </div>
+
+                    {/* win rate column — sm+ only */}
+                    <div className="hidden w-14 shrink-0 text-right sm:block">
+                      <p className="text-sm font-bold text-zinc-300">
+                        {player.winRate}%
+                      </p>
+                    </div>
+
+                    {/* movement — md+ only, no data = em dash */}
+                    <div className="hidden w-8 shrink-0 text-center text-zinc-700 md:block">
+                      —
+                    </div>
+
+                    {/* challenge — active search only */}
+                    {hasActiveSearch && hasValidUserId(player.id) ? (
+                      <Link
+                        href={buildChallengeHref(player.id, player.username)}
+                        className="shrink-0 rounded-lg border border-cyan-500/30 bg-cyan-950/20 px-2 py-1 text-xs font-semibold text-cyan-200 transition hover:border-cyan-400/50 sm:px-2.5"
+                      >
+                        Challenge
+                      </Link>
+                    ) : null}
+                  </div>
+                );
+              })
+            )}
+          </div>
         ) : null}
-      </div>
-    </section>
+
+        {/* ── Pagination ─────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800/60 bg-black/35 px-4 py-3">
+          {page > 1 ? (
+            <Link
+              href={previousPageHref}
+              className="rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold text-white transition hover:border-zinc-500 sm:rounded-xl sm:px-4"
+            >
+              ← Previous
+            </Link>
+          ) : (
+            <span />
+          )}
+          {showNextPage ? (
+            <Link
+              href={nextPageHref}
+              className="rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold text-white transition hover:border-zinc-500 sm:rounded-xl sm:px-4"
+            >
+              Next →
+            </Link>
+          ) : null}
+        </div>
+      </section>
+
+      {/* ── Your Rank bar — client component, pinned above bottom nav ──── */}
+      <YourRankBar />
+    </>
   );
 }
