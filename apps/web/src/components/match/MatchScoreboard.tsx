@@ -40,7 +40,7 @@ export default function MatchScoreboard({
 
   return (
     <section
-      className="flex items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-950/95 px-1.5 py-1.5 shadow-xl sm:gap-4 sm:rounded-3xl sm:px-5 sm:py-4 md:rounded-[2rem] md:px-7 md:py-5"
+      className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950/95 px-2 py-1.5 shadow-xl sm:gap-4 sm:rounded-3xl sm:px-5 sm:py-4 md:rounded-[2rem] md:px-7 md:py-5"
       aria-label="Match score"
     >
       <PlayerSide
