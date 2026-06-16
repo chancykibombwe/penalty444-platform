@@ -37,7 +37,7 @@ type LeaderboardPlayer = {
   winRate: number;
 };
 
-// ─── Podium inline-style config (all visual props explicit — no Tailwind arbitrary) ──
+// ─── Per-medal inline-style config ────────────────────────────────────────────
 
 type PodiumStyle = {
   cardBg: string;
@@ -48,76 +48,82 @@ type PodiumStyle = {
   avBg: string;
   avShadow: string;
   accentColor: string;
-  accentShadow: string;
+  accentFilter: string;
   pedestalLine: string;
   pedestalGlow: string;
-  ambientColor: string;
+  ambientBg: string;
 };
 
-const PODIUM_STYLES: PodiumStyle[] = [
+const PODIUM: PodiumStyle[] = [
   {
-    // Gold — #1 center
-    cardBg:
-      "linear-gradient(175deg, rgba(130,72,6,0.96) 0%, rgba(45,22,2,1) 38%, rgba(7,5,1,1) 100%)",
-    cardBorder: "rgba(234,179,8,0.75)",
+    // ── Gold — #1 (center) ──────────────────────────────────────────────────
+    cardBg: [
+      "radial-gradient(ellipse at 50% 0%, rgba(200,130,10,0.22) 0%, transparent 55%)",
+      "linear-gradient(175deg, rgba(130,72,6,0.96) 0%, rgba(45,22,2,1) 36%, rgba(7,5,1,1) 100%)",
+    ].join(", "),
+    cardBorder: "rgba(234,179,8,0.80)",
     cardShadow:
-      "0 0 0 1px rgba(234,179,8,0.30), 0 24px 72px rgba(234,179,8,0.62), inset 0 1px 0 rgba(255,215,0,0.26), inset 0 -1px 0 rgba(234,179,8,0.14)",
+      "0 0 0 1px rgba(234,179,8,0.32), 0 28px 80px rgba(234,179,8,0.65), inset 0 1px 0 rgba(255,215,0,0.28), inset 0 -1px 0 rgba(234,179,8,0.16)",
     hexBg: "linear-gradient(145deg, #ffe040 0%, #c07200 100%)",
     hexFilter:
-      "drop-shadow(0 0 14px rgba(234,179,8,1)) drop-shadow(0 0 28px rgba(234,179,8,0.80))",
-    avBg: "linear-gradient(175deg, rgba(175,105,15,0.80) 0%, rgba(35,16,2,1) 100%)",
+      "drop-shadow(0 0 16px rgba(234,179,8,1)) drop-shadow(0 0 32px rgba(234,179,8,0.85))",
+    avBg: "linear-gradient(175deg, rgba(175,105,15,0.85) 0%, rgba(35,16,2,1) 100%)",
     avShadow:
-      "0 0 0 3px rgba(234,179,8,0.98), 0 0 0 7px rgba(234,179,8,0.28), 0 0 36px rgba(234,179,8,0.55)",
+      "0 0 0 3px rgba(234,179,8,1), 0 0 0 7px rgba(234,179,8,0.30), 0 0 40px rgba(234,179,8,0.58)",
     accentColor: "#fde68a",
-    accentShadow: "drop-shadow(0 0 8px rgba(234,179,8,1))",
+    accentFilter: "drop-shadow(0 0 10px rgba(234,179,8,1))",
     pedestalLine:
-      "linear-gradient(90deg, transparent 0%, rgba(234,179,8,0.92) 50%, transparent 100%)",
-    pedestalGlow: "rgba(234,179,8,0.65)",
-    ambientColor: "rgba(234,179,8,0.14)",
+      "linear-gradient(90deg, transparent 0%, rgba(234,179,8,1) 50%, transparent 100%)",
+    pedestalGlow: "rgba(234,179,8,0.70)",
+    ambientBg: "rgba(234,179,8,0.16)",
   },
   {
-    // Silver — #2 left
-    cardBg:
-      "linear-gradient(175deg, rgba(72,88,108,0.92) 0%, rgba(22,27,38,1) 38%, rgba(5,6,8,1) 100%)",
-    cardBorder: "rgba(148,163,184,0.65)",
+    // ── Silver — #2 (left) ──────────────────────────────────────────────────
+    cardBg: [
+      "radial-gradient(ellipse at 50% 0%, rgba(148,163,184,0.18) 0%, transparent 52%)",
+      "linear-gradient(175deg, rgba(72,88,108,0.92) 0%, rgba(22,27,38,1) 36%, rgba(5,6,8,1) 100%)",
+    ].join(", "),
+    cardBorder: "rgba(148,163,184,0.75)",
     cardShadow:
-      "0 0 0 1px rgba(148,163,184,0.25), 0 18px 50px rgba(148,163,184,0.42), inset 0 1px 0 rgba(210,225,240,0.20), inset 0 -1px 0 rgba(148,163,184,0.12)",
+      "0 0 0 1px rgba(148,163,184,0.28), 0 20px 55px rgba(148,163,184,0.48), inset 0 1px 0 rgba(210,225,240,0.22), inset 0 -1px 0 rgba(148,163,184,0.14)",
     hexBg: "linear-gradient(145deg, #dceeff 0%, #4a6488 100%)",
     hexFilter:
-      "drop-shadow(0 0 11px rgba(148,163,184,1)) drop-shadow(0 0 22px rgba(148,163,184,0.72))",
-    avBg: "linear-gradient(175deg, rgba(85,108,130,0.75) 0%, rgba(16,20,28,1) 100%)",
+      "drop-shadow(0 0 12px rgba(148,163,184,1)) drop-shadow(0 0 24px rgba(148,163,184,0.78))",
+    avBg: "linear-gradient(175deg, rgba(85,108,130,0.80) 0%, rgba(16,20,28,1) 100%)",
     avShadow:
-      "0 0 0 3px rgba(148,163,184,0.95), 0 0 0 7px rgba(148,163,184,0.25), 0 0 28px rgba(148,163,184,0.48)",
+      "0 0 0 3px rgba(148,163,184,0.98), 0 0 0 7px rgba(148,163,184,0.28), 0 0 32px rgba(148,163,184,0.55)",
     accentColor: "#e2e8f0",
-    accentShadow: "drop-shadow(0 0 6px rgba(148,163,184,0.90))",
+    accentFilter: "drop-shadow(0 0 8px rgba(148,163,184,0.90))",
     pedestalLine:
-      "linear-gradient(90deg, transparent 0%, rgba(148,163,184,0.88) 50%, transparent 100%)",
-    pedestalGlow: "rgba(148,163,184,0.55)",
-    ambientColor: "rgba(148,163,184,0.10)",
+      "linear-gradient(90deg, transparent 0%, rgba(148,163,184,1) 50%, transparent 100%)",
+    pedestalGlow: "rgba(148,163,184,0.62)",
+    ambientBg: "rgba(148,163,184,0.12)",
   },
   {
-    // Bronze — #3 right
-    cardBg:
-      "linear-gradient(175deg, rgba(110,52,10,0.94) 0%, rgba(30,14,3,1) 38%, rgba(6,3,1,1) 100%)",
-    cardBorder: "rgba(180,92,20,0.68)",
+    // ── Bronze — #3 (right) ─────────────────────────────────────────────────
+    cardBg: [
+      "radial-gradient(ellipse at 50% 0%, rgba(180,92,20,0.20) 0%, transparent 52%)",
+      "linear-gradient(175deg, rgba(110,52,10,0.94) 0%, rgba(30,14,3,1) 36%, rgba(6,3,1,1) 100%)",
+    ].join(", "),
+    cardBorder: "rgba(180,92,20,0.78)",
     cardShadow:
-      "0 0 0 1px rgba(180,92,20,0.26), 0 18px 50px rgba(180,92,20,0.48), inset 0 1px 0 rgba(225,135,55,0.18), inset 0 -1px 0 rgba(180,92,20,0.12)",
+      "0 0 0 1px rgba(180,92,20,0.30), 0 20px 55px rgba(180,92,20,0.55), inset 0 1px 0 rgba(225,135,55,0.22), inset 0 -1px 0 rgba(180,92,20,0.14)",
     hexBg: "linear-gradient(145deg, #e88230 0%, #7a3800 100%)",
     hexFilter:
-      "drop-shadow(0 0 11px rgba(180,92,20,1)) drop-shadow(0 0 22px rgba(180,92,20,0.75))",
-    avBg: "linear-gradient(175deg, rgba(155,78,15,0.78) 0%, rgba(24,11,2,1) 100%)",
+      "drop-shadow(0 0 12px rgba(180,92,20,1)) drop-shadow(0 0 24px rgba(180,92,20,0.78))",
+    avBg: "linear-gradient(175deg, rgba(155,78,15,0.82) 0%, rgba(24,11,2,1) 100%)",
     avShadow:
-      "0 0 0 3px rgba(180,92,20,0.95), 0 0 0 7px rgba(180,92,20,0.26), 0 0 28px rgba(180,92,20,0.48)",
+      "0 0 0 3px rgba(180,92,20,0.98), 0 0 0 7px rgba(180,92,20,0.28), 0 0 32px rgba(180,92,20,0.55)",
     accentColor: "#fbbf24",
-    accentShadow: "drop-shadow(0 0 6px rgba(180,92,20,0.92))",
+    accentFilter: "drop-shadow(0 0 8px rgba(180,92,20,0.92))",
     pedestalLine:
-      "linear-gradient(90deg, transparent 0%, rgba(180,92,20,0.88) 50%, transparent 100%)",
-    pedestalGlow: "rgba(180,92,20,0.58)",
-    ambientColor: "rgba(180,92,20,0.11)",
+      "linear-gradient(90deg, transparent 0%, rgba(180,92,20,1) 50%, transparent 100%)",
+    pedestalGlow: "rgba(180,92,20,0.65)",
+    ambientBg: "rgba(180,92,20,0.12)",
   },
 ];
 
-// ─── Pure helpers (data logic unchanged) ─────────────────────────────────────
+// ─── Pure helpers (data logic unchanged) ──────────────────────────────────────
 
 function resolveTierForRow(row: LeaderboardPlayer): RankTier {
   return resolvePlayerTier({
@@ -202,65 +208,68 @@ function buildPlayerProfileHref(userId: string, username?: string | null) {
     : `/players/${userId}`;
 }
 
-// Tier → avatar ring / gradient for ranked list rows
-function tierAvatarStyle(tier: RankTier): {
+// Tier → avatar ring colors for the ranked list
+function tierRingStyle(tier: RankTier): {
   ringColor: string;
-  ringGlow: string;
+  glowColor: string;
   bgGrad: string;
+  labelColor: string;
 } {
   const id = tier.id;
   if (id === "champion")
     return {
-      ringColor: "rgba(253,224,71,0.95)",
-      ringGlow: "rgba(253,224,71,0.30)",
-      bgGrad: "linear-gradient(175deg, rgba(200,150,20,0.65), rgba(25,15,2,1))",
+      ringColor: "rgba(253,224,71,0.98)",
+      glowColor: "rgba(253,224,71,0.32)",
+      bgGrad: "linear-gradient(175deg, rgba(200,150,20,0.70) 0%, rgba(25,15,2,1) 100%)",
+      labelColor: "#fef08a",
     };
   if (id === "elite")
     return {
-      ringColor: "rgba(167,139,250,0.95)",
-      ringGlow: "rgba(167,139,250,0.30)",
-      bgGrad:
-        "linear-gradient(175deg, rgba(100,70,180,0.65), rgba(10,5,25,1))",
+      ringColor: "rgba(167,139,250,0.98)",
+      glowColor: "rgba(167,139,250,0.32)",
+      bgGrad: "linear-gradient(175deg, rgba(100,70,180,0.70) 0%, rgba(10,5,25,1) 100%)",
+      labelColor: "#c4b5fd",
     };
   if (id === "diamond")
     return {
-      ringColor: "rgba(34,211,238,0.90)",
-      ringGlow: "rgba(34,211,238,0.28)",
-      bgGrad:
-        "linear-gradient(175deg, rgba(20,120,150,0.65), rgba(5,10,25,1))",
+      ringColor: "rgba(34,211,238,0.95)",
+      glowColor: "rgba(34,211,238,0.30)",
+      bgGrad: "linear-gradient(175deg, rgba(20,120,150,0.70) 0%, rgba(5,10,25,1) 100%)",
+      labelColor: "#a5f3fc",
     };
   if (id === "platinum")
     return {
-      ringColor: "rgba(94,234,212,0.88)",
-      ringGlow: "rgba(94,234,212,0.26)",
-      bgGrad:
-        "linear-gradient(175deg, rgba(20,110,100,0.65), rgba(5,12,15,1))",
+      ringColor: "rgba(94,234,212,0.92)",
+      glowColor: "rgba(94,234,212,0.28)",
+      bgGrad: "linear-gradient(175deg, rgba(20,110,100,0.70) 0%, rgba(5,12,15,1) 100%)",
+      labelColor: "#99f6e4",
     };
   if (id === "gold")
     return {
-      ringColor: "rgba(234,179,8,0.90)",
-      ringGlow: "rgba(234,179,8,0.28)",
-      bgGrad:
-        "linear-gradient(175deg, rgba(130,80,10,0.65), rgba(15,8,1,1))",
+      ringColor: "rgba(234,179,8,0.95)",
+      glowColor: "rgba(234,179,8,0.30)",
+      bgGrad: "linear-gradient(175deg, rgba(130,80,10,0.70) 0%, rgba(15,8,1,1) 100%)",
+      labelColor: "#fcd34d",
     };
   if (id === "silver")
     return {
-      ringColor: "rgba(148,163,184,0.88)",
-      ringGlow: "rgba(148,163,184,0.24)",
-      bgGrad:
-        "linear-gradient(175deg, rgba(70,85,100,0.65), rgba(8,10,14,1))",
+      ringColor: "rgba(148,163,184,0.92)",
+      glowColor: "rgba(148,163,184,0.26)",
+      bgGrad: "linear-gradient(175deg, rgba(70,85,100,0.70) 0%, rgba(8,10,14,1) 100%)",
+      labelColor: "#e2e8f0",
     };
   if (id === "bronze")
     return {
-      ringColor: "rgba(180,92,20,0.88)",
-      ringGlow: "rgba(180,92,20,0.26)",
-      bgGrad:
-        "linear-gradient(175deg, rgba(110,55,10,0.65), rgba(10,5,1,1))",
+      ringColor: "rgba(180,92,20,0.92)",
+      glowColor: "rgba(180,92,20,0.28)",
+      bgGrad: "linear-gradient(175deg, rgba(110,55,10,0.70) 0%, rgba(10,5,1,1) 100%)",
+      labelColor: "#fbbf24",
     };
   return {
-    ringColor: "rgba(82,82,91,0.60)",
-    ringGlow: "rgba(82,82,91,0.16)",
-    bgGrad: "linear-gradient(175deg, rgba(50,50,60,0.55), rgba(8,8,12,1))",
+    ringColor: "rgba(82,82,91,0.65)",
+    glowColor: "rgba(82,82,91,0.18)",
+    bgGrad: "linear-gradient(175deg, rgba(50,50,60,0.60) 0%, rgba(8,8,12,1) 100%)",
+    labelColor: "#a1a1aa",
   };
 }
 
@@ -323,11 +332,7 @@ export default async function LeaderboardPage({
   const topPlayers = leaderboard.slice(0, 3);
 
   const clearSearchHref = buildLeaderboardHref({ page, limit });
-  const previousPageHref = buildLeaderboardHref({
-    search,
-    page: page - 1,
-    limit,
-  });
+  const previousPageHref = buildLeaderboardHref({ search, page: page - 1, limit });
   const nextPageHref = buildLeaderboardHref({ search, page: page + 1, limit });
   const showNextPage = leaderboard.length === limit;
 
@@ -340,352 +345,347 @@ export default async function LeaderboardPage({
 
   return (
     <>
-      {/* ════════════════════════════════════════════════════════════════
-          Page wrapper — centered game-screen, max 520px
-          ════════════════════════════════════════════════════════════════ */}
-      <div className="relative mx-auto max-w-[520px]">
+      {/* ══════════════════════════════════════════════════════════════════
+          Full-bleed cinematic background — negative margins cancel the
+          <main>'s p-4/md:p-6 padding so we get edge-to-edge dark canvas
+          ══════════════════════════════════════════════════════════════════ */}
+      <div
+        className="-mx-4 -mt-4 min-h-screen md:-mx-6 md:-mt-6"
+        style={{
+          background:
+            "linear-gradient(160deg, #010212 0%, #030810 55%, #020508 100%)",
+        }}
+      >
+        {/* Re-add correct padding and center the panel */}
+        <div className="relative mx-auto max-w-[520px] px-4 pt-4 md:px-6 md:pt-6">
 
-        {/* Ambient page glow behind panel */}
-        <div
-          className="pointer-events-none absolute -inset-12 -z-10 rounded-full blur-3xl"
-          style={{
-            background:
-              "radial-gradient(ellipse at 50% 40%, rgba(34,211,238,0.10), transparent 68%)",
-          }}
-        />
-
-        {/* ════ MAIN PANEL ═══════════════════════════════════════════════ */}
-        <section
-          aria-label="444 ARENA Leaderboard"
-          className="relative overflow-hidden rounded-[20px]"
-          style={{
-            background: "#04060e",
-            border: "1px solid rgba(255,255,255,0.08)",
-            boxShadow:
-              "0 0 0 1px rgba(255,255,255,0.03), 0 40px 80px rgba(0,0,0,0.96)",
-          }}
-        >
-          {/* ═══ APP-SCREEN HEADER ══════════════════════════════════════
-              ← 444 ARENA  |  LEADERBOARD  |  pills
-              ════════════════════════════════════════════════════════════ */}
+          {/* Ambient page glow behind the panel */}
           <div
-            className="flex items-center justify-between gap-2 px-4 py-3"
+            className="pointer-events-none absolute -inset-8 -z-10 rounded-full blur-3xl"
             style={{
-              background: "rgba(2,3,10,0.95)",
-              borderBottom: "1px solid rgba(255,255,255,0.07)",
+              background:
+                "radial-gradient(ellipse at 50% 35%, rgba(34,80,200,0.14), transparent 68%)",
+            }}
+          />
+
+          {/* ══════════════════════════════════════════════════════════
+              MAIN PANEL
+              ══════════════════════════════════════════════════════════ */}
+          <section
+            className="relative overflow-hidden rounded-[20px]"
+            aria-label="444 ARENA Leaderboard"
+            style={{
+              background: "#04060e",
+              border: "1px solid rgba(255,255,255,0.09)",
+              boxShadow:
+                "0 0 0 1px rgba(255,255,255,0.03), 0 48px 96px rgba(0,0,0,0.98), 0 0 80px rgba(0,0,0,0.70)",
             }}
           >
-            {/* Left: back arrow + brand */}
-            <div className="flex flex-none items-center gap-2">
-              <Link
-                href="/"
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 transition hover:text-white"
-                style={{ background: "rgba(255,255,255,0.06)" }}
-                aria-label="Back"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  className="h-4 w-4"
-                >
-                  <path d="m15 18-6-6 6-6" />
-                </svg>
-              </Link>
-              <div>
-                <p
-                  className="text-[9px] font-black uppercase leading-none"
-                  style={{ color: "rgba(34,211,238,0.80)", letterSpacing: "0.30em" }}
-                >
-                  444 ARENA
-                </p>
-              </div>
-            </div>
-
-            {/* Center title */}
-            <h1
-              className="flex-1 text-center font-black uppercase text-white"
-              style={{ fontSize: "15px", letterSpacing: "0.26em" }}
+            {/* ══ APP-SCREEN HEADER ════════════════════════════════════
+                ← 444 ARENA  ·  LEADERBOARD  ·  pills
+                ════════════════════════════════════════════════════════ */}
+            <div
+              className="flex items-center justify-between gap-2 px-4 py-3"
+              style={{
+                background: "rgba(2,3,10,0.96)",
+                borderBottom: "1px solid rgba(255,255,255,0.07)",
+              }}
             >
-              LEADERBOARD
-            </h1>
-
-            {/* Right: Coming Soon pills */}
-            <div className="flex flex-none items-center gap-1.5">
-              <div
-                className="rounded-lg px-2 py-1 text-center"
-                style={{
-                  background: "rgba(20,22,32,0.90)",
-                  border: "1px solid rgba(80,82,100,0.50)",
-                }}
-              >
-                <p
-                  className="font-black uppercase leading-none"
-                  style={{ fontSize: "7px", color: "#a1a1aa", letterSpacing: "0.12em" }}
-                >
-                  WALLET
-                </p>
-                <p
-                  className="font-semibold uppercase leading-none"
-                  style={{ fontSize: "7px", color: "#52525b", letterSpacing: "0.08em", marginTop: "2px" }}
-                >
-                  COMING SOON
-                </p>
-              </div>
-              <div
-                className="hidden rounded-lg px-2 py-1 sm:block"
-                style={{
-                  background: "rgba(20,22,32,0.90)",
-                  border: "1px solid rgba(80,82,100,0.50)",
-                }}
-              >
-                <p
-                  className="whitespace-nowrap font-semibold"
-                  style={{ fontSize: "8px", color: "#52525b" }}
-                >
-                  Season: Coming Soon
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* ═══ CONTENT AREA ═══════════════════════════════════════════ */}
-          <div className="space-y-3 p-3 sm:p-4">
-
-            {/* ─── FILTER PILLS ─────────────────────────────────────────── */}
-            <div className="grid grid-cols-3 gap-2">
-              {(
-                [
-                  {
-                    icon: (
-                      <svg
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                        className="h-[18px] w-[18px] shrink-0"
-                        aria-hidden="true"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    ),
-                    label: "GLOBAL",
-                    active: true,
-                  },
-                  {
-                    icon: (
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        className="h-[18px] w-[18px] shrink-0"
-                        aria-hidden="true"
-                      >
-                        <circle cx="12" cy="12" r="10" />
-                        <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
-                        <path d="M2 12h20" />
-                      </svg>
-                    ),
-                    label: "P444",
-                    active: true,
-                  },
-                  {
-                    icon: (
-                      <svg
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                        className="h-[18px] w-[18px] shrink-0"
-                        aria-hidden="true"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    ),
-                    label: "ALL TIME",
-                    active: false,
-                  },
-                ] as const
-              ).map(({ icon, label, active }) => (
-                <div
-                  key={label}
-                  className="flex cursor-default items-center gap-2 rounded-xl px-2.5 py-3"
+              {/* Left: back arrow + brand */}
+              <div className="flex flex-none items-center gap-2">
+                <Link
+                  href="/"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition"
                   style={{
-                    background: active
-                      ? "rgba(14,18,32,0.95)"
-                      : "rgba(10,12,22,0.80)",
-                    border: active
-                      ? "1px solid rgba(60,90,160,0.60)"
-                      : "1px solid rgba(50,55,80,0.40)",
-                    boxShadow: active
-                      ? "0 0 0 1px rgba(60,90,160,0.18), inset 0 1px 0 rgba(255,255,255,0.07)"
-                      : "inset 0 1px 0 rgba(255,255,255,0.03)",
-                    opacity: active ? 1 : 0.55,
+                    background: "rgba(255,255,255,0.07)",
+                    color: "#71717a",
                   }}
+                  aria-label="Back"
                 >
-                  <span
-                    style={{ color: active ? "rgba(99,140,255,0.90)" : "#52525b" }}
-                  >
-                    {icon}
-                  </span>
-                  <span
-                    className="min-w-0 flex-1 truncate font-black uppercase"
-                    style={{
-                      fontSize: "10px",
-                      letterSpacing: "0.12em",
-                      color: active ? "#f1f5f9" : "#71717a",
-                    }}
-                  >
-                    {label}
-                  </span>
                   <svg
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="3"
-                    className="h-2.5 w-2.5 shrink-0"
-                    style={{ color: active ? "#6b7280" : "#3f3f46" }}
-                    aria-hidden="true"
+                    strokeWidth="2.5"
+                    className="h-4 w-4"
                   >
-                    <path d="m6 9 6 6 6-6" />
+                    <path d="m15 18-6-6 6-6" />
                   </svg>
+                </Link>
+                <span
+                  className="font-black uppercase"
+                  style={{
+                    fontSize: "10px",
+                    letterSpacing: "0.32em",
+                    color: "rgba(34,211,238,0.85)",
+                  }}
+                >
+                  444 ARENA
+                </span>
+              </div>
+
+              {/* Center: title */}
+              <h1
+                className="flex-1 text-center font-black uppercase text-white"
+                style={{ fontSize: "15px", letterSpacing: "0.25em" }}
+              >
+                LEADERBOARD
+              </h1>
+
+              {/* Right: Coming Soon pills */}
+              <div className="flex flex-none items-center gap-1.5">
+                <div
+                  className="rounded-lg px-2 py-1 text-center"
+                  style={{
+                    background: "rgba(18,20,30,0.95)",
+                    border: "1px solid rgba(70,75,100,0.55)",
+                  }}
+                >
+                  <p
+                    className="font-black uppercase leading-none"
+                    style={{
+                      fontSize: "7px",
+                      color: "#a1a1aa",
+                      letterSpacing: "0.12em",
+                    }}
+                  >
+                    WALLET
+                  </p>
+                  <p
+                    className="font-semibold uppercase leading-none"
+                    style={{
+                      fontSize: "7px",
+                      color: "#52525b",
+                      letterSpacing: "0.07em",
+                      marginTop: "2px",
+                    }}
+                  >
+                    COMING SOON
+                  </p>
                 </div>
-              ))}
+                <div
+                  className="hidden rounded-lg px-2 py-1 sm:block"
+                  style={{
+                    background: "rgba(18,20,30,0.95)",
+                    border: "1px solid rgba(70,75,100,0.55)",
+                  }}
+                >
+                  <p
+                    className="whitespace-nowrap font-semibold"
+                    style={{ fontSize: "8px", color: "#52525b" }}
+                  >
+                    Season: Coming Soon
+                  </p>
+                </div>
+              </div>
             </div>
 
-            {/* ─── ERROR ────────────────────────────────────────────────── */}
-            {error ? (
-              <div
-                className="rounded-xl px-4 py-3 text-sm"
-                style={{
-                  background: "rgba(60,10,10,0.60)",
-                  border: "1px solid rgba(180,40,40,0.50)",
-                  color: "#fca5a5",
-                }}
-              >
-                Could not load leaderboard. Please refresh.
+            {/* ══ CONTENT ══════════════════════════════════════════════ */}
+            <div className="space-y-3 p-3 sm:p-4">
+
+              {/* ── FILTER PILLS ─────────────────────────────────────── */}
+              <div className="grid grid-cols-3 gap-2">
+                {(
+                  [
+                    {
+                      label: "GLOBAL",
+                      active: true,
+                      icon: (
+                        <svg viewBox="0 0 20 20" fill="currentColor" className="h-[18px] w-[18px] shrink-0">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z" clipRule="evenodd" />
+                        </svg>
+                      ),
+                    },
+                    {
+                      label: "P444",
+                      active: true,
+                      icon: (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-[18px] w-[18px] shrink-0">
+                          <circle cx="12" cy="12" r="10" />
+                          <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+                          <path d="M2 12h20" />
+                        </svg>
+                      ),
+                    },
+                    {
+                      label: "ALL TIME",
+                      active: false,
+                      icon: (
+                        <svg viewBox="0 0 20 20" fill="currentColor" className="h-[18px] w-[18px] shrink-0">
+                          <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
+                        </svg>
+                      ),
+                    },
+                  ] as const
+                ).map(({ label, active, icon }) => (
+                  <div
+                    key={label}
+                    className="flex cursor-default select-none items-center gap-2 rounded-xl px-2.5 py-3"
+                    style={{
+                      background: active
+                        ? "rgba(12,16,30,0.98)"
+                        : "rgba(8,10,18,0.80)",
+                      border: active
+                        ? "1px solid rgba(55,85,160,0.68)"
+                        : "1px solid rgba(45,50,75,0.40)",
+                      boxShadow: active
+                        ? "0 0 0 1px rgba(55,85,160,0.22), inset 0 1px 0 rgba(255,255,255,0.07), 0 0 16px rgba(55,85,160,0.12)"
+                        : "inset 0 1px 0 rgba(255,255,255,0.03)",
+                      opacity: active ? 1 : 0.52,
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: active ? "rgba(99,140,255,0.95)" : "#52525b",
+                      }}
+                    >
+                      {icon}
+                    </span>
+                    <span
+                      className="min-w-0 flex-1 truncate font-black uppercase"
+                      style={{
+                        fontSize: "10px",
+                        letterSpacing: "0.12em",
+                        color: active ? "#f1f5f9" : "#71717a",
+                      }}
+                    >
+                      {label}
+                    </span>
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      className="h-2.5 w-2.5 shrink-0"
+                      style={{ color: active ? "#6b7280" : "#3f3f46" }}
+                    >
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </div>
+                ))}
               </div>
-            ) : null}
 
-            {/* ─── PODIUM (trophy display cases) ───────────────────────── */}
-            {showPodium ? (
-              <div className="relative pt-2">
+              {/* ── ERROR ────────────────────────────────────────────── */}
+              {error ? (
+                <div
+                  className="rounded-xl px-4 py-3 text-sm"
+                  style={{
+                    background: "rgba(60,10,10,0.65)",
+                    border: "1px solid rgba(180,40,40,0.50)",
+                    color: "#fca5a5",
+                  }}
+                >
+                  Could not load leaderboard. Please refresh.
+                </div>
+              ) : null}
 
-                {/* Ambient medal glows behind podium cards */}
-                {topPlayers[0] && (
+              {/* ── PODIUM — trophy display cases ───────────────────── */}
+              {showPodium ? (
+                <div className="relative overflow-visible pt-2">
+
+                  {/* Per-medal ambient glows behind podium */}
                   <div
-                    className="pointer-events-none absolute left-1/2 top-1/3 h-40 w-40 -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
-                    style={{ background: PODIUM_STYLES[0]!.ambientColor }}
+                    className="pointer-events-none absolute left-1/2 top-0 h-48 w-48 -translate-x-1/2 rounded-full blur-3xl"
+                    style={{ background: PODIUM[0]!.ambientBg }}
                   />
-                )}
-                {topPlayers[1] && (
                   <div
-                    className="pointer-events-none absolute left-[22%] top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
-                    style={{ background: PODIUM_STYLES[1]!.ambientColor }}
+                    className="pointer-events-none absolute left-[18%] top-8 h-32 w-32 -translate-x-1/2 rounded-full blur-3xl"
+                    style={{ background: PODIUM[1]!.ambientBg }}
                   />
-                )}
-                {topPlayers[2] && (
                   <div
-                    className="pointer-events-none absolute left-[78%] top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
-                    style={{ background: PODIUM_STYLES[2]!.ambientColor }}
+                    className="pointer-events-none absolute left-[82%] top-8 h-32 w-32 -translate-x-1/2 rounded-full blur-3xl"
+                    style={{ background: PODIUM[2]!.ambientBg }}
                   />
-                )}
 
-                {/* 3-column podium grid */}
-                <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                  {topPlayers.map((player, index) => {
-                    const ps = PODIUM_STYLES[index];
-                    if (!ps) return null;
-                    const rank = index + 1;
-                    const isFirst = index === 0;
-                    const tier = resolveTierForRow(player);
+                  {/* Podium grid — side cards pushed down 52px so center looks raised */}
+                  <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                    {topPlayers.map((player, index) => {
+                      const ps = PODIUM[index];
+                      if (!ps) return null;
+                      const rank = index + 1;
+                      const isFirst = index === 0;
+                      const tier = resolveTierForRow(player);
+                      const orderClass =
+                        isFirst ? "order-2" : index === 1 ? "order-1" : "order-3";
 
-                    // Visual order: #1 center, #2 left, #3 right
-                    const orderClass =
-                      isFirst
-                        ? "order-2"
-                        : index === 1
-                        ? "order-1"
-                        : "order-3";
+                      // Sizes scale with position
+                      const badgeW = isFirst ? 58 : 48;
+                      const badgeH = isFirst ? 66 : 55;
+                      const badgeFs = isFirst ? 22 : 17;
+                      const avSize = isFirst ? 76 : 62;
+                      const avFs = isFirst ? 16 : 12;
+                      const overlap = Math.round(badgeH * 0.44);
 
-                    // Side cards pushed down 52px so center appears raised
-                    const topPad = isFirst ? 0 : 52;
-
-                    // Badge dimensions
-                    const badgeW = isFirst ? 58 : 48;
-                    const badgeH = isFirst ? 64 : 54;
-                    const badgeFs = isFirst ? 22 : 17;
-
-                    // Avatar size
-                    const avSize = isFirst ? 76 : 62;
-                    const avFs = isFirst ? 16 : 13;
-
-                    // Card top-overlap with badge (half badge height)
-                    const overlap = Math.round(badgeH * 0.42);
-
-                    return (
-                      <div
-                        key={player.id}
-                        className={`${orderClass} flex flex-col items-center`}
-                        style={{ paddingTop: `${topPad}px` }}
-                      >
-                        {/* ── Hex rank badge ──────────────────────────── */}
+                      return (
                         <div
-                          className="relative z-10 flex items-center justify-center shrink-0"
-                          style={{
-                            clipPath:
-                              "polygon(50% 0%, 97% 25%, 97% 75%, 50% 100%, 3% 75%, 3% 25%)",
-                            background: ps.hexBg,
-                            filter: ps.hexFilter,
-                            width: `${badgeW}px`,
-                            height: `${badgeH}px`,
-                          }}
+                          key={player.id}
+                          className={`${orderClass} flex flex-col items-center`}
+                          style={{ paddingTop: isFirst ? 0 : "52px" }}
                         >
-                          <span
-                            style={{
-                              fontSize: `${badgeFs}px`,
-                              fontWeight: 900,
-                              color: "white",
-                              lineHeight: 1,
-                            }}
-                          >
-                            {rank}
-                          </span>
-                        </div>
-
-                        {/* ── Card body ───────────────────────────────── */}
-                        <div
-                          className="relative w-full overflow-hidden rounded-[18px]"
-                          style={{
-                            marginTop: `-${overlap}px`,
-                            background: ps.cardBg,
-                            border: `1px solid ${ps.cardBorder}`,
-                            boxShadow: ps.cardShadow,
-                          }}
-                        >
-                          {/* Card content */}
+                          {/* Hex rank badge — floats above card */}
                           <div
-                            className="flex flex-col items-center px-2"
+                            className="relative z-10 flex shrink-0 items-center justify-center"
                             style={{
-                              paddingTop: `${overlap + 12}px`,
-                              paddingBottom: "12px",
+                              clipPath:
+                                "polygon(50% 0%, 97% 25%, 97% 75%, 50% 100%, 3% 75%, 3% 25%)",
+                              background: ps.hexBg,
+                              filter: ps.hexFilter,
+                              width: `${badgeW}px`,
+                              height: `${badgeH}px`,
                             }}
                           >
-                            {/* Avatar */}
-                            {hasValidUserId(player.id) ? (
-                              <Link
-                                href={buildPlayerProfileHref(
-                                  player.id,
-                                  player.username
-                                )}
-                                className="block transition-all hover:brightness-110"
-                              >
+                            <span
+                              style={{
+                                fontSize: `${badgeFs}px`,
+                                fontWeight: 900,
+                                color: "white",
+                                lineHeight: 1,
+                              }}
+                            >
+                              {rank}
+                            </span>
+                          </div>
+
+                          {/* Trophy display case card */}
+                          <div
+                            className="relative w-full rounded-[18px]"
+                            style={{
+                              marginTop: `-${overlap}px`,
+                              background: ps.cardBg,
+                              border: `1px solid ${ps.cardBorder}`,
+                              boxShadow: ps.cardShadow,
+                              overflow: "hidden",
+                            }}
+                          >
+                            {/* Card content */}
+                            <div
+                              className="flex flex-col items-center px-2 sm:px-3"
+                              style={{
+                                paddingTop: `${overlap + 12}px`,
+                                paddingBottom: "12px",
+                              }}
+                            >
+                              {/* Avatar shell with medal ring */}
+                              {hasValidUserId(player.id) ? (
+                                <Link
+                                  href={buildPlayerProfileHref(player.id, player.username)}
+                                  className="block rounded-full transition hover:brightness-110"
+                                >
+                                  <div
+                                    className="flex items-center justify-center rounded-full font-black"
+                                    style={{
+                                      width: `${avSize}px`,
+                                      height: `${avSize}px`,
+                                      fontSize: `${avFs}px`,
+                                      color: ps.accentColor,
+                                      background: ps.avBg,
+                                      boxShadow: ps.avShadow,
+                                    }}
+                                  >
+                                    {getInitials(player.username)}
+                                  </div>
+                                </Link>
+                              ) : (
                                 <div
                                   className="flex items-center justify-center rounded-full font-black"
                                   style={{
@@ -699,517 +699,452 @@ export default async function LeaderboardPage({
                                 >
                                   {getInitials(player.username)}
                                 </div>
-                              </Link>
-                            ) : (
+                              )}
+
+                              {/* Player name */}
+                              <div className="mt-2 w-full px-1">
+                                {hasValidUserId(player.id) ? (
+                                  <Link
+                                    href={buildPlayerProfileHref(player.id, player.username)}
+                                    className="block truncate text-center font-black transition hover:opacity-80"
+                                    style={{
+                                      color: ps.accentColor,
+                                      fontSize: isFirst ? "13px" : "11px",
+                                    }}
+                                  >
+                                    {player.username}
+                                  </Link>
+                                ) : (
+                                  <p
+                                    className="truncate text-center font-black"
+                                    style={{
+                                      color: ps.accentColor,
+                                      fontSize: isFirst ? "13px" : "11px",
+                                    }}
+                                  >
+                                    {player.username}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Tier chip */}
                               <div
-                                className="flex items-center justify-center rounded-full font-black"
+                                className="mt-0.5 flex items-center gap-0.5 font-bold"
                                 style={{
-                                  width: `${avSize}px`,
-                                  height: `${avSize}px`,
-                                  fontSize: `${avFs}px`,
-                                  color: ps.accentColor,
-                                  background: ps.avBg,
-                                  boxShadow: ps.avShadow,
+                                  fontSize: "9px",
+                                  color: tierRingStyle(tier).labelColor,
                                 }}
                               >
-                                {getInitials(player.username)}
+                                <span>{tier.icon}</span>
+                                <span>{tier.label}</span>
                               </div>
-                            )}
 
-                            {/* Name */}
-                            <div
-                              className="mt-2 w-full px-1 text-center"
-                            >
-                              {hasValidUserId(player.id) ? (
-                                <Link
-                                  href={buildPlayerProfileHref(
-                                    player.id,
-                                    player.username
-                                  )}
-                                  className="block truncate font-black transition hover:opacity-80"
-                                  style={{
-                                    color: ps.accentColor,
-                                    fontSize: isFirst ? "13px" : "11px",
-                                  }}
-                                >
-                                  {player.username}
-                                </Link>
-                              ) : (
-                                <p
-                                  className="truncate font-black"
-                                  style={{
-                                    color: ps.accentColor,
-                                    fontSize: isFirst ? "13px" : "11px",
-                                  }}
-                                >
-                                  {player.username}
-                                </p>
-                              )}
-                            </div>
-
-                            {/* Tier */}
-                            <div
-                              className="mt-0.5 flex items-center gap-0.5"
-                              style={{
-                                color: tier.textClass.includes("yellow")
-                                  ? "#fef08a"
-                                  : tier.textClass.includes("cyan")
-                                  ? "#a5f3fc"
-                                  : tier.textClass.includes("purple")
-                                  ? "#c4b5fd"
-                                  : tier.textClass.includes("teal")
-                                  ? "#99f6e4"
-                                  : tier.textClass.includes("slate")
-                                  ? "#e2e8f0"
-                                  : tier.textClass.includes("amber")
-                                  ? "#fcd34d"
-                                  : "#a1a1aa",
-                                fontSize: "9px",
-                                fontWeight: 700,
-                              }}
-                            >
-                              <span>{tier.icon}</span>
-                              <span>{tier.label}</span>
-                            </div>
-
-                            {/* Stats */}
-                            <div
-                              className="mt-2.5 w-full space-y-1.5"
-                              style={{
-                                borderTop: "1px solid rgba(255,255,255,0.06)",
-                                paddingTop: "8px",
-                              }}
-                            >
-                              <div className="flex items-baseline justify-between">
-                                <span
-                                  className="font-black uppercase"
-                                  style={{
-                                    fontSize: "8px",
-                                    letterSpacing: "0.14em",
-                                    color: "rgba(113,113,122,0.80)",
-                                  }}
-                                >
-                                  Points
-                                </span>
-                                <span
-                                  className="font-black tabular-nums"
-                                  style={{
-                                    color: ps.accentColor,
-                                    fontSize: isFirst ? "24px" : "19px",
-                                    lineHeight: 1,
-                                    filter: ps.accentShadow,
-                                  }}
-                                >
-                                  {player.rankPoints}
-                                </span>
-                              </div>
-                              <div className="flex items-baseline justify-between">
-                                <span
-                                  className="font-black uppercase"
-                                  style={{
-                                    fontSize: "8px",
-                                    letterSpacing: "0.14em",
-                                    color: "rgba(113,113,122,0.80)",
-                                  }}
-                                >
-                                  Win rate
-                                </span>
-                                <span
-                                  className="font-bold tabular-nums"
-                                  style={{
-                                    color: "#d4d4d8",
-                                    fontSize: "12px",
-                                  }}
-                                >
-                                  {player.winRate}%
-                                </span>
+                              {/* Stats rows */}
+                              <div
+                                className="mt-2.5 w-full space-y-1.5"
+                                style={{
+                                  borderTop: "1px solid rgba(255,255,255,0.07)",
+                                  paddingTop: "8px",
+                                }}
+                              >
+                                <div className="flex items-baseline justify-between">
+                                  <span
+                                    className="font-black uppercase"
+                                    style={{
+                                      fontSize: "8px",
+                                      letterSpacing: "0.14em",
+                                      color: "rgba(113,113,122,0.75)",
+                                    }}
+                                  >
+                                    Points
+                                  </span>
+                                  <span
+                                    className="font-black tabular-nums"
+                                    style={{
+                                      color: ps.accentColor,
+                                      fontSize: isFirst ? "24px" : "20px",
+                                      lineHeight: 1,
+                                      filter: ps.accentFilter,
+                                    }}
+                                  >
+                                    {player.rankPoints}
+                                  </span>
+                                </div>
+                                <div className="flex items-baseline justify-between">
+                                  <span
+                                    className="font-black uppercase"
+                                    style={{
+                                      fontSize: "8px",
+                                      letterSpacing: "0.14em",
+                                      color: "rgba(113,113,122,0.75)",
+                                    }}
+                                  >
+                                    Win rate
+                                  </span>
+                                  <span
+                                    className="font-bold tabular-nums"
+                                    style={{ color: "#d4d4d8", fontSize: "12px" }}
+                                  >
+                                    {player.winRate}%
+                                  </span>
+                                </div>
                               </div>
                             </div>
-                          </div>
 
-                          {/* Pedestal glow at bottom of card */}
-                          <div className="relative pb-2.5">
-                            {/* Glowing horizontal line */}
-                            <div
-                              className="h-px w-full"
-                              style={{ background: ps.pedestalLine }}
-                            />
-                            {/* Diffuse blur beneath line */}
-                            <div
-                              className="mx-auto mt-1.5 rounded-full"
-                              style={{
-                                width: "65%",
-                                height: "7px",
-                                background: ps.pedestalGlow,
-                                filter: "blur(8px)",
-                              }}
-                            />
+                            {/* Pedestal — glowing base of card */}
+                            <div className="relative pb-2.5">
+                              <div
+                                className="h-px w-full"
+                                style={{ background: ps.pedestalLine }}
+                              />
+                              <div
+                                className="mx-auto mt-2 rounded-full"
+                                style={{
+                                  width: "60%",
+                                  height: "8px",
+                                  background: ps.pedestalGlow,
+                                  filter: "blur(10px)",
+                                }}
+                              />
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
 
-            {/* ─── SEARCH ───────────────────────────────────────────────── */}
-            <form
-              action="/leaderboard"
-              method="get"
-              className="flex gap-2 rounded-xl p-2"
-              style={{
-                background: "rgba(8,10,18,0.80)",
-                border: "1px solid rgba(255,255,255,0.06)",
-              }}
-            >
-              <input type="hidden" name="page" value="1" />
-              <input type="hidden" name="limit" value={limit} />
-              <input
-                type="search"
-                name="search"
-                defaultValue={search}
-                placeholder="Search player…"
-                className="min-w-0 flex-1 rounded-lg px-3 py-1.5 text-[13px] text-white placeholder:text-zinc-600 focus:outline-none"
+              {/* ── SEARCH ───────────────────────────────────────────── */}
+              <form
+                action="/leaderboard"
+                method="get"
+                className="flex gap-2 rounded-xl p-2"
                 style={{
-                  background: "rgba(12,15,25,0.90)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                }}
-              />
-              <button
-                type="submit"
-                className="shrink-0 rounded-lg px-3 py-1.5 text-[13px] font-semibold text-white transition"
-                style={{
-                  background: "rgba(20,25,40,0.90)",
-                  border: "1px solid rgba(80,90,130,0.50)",
+                  background: "rgba(6,8,16,0.90)",
+                  border: "1px solid rgba(255,255,255,0.06)",
                 }}
               >
-                Search
-              </button>
-              {hasActiveSearch ? (
-                <Link
-                  href={clearSearchHref}
-                  className="flex shrink-0 items-center text-[13px] font-semibold transition hover:opacity-80"
-                  style={{ color: "#fde68a" }}
+                <input type="hidden" name="page" value="1" />
+                <input type="hidden" name="limit" value={limit} />
+                <input
+                  type="search"
+                  name="search"
+                  defaultValue={search}
+                  placeholder="Search player…"
+                  className="min-w-0 flex-1 rounded-lg px-3 py-1.5 text-[13px] text-white placeholder:text-zinc-700 focus:outline-none"
+                  style={{
+                    background: "rgba(10,12,22,0.95)",
+                    border: "1px solid rgba(255,255,255,0.07)",
+                  }}
+                />
+                <button
+                  type="submit"
+                  className="shrink-0 rounded-lg px-3 py-1.5 text-[13px] font-semibold text-white transition hover:opacity-80"
+                  style={{
+                    background: "rgba(18,24,42,0.95)",
+                    border: "1px solid rgba(60,80,140,0.55)",
+                  }}
                 >
-                  Clear
-                </Link>
-              ) : null}
-            </form>
+                  Search
+                </button>
+                {hasActiveSearch ? (
+                  <Link
+                    href={clearSearchHref}
+                    className="flex shrink-0 items-center text-[13px] font-semibold transition hover:opacity-80"
+                    style={{ color: "#fde68a" }}
+                  >
+                    Clear
+                  </Link>
+                ) : null}
+              </form>
 
-            {/* ─── RANKED LIST ──────────────────────────────────────────── */}
-            <div
-              className="overflow-hidden rounded-2xl"
-              style={{
-                background: "rgba(7,9,16,0.95)",
-                border: "1px solid rgba(255,255,255,0.07)",
-                boxShadow:
-                  "inset 0 1px 0 rgba(255,255,255,0.025), 0 4px 24px rgba(0,0,0,0.60)",
-              }}
-            >
-              {/* Column header */}
-              {listPlayers.length > 0 ? (
-                <div
-                  className="flex items-center gap-2.5 px-4 py-2.5"
-                  style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}
-                >
+              {/* ── RANKED LIST ──────────────────────────────────────── */}
+              <div
+                className="overflow-hidden rounded-2xl"
+                style={{
+                  background: "rgba(5,7,14,0.98)",
+                  border: "1px solid rgba(255,255,255,0.07)",
+                  boxShadow:
+                    "inset 0 1px 0 rgba(255,255,255,0.03), 0 4px 28px rgba(0,0,0,0.65)",
+                }}
+              >
+                {/* Column headers */}
+                {listPlayers.length > 0 ? (
                   <div
-                    className="w-8 shrink-0 font-black uppercase"
+                    className="flex items-center gap-2.5 px-4 py-2.5"
                     style={{
-                      fontSize: "9px",
-                      letterSpacing: "0.22em",
-                      color: "#52525b",
+                      borderBottom: "1px solid rgba(255,255,255,0.05)",
+                      background: "rgba(8,10,20,0.60)",
                     }}
                   >
-                    RANK
-                  </div>
-                  <div
-                    className="flex-1 font-black uppercase"
-                    style={{
-                      fontSize: "9px",
-                      letterSpacing: "0.22em",
-                      color: "#52525b",
-                    }}
-                  >
-                    PLAYER
-                  </div>
-                  <div
-                    className="hidden w-16 shrink-0 text-right font-black uppercase sm:block"
-                    style={{
-                      fontSize: "9px",
-                      letterSpacing: "0.22em",
-                      color: "#52525b",
-                    }}
-                  >
-                    POINTS
-                  </div>
-                  <div
-                    className="hidden w-14 shrink-0 text-right font-black uppercase sm:block"
-                    style={{
-                      fontSize: "9px",
-                      letterSpacing: "0.22em",
-                      color: "#52525b",
-                    }}
-                  >
-                    WIN%
-                  </div>
-                  <div
-                    className="hidden w-5 shrink-0 text-center font-black sm:block"
-                    style={{ fontSize: "9px", color: "#52525b" }}
-                  >
-                    ↑↓
-                  </div>
-                  <div
-                    className="w-12 shrink-0 text-right font-black uppercase sm:hidden"
-                    style={{
-                      fontSize: "9px",
-                      letterSpacing: "0.20em",
-                      color: "#52525b",
-                    }}
-                  >
-                    PTS
-                  </div>
-                </div>
-              ) : null}
-
-              {/* Empty state */}
-              {listPlayers.length === 0 ? (
-                <div className="px-4 py-10 text-center">
-                  {hasActiveSearch ? (
-                    <p style={{ fontSize: "14px", color: "#71717a" }}>
-                      {`No players found for "${search}".`}
-                    </p>
-                  ) : showPodium ? (
-                    <div>
-                      <p style={{ fontSize: "13px", color: "#52525b" }}>
-                        More ranked players will appear here.
-                      </p>
-                      <p
-                        style={{
-                          fontSize: "11px",
-                          color: "#3f3f46",
-                          marginTop: "4px",
-                        }}
-                      >
-                        Complete {UNRANKED_MATCHES_THRESHOLD} matches to claim
-                        your rank.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <p style={{ fontSize: "14px", color: "#71717a" }}>
-                        No ranked players yet. Complete{" "}
-                        {UNRANKED_MATCHES_THRESHOLD} placement matches to
-                        appear.
-                      </p>
-                      <Link
-                        href="/lobby"
-                        className="inline-flex rounded-xl px-4 py-2 text-sm font-semibold text-white transition hover:opacity-80"
-                        style={{
-                          background: "rgba(20,25,40,0.90)",
-                          border: "1px solid rgba(80,90,130,0.50)",
-                        }}
-                      >
-                        Start Playing
-                      </Link>
-                    </div>
-                  )}
-                </div>
-              ) : null}
-
-              {/* Player rows */}
-              {listPlayers.map((player, index) => {
-                const rank = listRankOffset + index + 1;
-                const tier = resolveTierForRow(player);
-                const av = tierAvatarStyle(tier);
-
-                return (
-                  <div
-                    key={player.id}
-                    className="group flex items-center gap-2.5 px-4 py-2.5 transition-all last:border-b-0"
-                    style={{
-                      borderBottom: "1px solid rgba(255,255,255,0.04)",
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLDivElement).style.background =
-                        "rgba(255,255,255,0.025)";
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLDivElement).style.background =
-                        "transparent";
-                    }}
-                  >
-                    {/* Rank number */}
                     <div
-                      className="w-8 shrink-0 font-black tabular-nums"
-                      style={{ fontSize: "16px", color: "#a1a1aa" }}
+                      className="w-8 shrink-0 font-black uppercase"
+                      style={{ fontSize: "9px", letterSpacing: "0.22em", color: "#3f3f46" }}
                     >
-                      {rank}
+                      RANK
                     </div>
+                    <div
+                      className="flex-1 font-black uppercase"
+                      style={{ fontSize: "9px", letterSpacing: "0.22em", color: "#3f3f46" }}
+                    >
+                      PLAYER
+                    </div>
+                    <div
+                      className="hidden w-16 shrink-0 text-right font-black uppercase sm:block"
+                      style={{ fontSize: "9px", letterSpacing: "0.22em", color: "#3f3f46" }}
+                    >
+                      POINTS
+                    </div>
+                    <div
+                      className="hidden w-14 shrink-0 text-right font-black uppercase sm:block"
+                      style={{ fontSize: "9px", letterSpacing: "0.22em", color: "#3f3f46" }}
+                    >
+                      WIN%
+                    </div>
+                    <div
+                      className="hidden w-5 shrink-0 text-center font-black sm:block"
+                      style={{ fontSize: "9px", color: "#3f3f46" }}
+                    >
+                      ↑↓
+                    </div>
+                    <div
+                      className="w-12 shrink-0 text-right font-black uppercase sm:hidden"
+                      style={{ fontSize: "9px", letterSpacing: "0.20em", color: "#3f3f46" }}
+                    >
+                      PTS
+                    </div>
+                  </div>
+                ) : null}
 
-                    {/* Avatar shell */}
-                    {hasValidUserId(player.id) ? (
-                      <Link
-                        href={buildPlayerProfileHref(player.id, player.username)}
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-black text-white transition hover:brightness-110"
-                        style={{
-                          fontSize: "11px",
-                          background: av.bgGrad,
-                          boxShadow: `0 0 0 2px ${av.ringColor}, 0 0 0 5px ${av.ringGlow}, 0 0 14px ${av.ringGlow}`,
-                        }}
-                      >
-                        {getInitials(player.username)}
-                      </Link>
+                {/* Empty state */}
+                {listPlayers.length === 0 ? (
+                  <div className="px-4 py-10 text-center">
+                    {hasActiveSearch ? (
+                      <p style={{ fontSize: "14px", color: "#71717a" }}>
+                        {`No players found for "${search}".`}
+                      </p>
+                    ) : showPodium ? (
+                      <div>
+                        <p style={{ fontSize: "13px", color: "#52525b" }}>
+                          More ranked players will appear here.
+                        </p>
+                        <p style={{ fontSize: "11px", color: "#3f3f46", marginTop: "4px" }}>
+                          Complete {UNRANKED_MATCHES_THRESHOLD} matches to
+                          claim your rank.
+                        </p>
+                      </div>
                     ) : (
-                      <div
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-black text-white"
-                        style={{
-                          fontSize: "11px",
-                          background: av.bgGrad,
-                          boxShadow: `0 0 0 2px ${av.ringColor}, 0 0 0 5px ${av.ringGlow}, 0 0 14px ${av.ringGlow}`,
-                        }}
-                      >
-                        {getInitials(player.username)}
+                      <div className="space-y-3">
+                        <p style={{ fontSize: "14px", color: "#71717a" }}>
+                          No ranked players yet. Complete{" "}
+                          {UNRANKED_MATCHES_THRESHOLD} placement matches to
+                          appear.
+                        </p>
+                        <Link
+                          href="/lobby"
+                          className="inline-flex rounded-xl px-4 py-2 text-sm font-semibold text-white transition hover:opacity-80"
+                          style={{
+                            background: "rgba(18,24,42,0.95)",
+                            border: "1px solid rgba(60,80,140,0.55)",
+                          }}
+                        >
+                          Start Playing
+                        </Link>
                       </div>
                     )}
+                  </div>
+                ) : null}
 
-                    {/* Name + tier */}
-                    <div className="min-w-0 flex-1">
+                {/* Player rows — hover via Tailwind (no JS handlers in server component) */}
+                {listPlayers.map((player, index) => {
+                  const rank = listRankOffset + index + 1;
+                  const tier = resolveTierForRow(player);
+                  const av = tierRingStyle(tier);
+
+                  return (
+                    <div
+                      key={player.id}
+                      className="flex items-center gap-2.5 px-4 py-2.5 transition-colors hover:bg-white/[0.025]"
+                      style={{
+                        borderBottom: "1px solid rgba(255,255,255,0.04)",
+                      }}
+                    >
+                      {/* Rank */}
+                      <div
+                        className="w-8 shrink-0 font-black tabular-nums"
+                        style={{ fontSize: "17px", color: "#71717a" }}
+                      >
+                        {rank}
+                      </div>
+
+                      {/* Avatar with tier ring */}
                       {hasValidUserId(player.id) ? (
                         <Link
                           href={buildPlayerProfileHref(player.id, player.username)}
-                          className="block truncate font-bold text-white transition hover:opacity-80"
-                          style={{ fontSize: "13px" }}
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-black text-white transition hover:brightness-110"
+                          style={{
+                            fontSize: "11px",
+                            background: av.bgGrad,
+                            boxShadow: `0 0 0 2px ${av.ringColor}, 0 0 0 5px ${av.glowColor}, 0 0 16px ${av.glowColor}`,
+                          }}
                         >
-                          {player.username}
+                          {getInitials(player.username)}
                         </Link>
                       ) : (
-                        <span
-                          className="block truncate font-bold text-white"
-                          style={{ fontSize: "13px" }}
+                        <div
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-black text-white"
+                          style={{
+                            fontSize: "11px",
+                            background: av.bgGrad,
+                            boxShadow: `0 0 0 2px ${av.ringColor}, 0 0 0 5px ${av.glowColor}, 0 0 16px ${av.glowColor}`,
+                          }}
                         >
-                          {player.username}
-                        </span>
+                          {getInitials(player.username)}
+                        </div>
                       )}
-                      <div
-                        className="flex items-center gap-1 font-bold"
-                        style={{
-                          fontSize: "10px",
-                          color: av.ringColor,
-                          marginTop: "1px",
-                        }}
-                      >
-                        <span>{tier.icon}</span>
-                        <span>{tier.label}</span>
+
+                      {/* Name + tier */}
+                      <div className="min-w-0 flex-1">
+                        {hasValidUserId(player.id) ? (
+                          <Link
+                            href={buildPlayerProfileHref(player.id, player.username)}
+                            className="block truncate font-bold text-white transition hover:opacity-80"
+                            style={{ fontSize: "13px" }}
+                          >
+                            {player.username}
+                          </Link>
+                        ) : (
+                          <span
+                            className="block truncate font-bold text-white"
+                            style={{ fontSize: "13px" }}
+                          >
+                            {player.username}
+                          </span>
+                        )}
+                        <div
+                          className="flex items-center gap-1 font-bold"
+                          style={{
+                            fontSize: "10px",
+                            color: av.labelColor,
+                            marginTop: "1px",
+                          }}
+                        >
+                          <span>{tier.icon}</span>
+                          <span>{tier.label}</span>
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Points — desktop */}
-                    <div className="hidden w-16 shrink-0 text-right sm:block">
-                      <p
-                        className="font-black tabular-nums"
-                        style={{ fontSize: "13px", color: "#fde68a" }}
+                      {/* Points — desktop */}
+                      <div className="hidden w-16 shrink-0 text-right sm:block">
+                        <p
+                          className="font-black tabular-nums"
+                          style={{ fontSize: "13px", color: "#fde68a" }}
+                        >
+                          {player.rankPoints}
+                        </p>
+                      </div>
+
+                      {/* Win rate — desktop */}
+                      <div className="hidden w-14 shrink-0 text-right sm:block">
+                        <p
+                          className="font-bold tabular-nums"
+                          style={{ fontSize: "13px", color: "#a1a1aa" }}
+                        >
+                          {player.winRate}%
+                        </p>
+                      </div>
+
+                      {/* Movement — always — */}
+                      <div
+                        className="hidden w-5 shrink-0 text-center sm:block"
+                        style={{ fontSize: "13px", color: "#3f3f46" }}
                       >
-                        {player.rankPoints}
-                      </p>
+                        —
+                      </div>
+
+                      {/* Mobile: points + win rate stacked */}
+                      <div className="w-12 shrink-0 text-right sm:hidden">
+                        <p
+                          className="font-black tabular-nums"
+                          style={{ fontSize: "13px", color: "#fde68a" }}
+                        >
+                          {player.rankPoints}
+                        </p>
+                        <p style={{ fontSize: "10px", color: "#52525b" }}>
+                          {player.winRate}%
+                        </p>
+                      </div>
+
+                      {/* Challenge — search only */}
+                      {hasActiveSearch && hasValidUserId(player.id) ? (
+                        <Link
+                          href={buildChallengeHref(player.id, player.username)}
+                          className="shrink-0 rounded-lg px-2 py-0.5 text-xs font-semibold transition hover:opacity-80"
+                          style={{
+                            background: "rgba(8,40,50,0.90)",
+                            border: "1px solid rgba(34,211,238,0.38)",
+                            color: "#67e8f9",
+                          }}
+                        >
+                          Challenge
+                        </Link>
+                      ) : null}
                     </div>
+                  );
+                })}
+              </div>
 
-                    {/* Win rate — desktop */}
-                    <div className="hidden w-14 shrink-0 text-right sm:block">
-                      <p
-                        className="font-bold tabular-nums"
-                        style={{ fontSize: "13px", color: "#a1a1aa" }}
-                      >
-                        {player.winRate}%
-                      </p>
-                    </div>
+              {/* ── PAGINATION ───────────────────────────────────────── */}
+              <div className="flex items-center justify-between gap-3 px-1">
+                {page > 1 ? (
+                  <Link
+                    href={previousPageHref}
+                    className="rounded-xl px-4 py-2 text-[13px] font-semibold text-white transition hover:opacity-80"
+                    style={{
+                      background: "rgba(18,24,42,0.95)",
+                      border: "1px solid rgba(60,80,140,0.50)",
+                    }}
+                  >
+                    ← Prev
+                  </Link>
+                ) : (
+                  <span />
+                )}
+                {showNextPage ? (
+                  <Link
+                    href={nextPageHref}
+                    className="rounded-xl px-4 py-2 text-[13px] font-semibold text-white transition hover:opacity-80"
+                    style={{
+                      background: "rgba(18,24,42,0.95)",
+                      border: "1px solid rgba(60,80,140,0.50)",
+                    }}
+                  >
+                    Next →
+                  </Link>
+                ) : null}
+              </div>
 
-                    {/* Movement — always — */}
-                    <div
-                      className="hidden w-5 shrink-0 text-center sm:block"
-                      style={{ fontSize: "13px", color: "#3f3f46" }}
-                    >
-                      —
-                    </div>
-
-                    {/* Mobile: points + win rate stacked */}
-                    <div className="w-12 shrink-0 text-right sm:hidden">
-                      <p
-                        className="font-black tabular-nums"
-                        style={{ fontSize: "13px", color: "#fde68a" }}
-                      >
-                        {player.rankPoints}
-                      </p>
-                      <p style={{ fontSize: "10px", color: "#52525b" }}>
-                        {player.winRate}%
-                      </p>
-                    </div>
-
-                    {/* Challenge — search only */}
-                    {hasActiveSearch && hasValidUserId(player.id) ? (
-                      <Link
-                        href={buildChallengeHref(player.id, player.username)}
-                        className="shrink-0 rounded-lg px-2 py-0.5 text-xs font-semibold transition hover:opacity-80"
-                        style={{
-                          background: "rgba(8,40,50,0.80)",
-                          border: "1px solid rgba(34,211,238,0.35)",
-                          color: "#67e8f9",
-                        }}
-                      >
-                        Challenge
-                      </Link>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* ─── PAGINATION ───────────────────────────────────────────── */}
-            <div className="flex items-center justify-between gap-3 px-1">
-              {page > 1 ? (
-                <Link
-                  href={previousPageHref}
-                  className="rounded-xl px-4 py-2 text-[13px] font-semibold text-white transition hover:opacity-80"
-                  style={{
-                    background: "rgba(20,25,40,0.90)",
-                    border: "1px solid rgba(80,90,130,0.50)",
-                  }}
+              {/* Placement count note */}
+              {placementPlayerCount > 0 ? (
+                <p
+                  className="text-center"
+                  style={{ fontSize: "10px", color: "#3f3f46" }}
                 >
-                  ← Prev
-                </Link>
-              ) : (
-                <span />
-              )}
-              {showNextPage ? (
-                <Link
-                  href={nextPageHref}
-                  className="rounded-xl px-4 py-2 text-[13px] font-semibold text-white transition hover:opacity-80"
-                  style={{
-                    background: "rgba(20,25,40,0.90)",
-                    border: "1px solid rgba(80,90,130,0.50)",
-                  }}
-                >
-                  Next →
-                </Link>
+                  {placementPlayerCount} player
+                  {placementPlayerCount === 1 ? "" : "s"} in placement —{" "}
+                  {UNRANKED_MATCHES_THRESHOLD} matches required to rank
+                </p>
               ) : null}
             </div>
+          </section>
 
-            {/* Placement count note */}
-            {placementPlayerCount > 0 ? (
-              <p
-                className="text-center"
-                style={{ fontSize: "10px", color: "#3f3f46" }}
-              >
-                {placementPlayerCount} player
-                {placementPlayerCount === 1 ? "" : "s"} in placement —{" "}
-                {UNRANKED_MATCHES_THRESHOLD} matches required to rank
-              </p>
-            ) : null}
-          </div>
-        </section>
+          {/* Bottom spacer so content isn't hidden behind nav */}
+          <div className="h-4 md:h-6" />
+        </div>
       </div>
 
-      {/* ═══ YOUR RANK BAR ═══════════════════════════════════════════════ */}
+      {/* ── YOUR RANK BAR ──────────────────────────────────────────────── */}
       <YourRankBar />
     </>
   );
