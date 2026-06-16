@@ -2812,16 +2812,16 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             </div>
           ) : null}
 
-          {/* Minimal header row — title hidden on mobile, only status badges shown */}
-          <div className="flex items-center justify-between gap-1 sm:gap-3 sm:block">
-            <h2 className="hidden text-[9px] font-black sm:block sm:text-2xl md:text-3xl">
+          {/* Ultra-compact single-row header: tiny label + badges always inline */}
+          <div className="flex items-center justify-between gap-1">
+            <h2 className="shrink-0 text-[9px] font-black sm:text-base md:text-2xl">
               {revealStage === "LOCKED"
                 ? "Pick locked"
                 : hasSubmittedPick || myPick
                   ? "Pick locked in"
                   : "Choose your lane"}
             </h2>
-            <div className="flex items-center gap-1 sm:mt-2 sm:gap-2 md:flex-col md:items-end">
+            <div className="flex items-center gap-1 sm:gap-2">
               {(hasSubmittedPick || myPick) &&
               !isRevealLocked &&
               disconnectCountdown === null ? (
@@ -2861,7 +2861,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                 onClick={() => pick(lane)}
                 disabled={!canPick}
                 aria-pressed={myPick === lane}
-                className={`group flex h-6 items-center justify-center gap-0.5 rounded-md border px-1 sm:block sm:h-auto sm:rounded-3xl sm:px-4 sm:py-6 md:px-5 md:py-8 ${getLaneButtonClass(
+                className={`group flex flex-col items-center justify-center h-7 gap-0 rounded-md border px-1 sm:h-12 sm:gap-0.5 sm:rounded-3xl sm:px-3 md:h-16 md:px-4 ${getLaneButtonClass(
                   lane,
                   {
                     canPick,
@@ -2871,18 +2871,18 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                   }
                 )}`}
               >
-                <span className="text-[9px] font-black leading-none sm:block sm:text-4xl md:text-6xl">
+                <span className="text-[9px] leading-none sm:text-2xl md:text-4xl">
                   {laneEmoji(lane)}
                 </span>
-                <span className="text-[8px] font-black sm:mt-2 sm:block sm:text-base md:mt-3 md:text-xl">
+                <span className="text-[8px] font-black sm:mt-0.5 sm:text-sm md:mt-1 md:text-lg">
                   {lane}{myPick === lane ? " ✓" : ""}
                 </span>
                 {myPick === lane ? (
-                  <span className="hidden sm:mt-2 sm:inline-flex sm:items-center sm:gap-1.5 sm:rounded-full sm:bg-emerald-500/25 sm:px-3 sm:py-1 sm:text-[11px] sm:font-black sm:uppercase sm:tracking-[0.2em] sm:text-emerald-100 sm:ring-1 sm:ring-emerald-300/60">
+                  <span className="hidden sm:mt-1 sm:block sm:text-[10px] sm:font-black sm:uppercase sm:text-emerald-300">
                     Locked
                   </span>
                 ) : isRevealLocked ? (
-                  <span className="hidden sm:mt-2 sm:block sm:text-[11px] sm:font-bold sm:uppercase sm:tracking-[0.18em] sm:text-zinc-500">
+                  <span className="hidden sm:mt-1 sm:block sm:text-[10px] sm:font-bold sm:uppercase sm:text-zinc-500">
                     Revealing
                   </span>
                 ) : null}
