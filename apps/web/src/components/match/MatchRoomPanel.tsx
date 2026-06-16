@@ -2793,7 +2793,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       </section>
 
       {!matchEnded ? (
-        <section className="relative shrink-0 rounded-lg border border-zinc-800 bg-zinc-900/95 p-1 shadow-xl sm:rounded-[2rem] sm:p-5 md:p-7">
+        <section className="relative shrink-0 rounded-lg border border-zinc-800 bg-zinc-900/95 px-1 py-0.5 shadow-xl sm:rounded-[2rem] sm:p-5 md:p-7">
           {revealStage === "LOCKED" && !isRevealLocked ? (
             <div
               className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-black/50 backdrop-blur-[2px] sm:rounded-[2rem]"
@@ -2812,9 +2812,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             </div>
           ) : null}
 
-          {/* Single compact header row on mobile */}
+          {/* Minimal header row — title hidden on mobile, only status badges shown */}
           <div className="flex items-center justify-between gap-1 sm:gap-3 sm:block">
-            <h2 className="text-[10px] font-black sm:text-2xl md:text-3xl">
+            <h2 className="hidden text-[9px] font-black sm:block sm:text-2xl md:text-3xl">
               {revealStage === "LOCKED"
                 ? "Pick locked"
                 : hasSubmittedPick || myPick
@@ -2854,14 +2854,14 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             </div>
           </div>
 
-          <div className="mt-0.5 grid grid-cols-3 gap-1 sm:mt-5 sm:gap-3 md:mt-7 md:gap-4">
+          <div className="mt-0 grid grid-cols-3 gap-1 sm:mt-5 sm:gap-3 md:mt-7 md:gap-4">
             {LANES.map((lane) => (
               <button
                 key={lane}
                 onClick={() => pick(lane)}
                 disabled={!canPick}
                 aria-pressed={myPick === lane}
-                className={`group flex h-8 items-center justify-center gap-0.5 rounded-lg border px-1 sm:block sm:h-auto sm:rounded-3xl sm:px-4 sm:py-6 md:px-5 md:py-8 ${getLaneButtonClass(
+                className={`group flex h-6 items-center justify-center gap-0.5 rounded-md border px-1 sm:block sm:h-auto sm:rounded-3xl sm:px-4 sm:py-6 md:px-5 md:py-8 ${getLaneButtonClass(
                   lane,
                   {
                     canPick,
@@ -2871,7 +2871,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                   }
                 )}`}
               >
-                <span className="text-[11px] font-black leading-none sm:block sm:text-4xl md:text-6xl">
+                <span className="text-[9px] font-black leading-none sm:block sm:text-4xl md:text-6xl">
                   {laneEmoji(lane)}
                 </span>
                 <span className="text-[8px] font-black sm:mt-2 sm:block sm:text-base md:mt-3 md:text-xl">
