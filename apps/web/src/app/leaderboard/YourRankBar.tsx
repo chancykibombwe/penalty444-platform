@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase/client";
-import RankBadge from "../../components/player/RankBadge";
 import {
   resolvePlayerTier,
   UNRANKED_MATCHES_THRESHOLD,
@@ -104,7 +103,9 @@ export default function YourRankBar() {
   if (bar.status === "loading") {
     return (
       <div className={wrap}>
-        <div className="h-14 animate-pulse rounded-xl border border-zinc-800 bg-zinc-900/90 backdrop-blur-sm" />
+        <div className="mx-auto max-w-[560px]">
+          <div className="h-[60px] animate-pulse rounded-2xl border border-zinc-800 bg-zinc-900/90 backdrop-blur-sm" />
+        </div>
       </div>
     );
   }
@@ -112,25 +113,29 @@ export default function YourRankBar() {
   if (bar.status === "placement") {
     return (
       <div className={wrap}>
-        <div className="flex h-14 items-center justify-between gap-3 rounded-xl border border-zinc-700/50 bg-zinc-900/95 px-4 shadow-[0_-4px_20px_rgba(0,0,0,0.5)] backdrop-blur-sm">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800/80 text-[11px] font-black text-zinc-300">
-              {initials(bar.username)}
+        <div className="mx-auto max-w-[560px]">
+          <div className="flex h-[60px] items-center justify-between gap-3 rounded-2xl border border-zinc-700/60 bg-zinc-950/98 px-4 shadow-[0_-4px_24px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-md">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800/80 text-[11px] font-black text-zinc-300">
+                {initials(bar.username)}
+              </div>
+              <div>
+                <p className="text-[8px] font-black uppercase tracking-[0.28em] text-zinc-500">
+                  YOUR RANK
+                </p>
+                <p className="text-sm font-bold text-zinc-200">
+                  {bar.username}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-500">
-                Your Rank
+            <div className="text-right">
+              <p className="text-[8px] font-black uppercase tracking-[0.22em] text-zinc-500">
+                Placement
               </p>
-              <p className="text-sm font-bold text-zinc-300">{bar.username}</p>
+              <p className="text-xs font-bold tabular-nums text-zinc-400">
+                {bar.matchesPlayed}/{UNRANKED_MATCHES_THRESHOLD} played
+              </p>
             </div>
-          </div>
-          <div className="text-right">
-            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
-              Placement
-            </p>
-            <p className="text-xs font-bold tabular-nums text-zinc-400">
-              {bar.matchesPlayed}/{UNRANKED_MATCHES_THRESHOLD} played
-            </p>
           </div>
         </div>
       </div>
@@ -145,48 +150,73 @@ export default function YourRankBar() {
 
   return (
     <div className={wrap}>
-      <div className="flex h-14 items-center gap-3 rounded-xl border border-cyan-500/35 bg-zinc-900/95 px-4 shadow-[0_-4px_24px_rgba(0,0,0,0.55),0_0_20px_rgba(34,211,238,0.08)] backdrop-blur-sm">
-        <div className="shrink-0">
-          <p className="text-[9px] font-black uppercase tracking-[0.25em] text-cyan-400/70">
-            Your Rank
-          </p>
-          <p className="text-lg font-black tabular-nums leading-none text-white">
-            #{bar.rank}
-          </p>
-        </div>
-        <div className="h-8 w-px shrink-0 bg-zinc-800" />
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-cyan-500/30 bg-gradient-to-b from-cyan-900/40 to-zinc-800 text-[11px] font-black text-white">
-          {initials(bar.username)}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-black text-white">
-            {bar.username}
-          </p>
-          <RankBadge
-            tier={tier}
-            rating={bar.rankPoints}
-            matchesPlayed={bar.matches}
-            showRating={false}
-            variant="chip"
-            className="mt-0.5"
-          />
-        </div>
-        <div className="shrink-0 text-right">
-          <p className="text-sm font-black tabular-nums text-yellow-200">
-            {bar.rankPoints}
-          </p>
-          <p className="text-[10px] font-bold text-zinc-500">{bar.winRate}%</p>
-        </div>
-        <svg
-          className="h-4 w-4 shrink-0 text-zinc-600"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          aria-hidden="true"
+      <div className="mx-auto max-w-[560px]">
+        <div
+          className="flex h-[60px] items-center gap-3 rounded-2xl border border-cyan-400/55 bg-zinc-950/98 px-4 backdrop-blur-md"
+          style={{
+            boxShadow:
+              "0 0 0 1px rgba(34,211,238,0.12), 0 -4px_32px rgba(0,0,0,0.70), 0 0 28px rgba(34,211,238,0.18), inset 0 1px 0 rgba(34,211,238,0.08)",
+          }}
         >
-          <path d="m9 18 6-6-6-6" />
-        </svg>
+          {/* YOUR RANK + number */}
+          <div className="shrink-0">
+            <p className="text-[8px] font-black uppercase tracking-[0.30em] text-cyan-400">
+              YOUR RANK
+            </p>
+            <p className="text-[22px] font-black tabular-nums leading-none text-white">
+              #{bar.rank}
+            </p>
+          </div>
+
+          {/* Vertical divider */}
+          <div className="h-9 w-px shrink-0 bg-zinc-800" />
+
+          {/* Avatar with cyan ring */}
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-cyan-800/50 to-zinc-900 text-[11px] font-black text-white"
+            style={{
+              boxShadow:
+                "0 0 0 2px rgba(34,211,238,0.55), 0 0 0 4px rgba(34,211,238,0.18), 0 0 16px rgba(34,211,238,0.22)",
+            }}
+          >
+            {initials(bar.username)}
+          </div>
+
+          {/* Name + tier */}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-black text-white">
+              {bar.username}
+            </p>
+            <div
+              className={`flex items-center gap-1 text-[10px] font-bold ${tier.textClass}`}
+            >
+              <span>{tier.icon}</span>
+              <span>{tier.label}</span>
+            </div>
+          </div>
+
+          {/* Points + win rate */}
+          <div className="shrink-0 text-right">
+            <p className="text-base font-black tabular-nums text-yellow-200">
+              {bar.rankPoints}
+            </p>
+            <p className="text-[10px] font-bold text-zinc-500">
+              {bar.winRate}%
+            </p>
+          </div>
+
+          {/* Chevron */}
+          <svg
+            className="h-4 w-4 shrink-0 text-zinc-500"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            aria-hidden="true"
+          >
+            <path d="m9 18 6-6-6-6" />
+          </svg>
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
-import RankBadge from "../../components/player/RankBadge";
 import {
   resolvePlayerTier,
   UNRANKED_MATCHES_THRESHOLD,
@@ -38,7 +37,7 @@ type LeaderboardPlayer = {
   winRate: number;
 };
 
-// ─── Pure helpers ─────────────────────────────────────────────────────────────
+// ─── Pure helpers (data logic unchanged) ─────────────────────────────────────
 
 function resolveTierForRow(row: LeaderboardPlayer): RankTier {
   return resolvePlayerTier({
@@ -100,7 +99,10 @@ function buildLeaderboardHref(
 ) {
   const page = options.page ?? 1;
   const limit = options.limit ?? 100;
-  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+  });
   if (options.search) params.set("search", options.search);
   return `/leaderboard?${params.toString()}`;
 }
@@ -141,60 +143,63 @@ function tierAvatarStyle(tier: RankTier): { ring: string; grad: string } {
   return { ring: "ring-zinc-700/40", grad: "from-zinc-700/40 to-zinc-900/95" };
 }
 
-// ─── Podium medal configs ─────────────────────────────────────────────────────
+// ─── Podium configs ────────────────────────────────────────────────────────────
 
 const PODIUM = [
   {
-    // Gold — #1
+    // Gold — #1 (center, raised)
     accent: "text-yellow-300",
-    cardBorder: "border-yellow-500/55",
+    cardBorder: "border-yellow-500/60",
     cardBg:
-      "bg-[radial-gradient(ellipse_at_50%_-5%,rgba(234,179,8,0.20),transparent_52%),linear-gradient(175deg,rgba(120,70,10,0.72),rgba(5,5,8,0.99))]",
+      "bg-[linear-gradient(175deg,rgba(110,62,6,0.88)_0%,rgba(22,13,2,0.98)_55%,rgba(5,4,1,1)_100%)]",
     cardGlow:
-      "shadow-[0_0_60px_rgba(234,179,8,0.30),inset_0_1px_0_rgba(255,215,0,0.12)]",
+      "shadow-[0_0_0_1px_rgba(234,179,8,0.22),0_16px_56px_rgba(234,179,8,0.40),inset_0_1px_0_rgba(255,215,0,0.15)]",
     hexFill:
-      "linear-gradient(155deg, rgba(255,215,0,0.55) 0%, rgba(130,75,10,0.95) 100%)",
-    hexGlowColor: "rgba(234,179,8,0.80)",
-    avatarRing: "ring-2 ring-yellow-400/65",
-    avatarGrad: "from-yellow-500/65 to-amber-950/95",
-    pedestalColor: "rgba(234,179,8,0.55)",
-    label: "#1",
+      "linear-gradient(150deg, rgba(255,220,50,0.95) 0%, rgba(180,105,10,1) 100%)",
+    hexGlowColor: "rgba(234,179,8,1)",
+    avatarRingInner: "rgba(234,179,8,0.90)",
+    avatarRingOuter: "rgba(234,179,8,0.28)",
+    avatarGrad: "from-yellow-600/65 to-amber-950",
+    pedestalColor: "rgba(234,179,8,0.70)",
+    pedestalGlow: "rgba(234,179,8,0.40)",
   },
   {
-    // Silver — #2
+    // Silver — #2 (left, lower)
     accent: "text-slate-200",
-    cardBorder: "border-slate-300/45",
+    cardBorder: "border-slate-400/45",
     cardBg:
-      "bg-[radial-gradient(ellipse_at_50%_-5%,rgba(148,163,184,0.14),transparent_52%),linear-gradient(175deg,rgba(71,85,105,0.65),rgba(5,5,8,0.99))]",
+      "bg-[linear-gradient(175deg,rgba(60,72,90,0.85)_0%,rgba(15,18,24,0.98)_55%,rgba(4,5,7,1)_100%)]",
     cardGlow:
-      "shadow-[0_0_42px_rgba(148,163,184,0.20),inset_0_1px_0_rgba(200,215,230,0.08)]",
+      "shadow-[0_0_0_1px_rgba(148,163,184,0.18),0_12px_36px_rgba(148,163,184,0.28),inset_0_1px_0_rgba(200,215,230,0.10)]",
     hexFill:
-      "linear-gradient(155deg, rgba(200,215,230,0.42) 0%, rgba(55,70,90,0.95) 100%)",
-    hexGlowColor: "rgba(148,163,184,0.60)",
-    avatarRing: "ring-2 ring-slate-300/55",
-    avatarGrad: "from-slate-400/60 to-zinc-900/95",
-    pedestalColor: "rgba(148,163,184,0.48)",
-    label: "#2",
+      "linear-gradient(150deg, rgba(210,225,240,0.80) 0%, rgba(60,78,100,1) 100%)",
+    hexGlowColor: "rgba(148,163,184,0.90)",
+    avatarRingInner: "rgba(148,163,184,0.80)",
+    avatarRingOuter: "rgba(148,163,184,0.25)",
+    avatarGrad: "from-slate-400/60 to-zinc-900",
+    pedestalColor: "rgba(148,163,184,0.55)",
+    pedestalGlow: "rgba(148,163,184,0.30)",
   },
   {
-    // Bronze — #3
+    // Bronze — #3 (right, lower)
     accent: "text-amber-400",
-    cardBorder: "border-amber-600/50",
+    cardBorder: "border-amber-700/50",
     cardBg:
-      "bg-[radial-gradient(ellipse_at_50%_-5%,rgba(180,83,9,0.16),transparent_52%),linear-gradient(175deg,rgba(120,53,15,0.65),rgba(5,5,8,0.99))]",
+      "bg-[linear-gradient(175deg,rgba(105,46,10,0.85)_0%,rgba(20,10,3,0.98)_55%,rgba(5,3,1,1)_100%)]",
     cardGlow:
-      "shadow-[0_0_42px_rgba(180,83,9,0.22),inset_0_1px_0_rgba(210,120,40,0.08)]",
+      "shadow-[0_0_0_1px_rgba(180,83,9,0.20),0_12px_32px_rgba(180,83,9,0.32),inset_0_1px_0_rgba(220,120,35,0.10)]",
     hexFill:
-      "linear-gradient(155deg, rgba(200,110,20,0.52) 0%, rgba(80,40,8,0.95) 100%)",
-    hexGlowColor: "rgba(180,83,9,0.70)",
-    avatarRing: "ring-2 ring-amber-500/55",
-    avatarGrad: "from-amber-600/60 to-amber-950/95",
-    pedestalColor: "rgba(180,83,9,0.52)",
-    label: "#3",
+      "linear-gradient(150deg, rgba(210,115,20,0.90) 0%, rgba(92,40,6,1) 100%)",
+    hexGlowColor: "rgba(180,83,9,1)",
+    avatarRingInner: "rgba(180,83,9,0.85)",
+    avatarRingOuter: "rgba(180,83,9,0.28)",
+    avatarGrad: "from-amber-700/65 to-amber-950",
+    pedestalColor: "rgba(180,83,9,0.60)",
+    pedestalGlow: "rgba(180,83,9,0.35)",
   },
 ] as const;
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Page ──────────────────────────────────────────────────────────────────────
 
 export default async function LeaderboardPage({
   searchParams,
@@ -267,260 +272,392 @@ export default async function LeaderboardPage({
   return (
     <>
       {/* ═══════════════════════════════════════════════════════════════════
-          Outer shell — deep black, single card, matches the mockup screen
+          Centered game-screen panel — max 560px, cinematic dark frame
           ═══════════════════════════════════════════════════════════════════ */}
-      <section
-        className="overflow-hidden rounded-2xl border border-zinc-800/50 bg-[#060810] shadow-[0_40px_120px_rgba(0,0,0,0.80),inset_0_1px_0_rgba(255,255,255,0.04)] sm:rounded-[1.75rem] md:rounded-[2rem]"
-        aria-label="444 ARENA Leaderboard"
-      >
-        {/* ═══ APP HEADER ═════════════════════════════════════════════════
-            444 ARENA (left) · LEADERBOARD (center) · Coming Soon pills (right)
-            ═══════════════════════════════════════════════════════════════ */}
-        <div className="flex items-center justify-between gap-2 border-b border-zinc-800/50 bg-zinc-950/40 px-3 py-2.5 sm:px-4 sm:py-3">
-          {/* Left */}
-          <span className="flex-none text-[10px] font-black uppercase tracking-[0.28em] text-cyan-400/70 sm:text-[11px]">
-            444 ARENA
-          </span>
+      <div className="relative mx-auto max-w-[560px]">
+        {/* Ambient background radial glow behind the card */}
+        <div
+          className="pointer-events-none absolute -inset-10 -z-10 opacity-40"
+          style={{
+            background:
+              "radial-gradient(ellipse at 50% 30%, rgba(34,211,238,0.07), transparent 65%)",
+          }}
+        />
 
-          {/* Center */}
-          <h1 className="flex-1 text-center text-[12px] font-black uppercase tracking-[0.32em] text-white sm:text-sm">
-            LEADERBOARD
-          </h1>
+        <section
+          className="overflow-hidden rounded-[22px] border border-zinc-800/65 bg-[#07080f] shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_32px_80px_rgba(0,0,0,0.92)]"
+          aria-label="444 ARENA Leaderboard"
+        >
 
-          {/* Right — Coming Soon pills */}
-          <div className="flex flex-none items-center gap-1 sm:gap-1.5">
-            <div className="rounded border border-zinc-700/50 bg-zinc-900/60 px-1.5 py-1 text-center leading-none">
-              <p className="text-[7px] font-black uppercase tracking-[0.12em] text-zinc-400 sm:text-[8px]">
-                WALLET
-              </p>
-              <p className="text-[7px] font-black uppercase tracking-[0.08em] text-zinc-500 sm:text-[8px]">
-                COMING SOON
+          {/* ═══ APP-SCREEN HEADER ════════════════════════════════════════
+              444 ARENA left · LEADERBOARD center · Coming Soon pills right
+              ════════════════════════════════════════════════════════════ */}
+          <div className="flex items-center justify-between gap-2 border-b border-zinc-800/55 bg-[#060710]/85 px-4 py-3 sm:py-3.5">
+            {/* Left brand */}
+            <div className="flex-none">
+              <p className="text-[10px] font-black uppercase tracking-[0.35em] text-cyan-500">
+                444 ARENA
               </p>
             </div>
-            <div className="hidden rounded border border-zinc-700/50 bg-zinc-900/60 px-2 py-1 sm:block">
-              <p className="whitespace-nowrap text-[8px] font-bold uppercase tracking-[0.10em] text-zinc-500 sm:text-[9px]">
-                Season: Coming Soon
-              </p>
-            </div>
-          </div>
-        </div>
 
-        {/* ═══ MAIN CONTENT ════════════════════════════════════════════════ */}
-        <div className="space-y-3 p-3 sm:space-y-3.5 sm:p-4 md:p-5 lg:p-6">
+            {/* Center title */}
+            <h1 className="flex-1 text-center text-[14px] font-black uppercase tracking-[0.28em] text-white sm:text-[15px]">
+              LEADERBOARD
+            </h1>
 
-          {/* ─── Filter pills ─────────────────────────────────────────── */}
-          <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
-            {/* GLOBAL */}
-            <div className="flex items-center gap-2 rounded-xl border border-zinc-700/55 bg-zinc-900/65 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:px-3 sm:py-2.5">
-              <svg className="h-3.5 w-3.5 shrink-0 text-cyan-400/70" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z" clipRule="evenodd" />
-              </svg>
-              <span className="min-w-0 flex-1 truncate text-[10px] font-black uppercase tracking-[0.15em] text-zinc-100 sm:text-[11px]">
-                GLOBAL
-              </span>
-              <svg className="h-2.5 w-2.5 shrink-0 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-            </div>
-
-            {/* PENALTY444 */}
-            <div className="flex items-center gap-2 rounded-xl border border-zinc-700/55 bg-zinc-900/65 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:px-3 sm:py-2.5">
-              <svg className="h-3.5 w-3.5 shrink-0 text-cyan-400/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
-                <path d="M2 12h20"/>
-              </svg>
-              <span className="min-w-0 flex-1 truncate text-[10px] font-black uppercase tracking-[0.15em] text-zinc-100 sm:text-[11px]">
-                PENALTY444
-              </span>
-              <svg className="h-2.5 w-2.5 shrink-0 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-            </div>
-
-            {/* ALL TIME */}
-            <div className="flex items-center gap-2 rounded-xl border border-zinc-700/50 bg-zinc-900/55 px-2.5 py-2 opacity-65 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] sm:px-3 sm:py-2.5">
-              <svg className="h-3.5 w-3.5 shrink-0 text-zinc-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
-              </svg>
-              <span className="min-w-0 flex-1 truncate text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 sm:text-[11px]">
-                ALL TIME
-              </span>
-              <svg className="h-2.5 w-2.5 shrink-0 text-zinc-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            {/* Right utility pills */}
+            <div className="flex flex-none items-center gap-1.5">
+              <div className="rounded-lg border border-zinc-700/60 bg-zinc-900/90 px-2 py-1 text-center">
+                <p className="text-[7px] font-black uppercase tracking-[0.14em] text-zinc-300">
+                  WALLET
+                </p>
+                <p className="text-[7px] font-semibold uppercase tracking-[0.08em] text-zinc-600">
+                  COMING SOON
+                </p>
+              </div>
+              <div className="hidden rounded-lg border border-zinc-700/60 bg-zinc-900/90 px-2 py-1 sm:block">
+                <p className="whitespace-nowrap text-[8px] font-semibold text-zinc-500">
+                  Season: Coming Soon
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* ─── Error ────────────────────────────────────────────────── */}
-          {error ? (
-            <div className="rounded-xl border border-red-800/50 bg-red-950/30 px-4 py-3 text-sm text-red-300">
-              Could not load leaderboard. Please refresh.
+          {/* ═══ MAIN CONTENT ════════════════════════════════════════════ */}
+          <div className="space-y-3 p-3 sm:space-y-3.5 sm:p-4">
+
+            {/* ─── FILTER PILLS ─────────────────────────────────────────── */}
+            <div className="grid grid-cols-3 gap-2">
+              {/* GLOBAL */}
+              <div className="flex items-center gap-2 rounded-xl border border-zinc-600/55 bg-zinc-900/80 px-2.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:px-3">
+                <svg
+                  className="h-4 w-4 shrink-0 text-blue-400/80"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <span className="min-w-0 flex-1 truncate text-[10px] font-black uppercase tracking-[0.15em] text-white sm:text-[11px]">
+                  GLOBAL
+                </span>
+                <svg
+                  className="h-2.5 w-2.5 shrink-0 text-zinc-500"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  aria-hidden="true"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+
+              {/* PENALTY444 */}
+              <div className="flex items-center gap-2 rounded-xl border border-zinc-600/55 bg-zinc-900/80 px-2.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:px-3">
+                <svg
+                  className="h-4 w-4 shrink-0 text-blue-400/80"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+                  <path d="M2 12h20" />
+                </svg>
+                <span className="min-w-0 flex-1 truncate text-[10px] font-black uppercase tracking-[0.12em] text-white sm:text-[11px]">
+                  P444
+                </span>
+                <svg
+                  className="h-2.5 w-2.5 shrink-0 text-zinc-500"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  aria-hidden="true"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+
+              {/* ALL TIME */}
+              <div className="flex items-center gap-2 rounded-xl border border-zinc-700/45 bg-zinc-900/70 px-2.5 py-3 opacity-55 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:px-3">
+                <svg
+                  className="h-4 w-4 shrink-0 text-zinc-500"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <span className="min-w-0 flex-1 truncate text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 sm:text-[11px]">
+                  ALL TIME
+                </span>
+                <svg
+                  className="h-2.5 w-2.5 shrink-0 text-zinc-600"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  aria-hidden="true"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
             </div>
-          ) : null}
 
-          {/* ─── Podium ───────────────────────────────────────────────── */}
-          {showPodium ? (
-            <div className="grid grid-cols-3 items-end gap-2 pt-2 sm:gap-3 sm:pt-3 md:gap-4">
-              {topPlayers.map((player, index) => {
-                const p = PODIUM[index];
-                const rank = index + 1;
-                const tier = resolveTierForRow(player);
-                // visual order: #1 center-raised, #2 left, #3 right
-                const orderClass =
-                  index === 0 ? "order-2" : index === 1 ? "order-1" : "order-3";
-                const liftClass =
-                  index === 0 ? "-mt-8 sm:-mt-12" : "mt-8 sm:mt-12";
+            {/* ─── ERROR ────────────────────────────────────────────────── */}
+            {error ? (
+              <div className="rounded-xl border border-red-800/50 bg-red-950/30 px-4 py-3 text-sm text-red-300">
+                Could not load leaderboard. Please refresh.
+              </div>
+            ) : null}
 
-                return (
-                  <div
-                    key={player.id}
-                    className={`${orderClass} ${liftClass} relative flex flex-col items-center overflow-visible rounded-2xl border pb-3 pt-2 sm:pt-3 md:rounded-[1.5rem] ${p.cardBorder} ${p.cardBg} ${p.cardGlow}`}
-                  >
-                    {/* Hex rank badge */}
-                    <div className="flex justify-center">
+            {/* ─── PODIUM (trophy case) ─────────────────────────────────── */}
+            {showPodium ? (
+              <div className="grid grid-cols-3 items-end gap-2 pt-2 sm:gap-3 sm:pt-3">
+                {topPlayers.map((player, index) => {
+                  const p = PODIUM[index as 0 | 1 | 2];
+                  if (!p) return null;
+                  const rank = index + 1;
+                  const isFirst = index === 0;
+                  const tier = resolveTierForRow(player);
+                  const orderClass =
+                    isFirst ? "order-2" : index === 1 ? "order-1" : "order-3";
+                  // Badge sizes
+                  const badgeW = isFirst ? 52 : 44;
+                  const badgeH = isFirst ? 58 : 50;
+                  const badgeFs = isFirst ? "20px" : "16px";
+                  // Avatar sizes
+                  const avSize = isFirst ? 72 : 60;
+                  const avFs = isFirst ? "15px" : "12px";
+                  // Card overlap: badge overlaps card by ~half badge height
+                  const overlap = Math.round(badgeH / 2);
+
+                  return (
+                    <div
+                      key={player.id}
+                      className={`${orderClass} flex flex-col items-center`}
+                    >
+                      {/* Spacer pushes side cards down — center card is naturally "raised" */}
+                      {!isFirst && (
+                        <div className="h-8 w-full shrink-0 sm:h-12" />
+                      )}
+
+                      {/* ── Hex rank badge (floats above card) ─────────── */}
                       <div
-                        className={`flex h-10 w-[38px] items-center justify-center text-[15px] font-black sm:h-12 sm:w-11 sm:text-[18px] ${p.accent}`}
+                        className="relative z-10 shrink-0"
                         style={{
                           clipPath:
-                            "polygon(50% 0%, 97% 26%, 97% 74%, 50% 100%, 3% 74%, 3% 26%)",
+                            "polygon(50% 0%, 97% 25%, 97% 75%, 50% 100%, 3% 75%, 3% 25%)",
                           background: p.hexFill,
-                          filter: `drop-shadow(0 0 8px ${p.hexGlowColor})`,
+                          filter: `drop-shadow(0 0 12px ${p.hexGlowColor})`,
+                          width: `${badgeW}px`,
+                          height: `${badgeH}px`,
                         }}
                       >
-                        {rank}
+                        <div className="flex h-full w-full items-center justify-center">
+                          <span
+                            className="font-black text-white"
+                            style={{ fontSize: badgeFs }}
+                          >
+                            {rank}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* ── Card body (overlaps badge by half its height) ─ */}
+                      <div
+                        className={`w-full overflow-hidden rounded-[18px] border ${p.cardBorder} ${p.cardBg} ${p.cardGlow}`}
+                        style={{ marginTop: `-${overlap}px` }}
+                      >
+                        {/* Content — top padding clears the overlapping badge */}
+                        <div
+                          className="flex flex-col items-center px-2 sm:px-3"
+                          style={{ paddingTop: `${overlap + 10}px` }}
+                        >
+                          {/* Avatar circle with medal ring */}
+                          {hasValidUserId(player.id) ? (
+                            <Link
+                              href={buildPlayerProfileHref(
+                                player.id,
+                                player.username
+                              )}
+                              className="block transition hover:brightness-110"
+                            >
+                              <div
+                                className={`flex items-center justify-center rounded-full bg-gradient-to-b font-black text-white ${p.avatarGrad}`}
+                                style={{
+                                  width: `${avSize}px`,
+                                  height: `${avSize}px`,
+                                  fontSize: avFs,
+                                  boxShadow: `0 0 0 3px ${p.avatarRingInner}, 0 0 0 6px ${p.avatarRingOuter}, 0 0 22px ${p.avatarRingOuter}`,
+                                }}
+                              >
+                                {getInitials(player.username)}
+                              </div>
+                            </Link>
+                          ) : (
+                            <div
+                              className={`flex items-center justify-center rounded-full bg-gradient-to-b font-black text-white ${p.avatarGrad}`}
+                              style={{
+                                width: `${avSize}px`,
+                                height: `${avSize}px`,
+                                fontSize: avFs,
+                                boxShadow: `0 0 0 3px ${p.avatarRingInner}, 0 0 0 6px ${p.avatarRingOuter}, 0 0 22px ${p.avatarRingOuter}`,
+                              }}
+                            >
+                              {getInitials(player.username)}
+                            </div>
+                          )}
+
+                          {/* Player name */}
+                          <div className="mt-2 w-full px-1">
+                            {hasValidUserId(player.id) ? (
+                              <Link
+                                href={buildPlayerProfileHref(
+                                  player.id,
+                                  player.username
+                                )}
+                                className={`block truncate text-center font-black transition hover:opacity-80 ${p.accent} ${isFirst ? "text-[13px]" : "text-[11px]"}`}
+                              >
+                                {player.username}
+                              </Link>
+                            ) : (
+                              <p
+                                className={`truncate text-center font-black ${p.accent} ${isFirst ? "text-[13px]" : "text-[11px]"}`}
+                              >
+                                {player.username}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Tier label */}
+                          <div
+                            className={`mt-0.5 flex items-center gap-0.5 text-[9px] font-bold ${tier.textClass}`}
+                          >
+                            <span>{tier.icon}</span>
+                            <span>{tier.label}</span>
+                          </div>
+
+                          {/* Stats block */}
+                          <div className="mt-2 w-full space-y-1 border-t border-white/[0.06] px-0.5 pt-2 pb-2.5">
+                            <div className="flex items-baseline justify-between">
+                              <span className="text-[8px] uppercase tracking-[0.14em] text-zinc-600">
+                                Points
+                              </span>
+                              <span
+                                className={`font-black tabular-nums ${p.accent} ${isFirst ? "text-[22px]" : "text-[18px]"}`}
+                                style={{
+                                  filter: `drop-shadow(0 0 6px ${p.hexGlowColor})`,
+                                  lineHeight: 1,
+                                }}
+                              >
+                                {player.rankPoints}
+                              </span>
+                            </div>
+                            <div className="flex items-baseline justify-between">
+                              <span className="text-[8px] uppercase tracking-[0.14em] text-zinc-600">
+                                Win rate
+                              </span>
+                              <span className="text-[11px] font-bold text-zinc-300">
+                                {player.winRate}%
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Pedestal glow at card bottom */}
+                        <div className="relative">
+                          {/* Thin glowing line */}
+                          <div
+                            className="h-px w-full"
+                            style={{
+                              background: `linear-gradient(90deg, transparent 0%, ${p.pedestalColor} 40%, ${p.pedestalColor} 60%, transparent 100%)`,
+                            }}
+                          />
+                          {/* Diffuse glow below line */}
+                          <div className="relative flex justify-center pb-2 pt-1.5">
+                            <div
+                              className="rounded-full blur-lg"
+                              style={{
+                                width: "70%",
+                                height: "8px",
+                                background: p.pedestalGlow,
+                              }}
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
-
-                    {/* Avatar */}
-                    <div className="mt-2 sm:mt-3">
-                      {hasValidUserId(player.id) ? (
-                        <Link
-                          href={buildPlayerProfileHref(player.id, player.username)}
-                          className={`flex h-13 w-13 items-center justify-center rounded-full bg-gradient-to-b text-sm font-black text-white shadow-[inset_0_2px_0_rgba(255,255,255,0.22)] transition hover:brightness-110 sm:h-16 sm:w-16 sm:text-base md:h-[72px] md:w-[72px] md:text-lg ${p.avatarGrad} ${p.avatarRing}`}
-                          style={{ height: "52px", width: "52px" }}
-                        >
-                          {getInitials(player.username)}
-                        </Link>
-                      ) : (
-                        <div
-                          className={`flex items-center justify-center rounded-full bg-gradient-to-b text-sm font-black text-white shadow-[inset_0_2px_0_rgba(255,255,255,0.22)] sm:text-base ${p.avatarGrad} ${p.avatarRing}`}
-                          style={{ height: "52px", width: "52px" }}
-                        >
-                          {getInitials(player.username)}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Name */}
-                    <div className="mt-1.5 w-full px-2 text-center sm:mt-2">
-                      {hasValidUserId(player.id) ? (
-                        <Link
-                          href={buildPlayerProfileHref(player.id, player.username)}
-                          className={`block truncate text-[11px] font-black transition hover:text-yellow-100 sm:text-[13px] md:text-sm ${p.accent}`}
-                        >
-                          {player.username}
-                        </Link>
-                      ) : (
-                        <p
-                          className={`truncate text-[11px] font-black sm:text-[13px] md:text-sm ${p.accent}`}
-                        >
-                          {player.username}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Tier */}
-                    <div className="mt-0.5 flex items-center gap-1 px-2">
-                      <span className={`text-[9px] font-bold sm:text-[10px] ${tier.textClass}`}>
-                        {tier.icon} {tier.label}
-                      </span>
-                    </div>
-
-                    {/* Points block */}
-                    <div className="mx-2 mt-2 w-[calc(100%-1rem)] rounded-xl border border-white/8 bg-black/50 py-1.5 text-center sm:mt-2.5 sm:py-2">
-                      <p
-                        className={`text-[20px] font-black tabular-nums leading-none sm:text-2xl md:text-[28px] ${p.accent}`}
-                        style={{
-                          filter: `drop-shadow(0 0 8px ${p.hexGlowColor})`,
-                        }}
-                      >
-                        {player.rankPoints}
-                      </p>
-                      <p className="mt-0.5 text-[7px] font-black uppercase tracking-[0.22em] text-zinc-600 sm:text-[8px]">
-                        PTS
-                      </p>
-                    </div>
-
-                    {/* Win rate */}
-                    <p className="mt-1.5 text-center text-[9px] text-zinc-500 sm:text-[10px]">
-                      {player.winRate}% WR · {player.wins}W {player.losses}L
-                    </p>
-
-                    {/* Pedestal base glow */}
-                    <div
-                      className="absolute -bottom-0.5 left-6 right-6 h-1 rounded-full blur-sm"
-                      style={{ background: p.pedestalColor }}
-                    />
-                    <div
-                      className="absolute -bottom-1 left-10 right-10 h-2 rounded-full blur-md opacity-60"
-                      style={{ background: p.pedestalColor }}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-
-          {/* ─── Search ───────────────────────────────────────────────── */}
-          <form
-            action="/leaderboard"
-            method="get"
-            className="flex gap-2 rounded-xl border border-zinc-800/50 bg-black/30 p-2"
-          >
-            <input type="hidden" name="page" value="1" />
-            <input type="hidden" name="limit" value={limit} />
-            <input
-              type="search"
-              name="search"
-              defaultValue={search}
-              placeholder="Search player…"
-              className="min-w-0 flex-1 rounded-lg border border-zinc-700/60 bg-zinc-900/70 px-3 py-1.5 text-[13px] text-white placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
-            />
-            <button
-              type="submit"
-              className="shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-[13px] font-semibold text-white transition hover:border-zinc-500"
-            >
-              Search
-            </button>
-            {hasActiveSearch ? (
-              <Link
-                href={clearSearchHref}
-                className="flex shrink-0 items-center text-[13px] font-semibold text-yellow-300/80 hover:text-yellow-200"
-              >
-                Clear
-              </Link>
+                  );
+                })}
+              </div>
             ) : null}
-          </form>
 
-          {/* ─── Rankings list ────────────────────────────────────────── */}
-          {(!showPodium || listPlayers.length > 0) ? (
-            <div className="overflow-hidden rounded-xl border border-zinc-800/50 bg-zinc-950/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
+            {/* ─── SEARCH ───────────────────────────────────────────────── */}
+            <form
+              action="/leaderboard"
+              method="get"
+              className="flex gap-2 rounded-xl border border-zinc-800/55 bg-zinc-950/60 p-2"
+            >
+              <input type="hidden" name="page" value="1" />
+              <input type="hidden" name="limit" value={limit} />
+              <input
+                type="search"
+                name="search"
+                defaultValue={search}
+                placeholder="Search player…"
+                className="min-w-0 flex-1 rounded-lg border border-zinc-700/55 bg-zinc-900/80 px-3 py-1.5 text-[13px] text-white placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+              />
+              <button
+                type="submit"
+                className="shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-[13px] font-semibold text-white transition hover:border-zinc-500"
+              >
+                Search
+              </button>
+              {hasActiveSearch ? (
+                <Link
+                  href={clearSearchHref}
+                  className="flex shrink-0 items-center text-[13px] font-semibold text-yellow-300/80 hover:text-yellow-200"
+                >
+                  Clear
+                </Link>
+              ) : null}
+            </form>
 
-              {/* Column header row */}
+            {/* ─── RANKED LIST ──────────────────────────────────────────── */}
+            <div className="overflow-hidden rounded-2xl border border-zinc-800/50 bg-zinc-950/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
+
+              {/* Column header */}
               {listPlayers.length > 0 ? (
-                <div className="flex items-center gap-2 border-b border-zinc-800/50 bg-zinc-900/30 px-4 py-2 sm:gap-3">
+                <div className="flex items-center gap-2 border-b border-zinc-800/50 bg-zinc-900/25 px-4 py-2">
                   <div className="w-8 shrink-0 text-[9px] font-black uppercase tracking-[0.22em] text-zinc-600">
                     RANK
                   </div>
                   <div className="flex-1 text-[9px] font-black uppercase tracking-[0.22em] text-zinc-600">
                     PLAYER
                   </div>
-                  <div className="hidden w-20 shrink-0 text-right text-[9px] font-black uppercase tracking-[0.22em] text-zinc-600 sm:block">
+                  <div className="hidden w-16 shrink-0 text-right text-[9px] font-black uppercase tracking-[0.22em] text-zinc-600 sm:block">
                     POINTS
                   </div>
-                  <div className="hidden w-16 shrink-0 text-right text-[9px] font-black uppercase tracking-[0.22em] text-zinc-600 sm:block">
-                    WIN RATE
+                  <div className="hidden w-14 shrink-0 text-right text-[9px] font-black uppercase tracking-[0.22em] text-zinc-600 sm:block">
+                    WIN%
                   </div>
-                  <div className="hidden w-6 shrink-0 text-center text-[9px] font-black text-zinc-600 sm:block">
+                  <div className="hidden w-5 shrink-0 text-center text-[9px] font-black text-zinc-600 sm:block">
                     ↑↓
                   </div>
-                  {/* mobile: points label inline */}
-                  <div className="w-14 shrink-0 text-right text-[9px] font-black uppercase tracking-[0.22em] text-zinc-600 sm:hidden">
+                  <div className="w-12 shrink-0 text-right text-[9px] font-black uppercase tracking-[0.22em] text-zinc-600 sm:hidden">
                     PTS
                   </div>
                 </div>
@@ -533,6 +670,16 @@ export default async function LeaderboardPage({
                     <p className="text-sm text-zinc-500">
                       {`No players found for "${search}".`}
                     </p>
+                  ) : showPodium ? (
+                    <div className="space-y-1">
+                      <p className="text-sm text-zinc-600">
+                        More ranked players will appear here.
+                      </p>
+                      <p className="text-xs text-zinc-700">
+                        Complete {UNRANKED_MATCHES_THRESHOLD} matches to claim
+                        your rank.
+                      </p>
+                    </div>
                   ) : (
                     <div className="space-y-3">
                       <p className="text-sm text-zinc-500">
@@ -542,141 +689,145 @@ export default async function LeaderboardPage({
                       </p>
                       <Link
                         href="/lobby"
-                        className="inline-flex rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-white hover:border-zinc-500"
+                        className="inline-flex rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-white transition hover:border-zinc-500"
                       >
                         Start Playing
                       </Link>
                     </div>
                   )}
                 </div>
-              ) : (
-                listPlayers.map((player, index) => {
-                  const rank = listRankOffset + index + 1;
-                  const tier = resolveTierForRow(player);
-                  const av = tierAvatarStyle(tier);
+              ) : null}
 
-                  return (
-                    <div
-                      key={player.id}
-                      className="group flex items-center gap-2 border-b border-zinc-800/35 px-4 py-2.5 last:border-b-0 transition-colors hover:bg-zinc-800/18 sm:gap-3"
-                    >
-                      {/* Rank */}
-                      <div className="w-8 shrink-0 text-base font-black tabular-nums text-zinc-300 sm:text-lg">
-                        {rank}
+              {/* Player rows */}
+              {listPlayers.map((player, index) => {
+                const rank = listRankOffset + index + 1;
+                const tier = resolveTierForRow(player);
+                const av = tierAvatarStyle(tier);
+
+                return (
+                  <div
+                    key={player.id}
+                    className="group flex items-center gap-2.5 border-b border-zinc-800/30 px-4 py-2.5 last:border-b-0 transition-colors hover:bg-white/[0.025] sm:gap-3"
+                  >
+                    {/* Rank number */}
+                    <div className="w-8 shrink-0 text-[15px] font-black tabular-nums text-zinc-400">
+                      {rank}
+                    </div>
+
+                    {/* Avatar with tier ring */}
+                    {hasValidUserId(player.id) ? (
+                      <Link
+                        href={buildPlayerProfileHref(player.id, player.username)}
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-b text-[11px] font-black text-white ring-2 ring-offset-1 ring-offset-zinc-950 transition hover:brightness-110 ${av.grad} ${av.ring}`}
+                      >
+                        {getInitials(player.username)}
+                      </Link>
+                    ) : (
+                      <div
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-b text-[11px] font-black text-white ring-2 ring-offset-1 ring-offset-zinc-950 ${av.grad} ${av.ring}`}
+                      >
+                        {getInitials(player.username)}
                       </div>
+                    )}
 
-                      {/* Avatar */}
+                    {/* Player name + tier label */}
+                    <div className="min-w-0 flex-1">
                       {hasValidUserId(player.id) ? (
                         <Link
                           href={buildPlayerProfileHref(player.id, player.username)}
-                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-b text-[11px] font-black text-white ring-offset-1 ring-offset-zinc-950 transition hover:brightness-110 ${av.grad} ${av.ring} ring-2`}
+                          className="block truncate text-[13px] font-bold text-white transition hover:text-yellow-100"
                         >
-                          {getInitials(player.username)}
+                          {player.username}
                         </Link>
                       ) : (
-                        <div
-                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-b text-[11px] font-black text-white ring-offset-1 ring-offset-zinc-950 ${av.grad} ${av.ring} ring-2`}
-                        >
-                          {getInitials(player.username)}
-                        </div>
+                        <span className="block truncate text-[13px] font-bold text-white">
+                          {player.username}
+                        </span>
                       )}
-
-                      {/* Player name + tier */}
-                      <div className="min-w-0 flex-1">
-                        {hasValidUserId(player.id) ? (
-                          <Link
-                            href={buildPlayerProfileHref(player.id, player.username)}
-                            className="block truncate text-[13px] font-bold text-white transition hover:text-yellow-100"
-                          >
-                            {player.username}
-                          </Link>
-                        ) : (
-                          <span className="block truncate text-[13px] font-bold text-white">
-                            {player.username}
-                          </span>
-                        )}
-                        <div className={`flex items-center gap-1 text-[11px] font-bold ${tier.textClass}`}>
-                          <span>{tier.icon}</span>
-                          <span>{tier.label}</span>
-                        </div>
+                      <div
+                        className={`flex items-center gap-1 text-[10px] font-bold ${tier.textClass}`}
+                      >
+                        <span>{tier.icon}</span>
+                        <span>{tier.label}</span>
                       </div>
-
-                      {/* Points — desktop */}
-                      <div className="hidden w-20 shrink-0 text-right sm:block">
-                        <p className="text-[13px] font-black tabular-nums text-yellow-200">
-                          {player.rankPoints}
-                        </p>
-                      </div>
-
-                      {/* Win Rate — desktop */}
-                      <div className="hidden w-16 shrink-0 text-right sm:block">
-                        <p className="text-[13px] font-bold text-zinc-300">
-                          {player.winRate}%
-                        </p>
-                      </div>
-
-                      {/* Movement — desktop, always — */}
-                      <div className="hidden w-6 shrink-0 text-center text-sm text-zinc-600 sm:block">
-                        —
-                      </div>
-
-                      {/* Mobile: points only */}
-                      <div className="w-14 shrink-0 text-right sm:hidden">
-                        <p className="text-[13px] font-black tabular-nums text-yellow-200">
-                          {player.rankPoints}
-                        </p>
-                        <p className="text-[10px] text-zinc-600">
-                          {player.winRate}%
-                        </p>
-                      </div>
-
-                      {/* Challenge — search only */}
-                      {hasActiveSearch && hasValidUserId(player.id) ? (
-                        <Link
-                          href={buildChallengeHref(player.id, player.username)}
-                          className="shrink-0 rounded-lg border border-cyan-500/30 bg-cyan-950/20 px-2 py-0.5 text-xs font-semibold text-cyan-300 transition hover:border-cyan-400/50"
-                        >
-                          Challenge
-                        </Link>
-                      ) : null}
                     </div>
-                  );
-                })
-              )}
-            </div>
-          ) : null}
 
-          {/* ─── Pagination ───────────────────────────────────────────── */}
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800/45 bg-black/30 px-4 py-2.5">
-            {page > 1 ? (
-              <Link
-                href={previousPageHref}
-                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-[13px] font-semibold text-white transition hover:border-zinc-500"
-              >
-                ← Prev
-              </Link>
-            ) : (
-              <span />
-            )}
-            {showNextPage ? (
-              <Link
-                href={nextPageHref}
-                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-[13px] font-semibold text-white transition hover:border-zinc-500"
-              >
-                Next →
-              </Link>
+                    {/* Points — desktop */}
+                    <div className="hidden w-16 shrink-0 text-right sm:block">
+                      <p className="text-[13px] font-black tabular-nums text-yellow-200">
+                        {player.rankPoints}
+                      </p>
+                    </div>
+
+                    {/* Win rate — desktop */}
+                    <div className="hidden w-14 shrink-0 text-right sm:block">
+                      <p className="text-[13px] font-bold text-zinc-400">
+                        {player.winRate}%
+                      </p>
+                    </div>
+
+                    {/* Movement — desktop, always — */}
+                    <div className="hidden w-5 shrink-0 text-center text-sm text-zinc-700 sm:block">
+                      —
+                    </div>
+
+                    {/* Mobile: points + win rate stacked */}
+                    <div className="w-12 shrink-0 text-right sm:hidden">
+                      <p className="text-[13px] font-black tabular-nums text-yellow-200">
+                        {player.rankPoints}
+                      </p>
+                      <p className="text-[10px] text-zinc-600">
+                        {player.winRate}%
+                      </p>
+                    </div>
+
+                    {/* Challenge button — search results only */}
+                    {hasActiveSearch && hasValidUserId(player.id) ? (
+                      <Link
+                        href={buildChallengeHref(player.id, player.username)}
+                        className="shrink-0 rounded-lg border border-cyan-500/30 bg-cyan-950/20 px-2 py-0.5 text-xs font-semibold text-cyan-300 transition hover:border-cyan-400/50"
+                      >
+                        Challenge
+                      </Link>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ─── PAGINATION ───────────────────────────────────────────── */}
+            <div className="flex items-center justify-between gap-3 px-1">
+              {page > 1 ? (
+                <Link
+                  href={previousPageHref}
+                  className="rounded-xl border border-zinc-700 px-4 py-2 text-[13px] font-semibold text-white transition hover:border-zinc-500"
+                >
+                  ← Prev
+                </Link>
+              ) : (
+                <span />
+              )}
+              {showNextPage ? (
+                <Link
+                  href={nextPageHref}
+                  className="rounded-xl border border-zinc-700 px-4 py-2 text-[13px] font-semibold text-white transition hover:border-zinc-500"
+                >
+                  Next →
+                </Link>
+              ) : null}
+            </div>
+
+            {/* Placement note */}
+            {placementPlayerCount > 0 ? (
+              <p className="text-center text-[10px] text-zinc-700">
+                {placementPlayerCount} player
+                {placementPlayerCount === 1 ? "" : "s"} in placement —{" "}
+                {UNRANKED_MATCHES_THRESHOLD} matches required to rank
+              </p>
             ) : null}
           </div>
-
-          {/* Placement count — compact note, if any */}
-          {placementPlayerCount > 0 ? (
-            <p className="text-center text-[10px] text-zinc-600">
-              {placementPlayerCount} players currently in placement (
-              {UNRANKED_MATCHES_THRESHOLD} matches required to rank)
-            </p>
-          ) : null}
-        </div>
-      </section>
+        </section>
+      </div>
 
       {/* ═══ YOUR RANK BAR — fixed client component ══════════════════════ */}
       <YourRankBar />
