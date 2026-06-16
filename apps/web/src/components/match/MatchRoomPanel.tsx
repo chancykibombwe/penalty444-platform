@@ -2793,7 +2793,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       </section>
 
       {!matchEnded ? (
-        <section className="relative shrink-0 rounded-lg border border-zinc-800 bg-zinc-900/95 p-1.5 shadow-xl sm:rounded-[2rem] sm:p-5 md:p-7">
+        <section className="relative shrink-0 rounded-lg border border-zinc-800 bg-zinc-900/95 p-1 shadow-xl sm:rounded-[2rem] sm:p-5 md:p-7">
           {revealStage === "LOCKED" && !isRevealLocked ? (
             <div
               className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-black/50 backdrop-blur-[2px] sm:rounded-[2rem]"
@@ -2811,74 +2811,57 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               </div>
             </div>
           ) : null}
-          <div className="flex flex-col gap-0.5 sm:gap-3 md:flex-row md:items-end md:justify-between">
-            <div>
-              <h2 className="text-xs font-black sm:text-2xl md:text-3xl">
-                {revealStage === "LOCKED"
-                  ? "Pick locked"
-                  : hasSubmittedPick || myPick
-                    ? "Pick locked in"
-                    : "Choose your lane"}
-              </h2>
-              <p className="hidden text-[10px] text-zinc-400 sm:mt-2 sm:block sm:text-sm">
-                {hasSubmittedPick || myPick
-                  ? `You picked ${myPick ?? "your lane"}.`
-                  : myRole === "KICKER"
-                    ? "Pick LEFT, CENTER, or RIGHT before the timer expires."
-                    : myRole === "KEEPER"
-                      ? "Guess the kicker's lane before the timer expires."
-                      : "Pick LEFT, CENTER, or RIGHT before the timer expires."}
-              </p>
+
+          {/* Single compact header row on mobile */}
+          <div className="flex items-center justify-between gap-1 sm:gap-3 sm:block">
+            <h2 className="text-[10px] font-black sm:text-2xl md:text-3xl">
+              {revealStage === "LOCKED"
+                ? "Pick locked"
+                : hasSubmittedPick || myPick
+                  ? "Pick locked in"
+                  : "Choose your lane"}
+            </h2>
+            <div className="flex items-center gap-1 sm:mt-2 sm:gap-2 md:flex-col md:items-end">
               {(hasSubmittedPick || myPick) &&
               !isRevealLocked &&
               disconnectCountdown === null ? (
-                <p className="inline-flex items-center gap-2 text-[9px] font-semibold text-emerald-200 sm:mt-2 sm:text-sm">
-                  <span
-                    className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-300 sm:h-2 sm:w-2"
-                    aria-hidden
-                  />
-                  Waiting for opponent
+                <span className="inline-flex items-center gap-1 text-[8px] font-semibold text-emerald-200 sm:text-sm">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-300" aria-hidden />
                   <span className="match-waiting-dots" aria-hidden>
                     <span className="match-waiting-dot" />
                     <span className="match-waiting-dot" />
                     <span className="match-waiting-dot" />
                   </span>
-                </p>
+                </span>
               ) : null}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1 sm:gap-2 md:flex-col md:items-end">
               {myRole ? (
                 <span
-                  className={`rounded-full border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.18em] sm:px-4 sm:py-2 sm:text-xs ${
+                  className={`rounded-full border px-1.5 py-0 text-[8px] font-black uppercase tracking-[0.14em] sm:px-4 sm:py-2 sm:text-xs ${
                     myRole === "KICKER"
                       ? "border-amber-400/60 bg-amber-500/10 text-amber-100"
                       : "border-sky-400/60 bg-sky-500/10 text-sky-100"
                   }`}
                 >
-                  Playing as {myRole}
+                  {myRole}
                 </span>
               ) : null}
               {opponentStatus && !isRevealLocked ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/45 bg-amber-500/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.18em] text-amber-200 sm:px-3 sm:py-1.5 sm:text-[11px]">
-                  <span
-                    className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300"
-                    aria-hidden
-                  />
-                  Opponent locked
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/45 bg-amber-500/10 px-1.5 py-0 text-[8px] font-bold uppercase tracking-[0.14em] text-amber-200 sm:px-3 sm:py-1.5 sm:text-[11px]">
+                  <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-amber-300" aria-hidden />
+                  Opp locked
                 </span>
               ) : null}
             </div>
           </div>
 
-          <div className="mt-1 grid grid-cols-3 gap-1 sm:mt-5 sm:gap-3 md:mt-7 md:gap-4">
+          <div className="mt-0.5 grid grid-cols-3 gap-1 sm:mt-5 sm:gap-3 md:mt-7 md:gap-4">
             {LANES.map((lane) => (
               <button
                 key={lane}
                 onClick={() => pick(lane)}
                 disabled={!canPick}
                 aria-pressed={myPick === lane}
-                className={`group rounded-lg border px-1 py-1 text-center sm:rounded-3xl sm:px-4 sm:py-6 md:px-5 md:py-8 ${getLaneButtonClass(
+                className={`group flex h-8 items-center justify-center gap-0.5 rounded-lg border px-1 sm:block sm:h-auto sm:rounded-3xl sm:px-4 sm:py-6 md:px-5 md:py-8 ${getLaneButtonClass(
                   lane,
                   {
                     canPick,
@@ -2888,18 +2871,20 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                   }
                 )}`}
               >
-                <p className="text-sm font-black sm:text-4xl md:text-6xl">
+                <span className="text-[11px] font-black leading-none sm:block sm:text-4xl md:text-6xl">
                   {laneEmoji(lane)}
-                </p>
-                <p className="text-[9px] font-black sm:mt-2 sm:text-base md:mt-3 md:text-xl">{lane}</p>
+                </span>
+                <span className="text-[8px] font-black sm:mt-2 sm:block sm:text-base md:mt-3 md:text-xl">
+                  {lane}{myPick === lane ? " ✓" : ""}
+                </span>
                 {myPick === lane ? (
-                  <p className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-emerald-500/25 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.16em] text-emerald-100 ring-1 ring-emerald-300/60 sm:mt-2 sm:gap-1.5 sm:px-3 sm:py-1 sm:text-[11px] sm:tracking-[0.2em]">
-                    <span aria-hidden>✓</span> Locked
-                  </p>
+                  <span className="hidden sm:mt-2 sm:inline-flex sm:items-center sm:gap-1.5 sm:rounded-full sm:bg-emerald-500/25 sm:px-3 sm:py-1 sm:text-[11px] sm:font-black sm:uppercase sm:tracking-[0.2em] sm:text-emerald-100 sm:ring-1 sm:ring-emerald-300/60">
+                    Locked
+                  </span>
                 ) : isRevealLocked ? (
-                  <p className="mt-0.5 text-[7px] font-bold uppercase tracking-[0.14em] text-zinc-500 sm:mt-2 sm:text-[11px] sm:tracking-[0.18em]">
+                  <span className="hidden sm:mt-2 sm:block sm:text-[11px] sm:font-bold sm:uppercase sm:tracking-[0.18em] sm:text-zinc-500">
                     Revealing
-                  </p>
+                  </span>
                 ) : null}
               </button>
             ))}

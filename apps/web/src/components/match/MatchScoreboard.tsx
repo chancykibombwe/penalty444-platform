@@ -40,7 +40,7 @@ export default function MatchScoreboard({
 
   return (
     <section
-      className="flex items-center justify-between gap-1 rounded-lg border border-zinc-800 bg-zinc-950/95 px-1.5 py-1 shadow-xl sm:gap-4 sm:rounded-3xl sm:px-5 sm:py-4 md:rounded-[2rem] md:px-7 md:py-5"
+      className="flex items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-950/95 px-1.5 py-1.5 shadow-xl sm:gap-4 sm:rounded-3xl sm:px-5 sm:py-4 md:rounded-[2rem] md:px-7 md:py-5"
       aria-label="Match score"
     >
       <PlayerSide
@@ -55,7 +55,7 @@ export default function MatchScoreboard({
         align="left"
       />
 
-      <div className="flex shrink-0 flex-col items-center px-1 sm:px-2">
+      <div className="flex shrink-0 flex-col items-center px-0.5 sm:px-2">
         <span
           className={`text-[9px] font-black uppercase tracking-[0.2em] sm:text-xs ${
             isSuddenDeath ? "text-yellow-300/80" : "text-zinc-600"
