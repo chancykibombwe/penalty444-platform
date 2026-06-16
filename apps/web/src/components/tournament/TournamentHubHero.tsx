@@ -121,7 +121,7 @@ export default function TournamentHubHero({
             </span>
           </h1>
           <p className="mt-1 max-w-xl text-sm text-zinc-400 sm:text-base">
-            Compete in live knockout events and climb the arena.
+            Join or host free knockout tournaments. Stats below reflect live data.
           </p>
         </div>
         {rightSlot ? (
