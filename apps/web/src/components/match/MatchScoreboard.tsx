@@ -68,7 +68,7 @@ export default function MatchScoreboard({
       />
 
       <div className="flex min-w-0 flex-col items-center gap-0.5 px-1 text-center">
-        <p className="flex items-baseline gap-1 text-[32px] font-black leading-none tabular-nums">
+        <p className="flex items-baseline gap-1 text-[22px] font-black leading-none tabular-nums">
           <span
             className={`transition-all duration-500 ease-out ${
               scorePulse === "p1"
@@ -219,7 +219,7 @@ function PlayerSide({
         {roundResults.map((outcome, index) => (
           <span
             key={index}
-            className={`h-4 w-4 shrink-0 rounded-full ${
+            className={`h-3 w-3 shrink-0 rounded-full ${
               outcome === "goal"
                 ? "bg-emerald-500"
                 : outcome === "miss"

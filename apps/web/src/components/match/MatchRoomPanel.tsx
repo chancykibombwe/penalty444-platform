@@ -2551,6 +2551,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                     : ""
         }`}
       >
+      {/* Header Zone ~10vh: branding + score + round + timer */}
+      <div className="shrink-0 flex flex-col gap-0.5 overflow-hidden" style={{height:"10vh"}}>
       <section
         className={`match-container shrink-0 overflow-hidden rounded-2xl border bg-gradient-to-br shadow transition-all duration-300 ease-out ${
           impactResult === "GOAL"
@@ -2566,155 +2568,67 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                     : "border-zinc-800 from-zinc-950 via-zinc-900 to-black"
         }`}
       >
-        <div className="border-b border-zinc-800 px-4 py-3 md:px-6 md:py-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-baseline gap-2">
-              <span className="text-lg font-black tracking-tight sm:text-xl md:text-2xl">
-                PENALTY<span className="text-emerald-400">444</span>
-              </span>
-              <span className="hidden text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:inline">
-                Arena
-              </span>
-            </div>
-
-            {showLeaveMatchControls ? (
-              isEarlyCancelWindow ? (
-                <button
-                  type="button"
-                  onClick={abortEarlyMatch}
-                  disabled={leaveMatchBusy}
-                  className="shrink-0 rounded-xl border border-zinc-500 bg-zinc-900 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-zinc-100 hover:border-zinc-300 disabled:opacity-50 sm:px-4 sm:py-2 sm:text-xs"
-                >
-                  {leaveMatchBusy ? "Cancelling..." : "Cancel match"}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={forfeitMatch}
-                  disabled={leaveMatchBusy}
-                  className="shrink-0 rounded-xl border border-red-500/50 bg-red-950/40 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-red-100 hover:border-red-400/70 disabled:opacity-50 sm:px-4 sm:py-2 sm:text-xs"
-                >
-                  {leaveMatchBusy ? "Leaving..." : "Leave match"}
-                </button>
-              )
-            ) : (
-              <span
-                className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${
-                  connected
-                    ? "bg-emerald-500/15 text-emerald-300"
-                    : "bg-red-500/15 text-red-300"
-                }`}
-              >
-                {connected ? "Online" : "Offline"}
-              </span>
-            )}
-          </div>
-
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1.5 px-2 py-1">
+          <span className="shrink-0 text-[11px] font-black leading-none">
+            PENALTY<span className="text-emerald-400">444</span>
+          </span>
+          <span className="hidden text-[8px] font-black uppercase tracking-[0.2em] text-zinc-600 sm:inline shrink-0">
+            Arena
+          </span>
+          <div className="flex min-w-0 flex-1 items-center gap-1">
             <span
-              className={`rounded-full px-3 py-1 font-black uppercase tracking-[0.2em] ${
+              className={`shrink-0 rounded px-1.5 py-0.5 text-[8px] font-black uppercase ${
                 isSuddenDeath
-                  ? "bg-amber-400 px-4 py-1.5 text-sm text-black shadow-[0_0_18px_rgba(251,191,36,0.45)]"
-                  : "bg-emerald-400 text-xs text-black"
+                  ? "bg-amber-400 text-black"
+                  : "bg-emerald-400 text-black"
               }`}
             >
-              {phaseLabel}
+              {isSuddenDeath ? "⚡SD" : phaseLabel.replace("NORMAL ", "")}
             </span>
-
-            <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs font-bold text-zinc-300">
-              Match ID: {roomCode}
-            </span>
-
             {isTournamentMatch ? (
-              <span
-                className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest ${
-                  isFinalTournamentMatch
-                    ? "border-yellow-300/60 bg-yellow-500/15 text-yellow-100 shadow-[0_0_18px_rgba(234,179,8,0.25)]"
-                    : "border-amber-500/45 bg-amber-950/40 text-amber-200"
-                }`}
-              >
-                {isFinalTournamentMatch
-                  ? "🏆 Championship"
-                  : tournamentRoundDisplayLabel ?? "Tournament"}
+              <span className="shrink-0 text-[8px] font-black text-amber-200">
+                {isFinalTournamentMatch ? "🏆" : "T"}
               </span>
             ) : null}
-
-            {showLeaveMatchControls ? (
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-bold ${
-                  connected
-                    ? "bg-emerald-500/15 text-emerald-300"
-                    : "bg-red-500/15 text-red-300"
-                }`}
-              >
-                {connected ? "Online" : "Offline"}
-              </span>
-            ) : null}
-          </div>
-
-          {tournamentIntroVisible && isTournamentMatch ? (
-            <div
-              className={`tournament-intro-pill mt-3 flex flex-wrap items-center gap-2 rounded-2xl border px-3 py-2 ${
-                isFinalTournamentMatch
-                  ? "border-yellow-300/55 bg-yellow-500/10 text-yellow-100"
-                  : "border-amber-500/40 bg-amber-950/30 text-amber-100"
+            <span className="shrink-0 text-[8px] text-zinc-500">
+              ID:{roomCode}
+            </span>
+            <span
+              className={`ml-0.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full ${
+                connected ? "bg-emerald-400" : "bg-red-400"
               }`}
-              aria-live="polite"
-            >
-              <span className="text-[10px] font-black uppercase tracking-[0.25em] opacity-90">
-                {tournamentRoundDisplayLabel ?? "Tournament"}
-              </span>
-              <span className="text-sm font-bold">{myFirstRoleLabel}</span>
-              <span className="text-xs font-semibold opacity-80">
-                · First to finish the shootout advances
-              </span>
-            </div>
-          ) : null}
-
-          <p
-            className={`mt-2 max-w-2xl text-sm ${
-              isSuddenDeath
-                ? "text-zinc-100"
-                : isLateGame
-                  ? "text-zinc-200"
-                  : "text-zinc-400"
-            }`}
-          >
-            {status}
-          </p>
-          {opponentStatus ? (
-            <p className="mt-1 text-xs font-semibold text-amber-300/85">
-              {opponentStatus}
-            </p>
-          ) : null}
-          {disconnectCountdown !== null ? (
-            <div className="mt-2 max-w-2xl rounded-xl border border-red-500/40 bg-red-950/35 px-3 py-2">
-              <p className="text-sm font-semibold text-red-200">
-                Opponent disconnected. Aborting match in{" "}
-                {disconnectCountdown}s...
-              </p>
-            </div>
-          ) : null}
-
+            />
+            <span className="min-w-0 flex-1 truncate text-[8px] text-zinc-500">
+              {disconnectCountdown !== null
+                ? `Opp disconnected — aborting in ${disconnectCountdown}s`
+                : opponentStatus || status}
+            </span>
+          </div>
           {showLeaveMatchControls ? (
-            <p className="mt-1 text-[11px] text-zinc-500">
-              {isEarlyCancelWindow
-                ? `No penalty for ${earlyCancelSecondsLeft}s`
-                : "Leaving counts as a loss"}
-            </p>
+            isEarlyCancelWindow ? (
+              <button
+                type="button"
+                onClick={abortEarlyMatch}
+                disabled={leaveMatchBusy}
+                className="shrink-0 rounded border border-zinc-600 bg-zinc-900 px-1.5 py-0.5 text-[8px] font-black text-zinc-100 disabled:opacity-50"
+              >
+                {leaveMatchBusy ? "…" : "Cancel"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={forfeitMatch}
+                disabled={leaveMatchBusy}
+                className="shrink-0 rounded border border-red-500/50 bg-red-950/40 px-1.5 py-0.5 text-[8px] font-black text-red-100 disabled:opacity-50"
+              >
+                {leaveMatchBusy ? "…" : "Leave"}
+              </button>
+            )
           ) : null}
         </div>
       </section>
 
-      {isSuddenDeath && !matchEnded ? (
-        <section className="shrink-0 rounded-xl border border-yellow-400 bg-yellow-500/10 px-3 py-1.5">
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-yellow-300">
-            ⚡ Sudden Death — Score while your opponent misses
-          </p>
-        </section>
-      ) : null}
-
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 overflow-hidden">
       <MatchScoreboard
         myName={myName}
         opponentName={opponentName}
@@ -2734,8 +2648,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       />
       </div>
 
+      </div>{/* end header zone */}
+
       <section
-        className="relative h-[130px] w-full shrink-0 overflow-hidden rounded-2xl border border-zinc-800 bg-black/60"
+        className="relative shrink-0 h-[38vh] w-full overflow-hidden rounded-2xl border border-zinc-800 bg-black/60"
         aria-hidden
       >
         <div className="absolute inset-0 flex items-center justify-center">
@@ -2746,7 +2662,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       </section>
 
       {!matchEnded ? (
-        <section className="relative shrink-0 rounded-2xl border border-zinc-800 bg-zinc-900/95 px-2 py-2">
+        <section className="relative shrink-0 flex flex-col rounded-2xl border border-zinc-800 bg-zinc-900/95 px-2 py-2" style={{height:"22vh"}}>
           {revealStage === "LOCKED" && !isRevealLocked ? (
             <div
               className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-black/50 backdrop-blur-[2px]"
@@ -2798,14 +2714,14 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             </div>
           </div>
 
-          <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+          <div className="mt-1 flex-1 min-h-0 grid grid-cols-3 gap-1.5">
             {LANES.map((lane) => (
               <button
                 key={lane}
                 onClick={() => pick(lane)}
                 disabled={!canPick}
                 aria-pressed={myPick === lane}
-                className={`group flex h-8 items-center justify-center gap-1 rounded-xl border text-center ${getLaneButtonClass(
+                className={`group flex items-center justify-center gap-1 rounded-xl border text-center ${getLaneButtonClass(
                   lane,
                   {
                     canPick,
@@ -2872,7 +2788,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         ) : null}
       </div>
 
-      <div className="grid grid-cols-2 gap-2 shrink-0 h-20">
+      <div className="grid grid-cols-2 gap-2 shrink-0" style={{height:"20vh"}}>
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 px-3 py-2 flex flex-col justify-center">
           <p className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400">
             Prize Pool
