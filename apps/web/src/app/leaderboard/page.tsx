@@ -120,53 +120,76 @@ function buildPlayerProfileHref(userId: string, username?: string | null) {
     : `/players/${userId}`;
 }
 
-function rankNumColor(rank: number) {
-  if (rank === 1) return "text-yellow-300";
-  if (rank === 2) return "text-zinc-300";
-  if (rank === 3) return "text-amber-400";
-  return "text-zinc-500";
+// ─── Tier → avatar ring / gradient (for ranked list rows) ────────────────────
+
+function tierAvatarStyle(tier: RankTier): { ring: string; grad: string } {
+  const id = tier.id;
+  if (id === "champion")
+    return { ring: "ring-yellow-300/80", grad: "from-yellow-400/60 to-yellow-900/95" };
+  if (id === "elite")
+    return { ring: "ring-cyan-200/80", grad: "from-cyan-400/55 to-cyan-900/95" };
+  if (id === "diamond")
+    return { ring: "ring-cyan-400/75", grad: "from-cyan-500/55 to-blue-950/95" };
+  if (id === "platinum")
+    return { ring: "ring-purple-400/75", grad: "from-purple-500/55 to-purple-950/95" };
+  if (id === "gold")
+    return { ring: "ring-amber-400/75", grad: "from-amber-400/60 to-amber-900/95" };
+  if (id === "silver")
+    return { ring: "ring-zinc-300/65", grad: "from-zinc-400/55 to-zinc-800/95" };
+  if (id === "bronze")
+    return { ring: "ring-amber-600/70", grad: "from-amber-600/55 to-amber-950/95" };
+  return { ring: "ring-zinc-700/40", grad: "from-zinc-700/40 to-zinc-900/95" };
 }
 
-// ─── Podium medal config (index 0 = gold #1, 1 = silver #2, 2 = bronze #3) ───
+// ─── Podium medal configs ─────────────────────────────────────────────────────
 
 const PODIUM = [
   {
-    // ── Gold ──
+    // Gold — #1
     accent: "text-yellow-300",
-    border: "border-yellow-400/60",
+    cardBorder: "border-yellow-500/55",
     cardBg:
-      "bg-[radial-gradient(ellipse_at_50%_-5%,rgba(234,179,8,0.22),transparent_55%),linear-gradient(180deg,rgba(113,63,18,0.72),rgba(7,7,9,0.99))]",
-    glow: "shadow-[0_0_65px_rgba(234,179,8,0.30),inset_0_1px_0_rgba(255,255,255,0.10)]",
-    rankRing: "bg-yellow-400/20 border-2 border-yellow-300/80 text-yellow-300",
-    avatarGrad: "from-yellow-500/70 to-amber-950/90",
-    avatarRing: "ring-2 ring-yellow-400/55",
-    ptsShadow: "drop-shadow-[0_0_12px_rgba(234,179,8,0.65)]",
+      "bg-[radial-gradient(ellipse_at_50%_-5%,rgba(234,179,8,0.20),transparent_52%),linear-gradient(175deg,rgba(120,70,10,0.72),rgba(5,5,8,0.99))]",
+    cardGlow:
+      "shadow-[0_0_60px_rgba(234,179,8,0.30),inset_0_1px_0_rgba(255,215,0,0.12)]",
+    hexFill:
+      "linear-gradient(155deg, rgba(255,215,0,0.55) 0%, rgba(130,75,10,0.95) 100%)",
+    hexGlowColor: "rgba(234,179,8,0.80)",
+    avatarRing: "ring-2 ring-yellow-400/65",
+    avatarGrad: "from-yellow-500/65 to-amber-950/95",
+    pedestalColor: "rgba(234,179,8,0.55)",
     label: "#1",
   },
   {
-    // ── Silver ──
+    // Silver — #2
     accent: "text-slate-200",
-    border: "border-slate-300/50",
+    cardBorder: "border-slate-300/45",
     cardBg:
-      "bg-[radial-gradient(ellipse_at_50%_-5%,rgba(148,163,184,0.14),transparent_55%),linear-gradient(180deg,rgba(71,85,105,0.62),rgba(7,7,9,0.99))]",
-    glow: "shadow-[0_0_45px_rgba(148,163,184,0.18),inset_0_1px_0_rgba(255,255,255,0.08)]",
-    rankRing: "bg-slate-400/15 border-2 border-slate-300/70 text-slate-200",
-    avatarGrad: "from-slate-400/60 to-zinc-900/90",
-    avatarRing: "ring-2 ring-slate-300/40",
-    ptsShadow: "drop-shadow-[0_0_8px_rgba(148,163,184,0.45)]",
+      "bg-[radial-gradient(ellipse_at_50%_-5%,rgba(148,163,184,0.14),transparent_52%),linear-gradient(175deg,rgba(71,85,105,0.65),rgba(5,5,8,0.99))]",
+    cardGlow:
+      "shadow-[0_0_42px_rgba(148,163,184,0.20),inset_0_1px_0_rgba(200,215,230,0.08)]",
+    hexFill:
+      "linear-gradient(155deg, rgba(200,215,230,0.42) 0%, rgba(55,70,90,0.95) 100%)",
+    hexGlowColor: "rgba(148,163,184,0.60)",
+    avatarRing: "ring-2 ring-slate-300/55",
+    avatarGrad: "from-slate-400/60 to-zinc-900/95",
+    pedestalColor: "rgba(148,163,184,0.48)",
     label: "#2",
   },
   {
-    // ── Bronze ──
+    // Bronze — #3
     accent: "text-amber-400",
-    border: "border-amber-500/55",
+    cardBorder: "border-amber-600/50",
     cardBg:
-      "bg-[radial-gradient(ellipse_at_50%_-5%,rgba(180,83,9,0.17),transparent_55%),linear-gradient(180deg,rgba(120,53,15,0.62),rgba(7,7,9,0.99))]",
-    glow: "shadow-[0_0_45px_rgba(180,83,9,0.20),inset_0_1px_0_rgba(255,255,255,0.07)]",
-    rankRing: "bg-amber-500/18 border-2 border-amber-400/70 text-amber-400",
-    avatarGrad: "from-amber-500/65 to-amber-950/90",
-    avatarRing: "ring-2 ring-amber-400/45",
-    ptsShadow: "drop-shadow-[0_0_8px_rgba(217,119,6,0.55)]",
+      "bg-[radial-gradient(ellipse_at_50%_-5%,rgba(180,83,9,0.16),transparent_52%),linear-gradient(175deg,rgba(120,53,15,0.65),rgba(5,5,8,0.99))]",
+    cardGlow:
+      "shadow-[0_0_42px_rgba(180,83,9,0.22),inset_0_1px_0_rgba(210,120,40,0.08)]",
+    hexFill:
+      "linear-gradient(155deg, rgba(200,110,20,0.52) 0%, rgba(80,40,8,0.95) 100%)",
+    hexGlowColor: "rgba(180,83,9,0.70)",
+    avatarRing: "ring-2 ring-amber-500/55",
+    avatarGrad: "from-amber-600/60 to-amber-950/95",
+    pedestalColor: "rgba(180,83,9,0.52)",
     label: "#3",
   },
 ] as const;
@@ -236,264 +259,270 @@ export default async function LeaderboardPage({
 
   const showPodium =
     !error && topPlayers.length > 0 && page === 1 && !hasActiveSearch;
-  const listPlayers = showPodium ? leaderboard.slice(topPlayers.length) : leaderboard;
+  const listPlayers = showPodium
+    ? leaderboard.slice(topPlayers.length)
+    : leaderboard;
   const listRankOffset = showPodium ? topPlayers.length : from;
 
   return (
     <>
-      {/* ════════════════════════════════════════════════════════════════════
-          Page shell — very dark navy-black with subtle cyan arena glow at top
-          ════════════════════════════════════════════════════════════════════ */}
+      {/* ═══════════════════════════════════════════════════════════════════
+          Outer shell — deep black, single card, matches the mockup screen
+          ═══════════════════════════════════════════════════════════════════ */}
       <section
-        className="relative space-y-3 rounded-2xl border border-zinc-800/50 bg-[radial-gradient(ellipse_at_50%_0%,rgba(34,211,238,0.045),transparent_42%),linear-gradient(180deg,#06080f_0%,#09090b_38%,#050507_100%)] p-3 pb-6 shadow-[0_40px_120px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.04)] sm:space-y-4 sm:rounded-[1.75rem] sm:p-4 sm:pb-8 md:rounded-[2rem] md:p-6 md:pb-10 lg:p-8"
+        className="overflow-hidden rounded-2xl border border-zinc-800/50 bg-[#060810] shadow-[0_40px_120px_rgba(0,0,0,0.80),inset_0_1px_0_rgba(255,255,255,0.04)] sm:rounded-[1.75rem] md:rounded-[2rem]"
         aria-label="444 ARENA Leaderboard"
       >
-        {/* ═══ HEADER ══════════════════════════════════════════════════════ */}
-        <header className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[9px] font-black uppercase tracking-[0.40em] text-cyan-400/55 sm:text-[10px]">
-              Competitive Arena
-            </p>
-            <h1 className="mt-0.5 text-[22px] font-black leading-tight tracking-tight text-white sm:text-3xl md:text-4xl">
-              444 ARENA Rankings
-            </h1>
-            <p className="mt-0.5 text-[11px] text-zinc-500 sm:text-xs">
-              Global rankings from verified Penalty444 match results.
-            </p>
-          </div>
-          {placementPlayerCount > 0 ? (
-            <div
-              className="shrink-0 rounded-lg border border-cyan-500/25 bg-cyan-950/25 px-2.5 py-1.5 text-right"
-              title="Players still in placement matches"
-            >
-              <p className="text-[9px] font-black uppercase tracking-[0.22em] text-cyan-500/70">
-                Placement
-              </p>
-              <p className="text-base font-black tabular-nums leading-none text-white">
-                {placementPlayerCount}
-              </p>
-            </div>
-          ) : null}
-        </header>
+        {/* ═══ APP HEADER ═════════════════════════════════════════════════
+            444 ARENA (left) · LEADERBOARD (center) · Coming Soon pills (right)
+            ═══════════════════════════════════════════════════════════════ */}
+        <div className="flex items-center justify-between gap-2 border-b border-zinc-800/50 bg-zinc-950/40 px-3 py-2.5 sm:px-4 sm:py-3">
+          {/* Left */}
+          <span className="flex-none text-[10px] font-black uppercase tracking-[0.28em] text-cyan-400/70 sm:text-[11px]">
+            444 ARENA
+          </span>
 
-        {/* ═══ FILTER PILLS ════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-          {(
-            [
-              {
-                svg: (
-                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5 shrink-0 text-cyan-400/70">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z" clipRule="evenodd" />
-                  </svg>
-                ),
-                label: "Global",
-              },
-              {
-                svg: (
-                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5 shrink-0 text-cyan-400/70">
-                    <path d="M10 3.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM2 10a8 8 0 1116 0 8 8 0 01-16 0z" />
-                    <path d="M10 7a1 1 0 011 1v2.586l1.707 1.707a1 1 0 01-1.414 1.414l-2-2A1 1 0 019 11V8a1 1 0 011-1z" />
-                  </svg>
-                ),
-                label: "Penalty444",
-              },
-              {
-                svg: (
-                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5 shrink-0 text-zinc-500">
-                    <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
-                  </svg>
-                ),
-                label: "All Time",
-              },
-            ] as const
-          ).map((pill, i) => (
-            <div
-              key={pill.label}
-              className={`flex items-center justify-between gap-1 rounded-xl border px-2 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:px-3 sm:py-2.5 ${
-                i < 2
-                  ? "border-zinc-700/60 bg-zinc-900/70"
-                  : "border-zinc-800/50 bg-zinc-900/40 opacity-60"
-              }`}
-            >
-              <div className="flex min-w-0 items-center gap-1.5">
-                {pill.svg}
-                <span
-                  className={`min-w-0 truncate text-[10px] font-black uppercase tracking-[0.14em] sm:text-[11px] ${
-                    i < 2 ? "text-zinc-100" : "text-zinc-500"
-                  }`}
-                >
-                  {pill.label}
-                </span>
-              </div>
-              <svg
-                className="h-2.5 w-2.5 shrink-0 text-zinc-600"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                aria-hidden="true"
-              >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
+          {/* Center */}
+          <h1 className="flex-1 text-center text-[12px] font-black uppercase tracking-[0.32em] text-white sm:text-sm">
+            LEADERBOARD
+          </h1>
+
+          {/* Right — Coming Soon pills */}
+          <div className="flex flex-none items-center gap-1 sm:gap-1.5">
+            <div className="rounded border border-zinc-700/50 bg-zinc-900/60 px-1.5 py-1 text-center leading-none">
+              <p className="text-[7px] font-black uppercase tracking-[0.12em] text-zinc-400 sm:text-[8px]">
+                WALLET
+              </p>
+              <p className="text-[7px] font-black uppercase tracking-[0.08em] text-zinc-500 sm:text-[8px]">
+                COMING SOON
+              </p>
             </div>
-          ))}
+            <div className="hidden rounded border border-zinc-700/50 bg-zinc-900/60 px-2 py-1 sm:block">
+              <p className="whitespace-nowrap text-[8px] font-bold uppercase tracking-[0.10em] text-zinc-500 sm:text-[9px]">
+                Season: Coming Soon
+              </p>
+            </div>
+          </div>
         </div>
 
-        {/* ═══ ERROR ═══════════════════════════════════════════════════════ */}
-        {error ? (
-          <div className="rounded-2xl border border-red-800/50 bg-red-950/30 px-4 py-3 text-sm text-red-300">
-            Could not load leaderboard. Please refresh.
+        {/* ═══ MAIN CONTENT ════════════════════════════════════════════════ */}
+        <div className="space-y-3 p-3 sm:space-y-3.5 sm:p-4 md:p-5 lg:p-6">
+
+          {/* ─── Filter pills ─────────────────────────────────────────── */}
+          <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
+            {/* GLOBAL */}
+            <div className="flex items-center gap-2 rounded-xl border border-zinc-700/55 bg-zinc-900/65 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:px-3 sm:py-2.5">
+              <svg className="h-3.5 w-3.5 shrink-0 text-cyan-400/70" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z" clipRule="evenodd" />
+              </svg>
+              <span className="min-w-0 flex-1 truncate text-[10px] font-black uppercase tracking-[0.15em] text-zinc-100 sm:text-[11px]">
+                GLOBAL
+              </span>
+              <svg className="h-2.5 w-2.5 shrink-0 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+
+            {/* PENALTY444 */}
+            <div className="flex items-center gap-2 rounded-xl border border-zinc-700/55 bg-zinc-900/65 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:px-3 sm:py-2.5">
+              <svg className="h-3.5 w-3.5 shrink-0 text-cyan-400/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+                <path d="M2 12h20"/>
+              </svg>
+              <span className="min-w-0 flex-1 truncate text-[10px] font-black uppercase tracking-[0.15em] text-zinc-100 sm:text-[11px]">
+                PENALTY444
+              </span>
+              <svg className="h-2.5 w-2.5 shrink-0 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+
+            {/* ALL TIME */}
+            <div className="flex items-center gap-2 rounded-xl border border-zinc-700/50 bg-zinc-900/55 px-2.5 py-2 opacity-65 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] sm:px-3 sm:py-2.5">
+              <svg className="h-3.5 w-3.5 shrink-0 text-zinc-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
+              </svg>
+              <span className="min-w-0 flex-1 truncate text-[10px] font-black uppercase tracking-[0.15em] text-zinc-400 sm:text-[11px]">
+                ALL TIME
+              </span>
+              <svg className="h-2.5 w-2.5 shrink-0 text-zinc-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
           </div>
-        ) : null}
 
-        {/* ═══ PODIUM ══════════════════════════════════════════════════════ */}
-        {showPodium ? (
-          <div className="grid grid-cols-3 items-end gap-2 sm:gap-3 md:gap-4">
-            {topPlayers.map((player, index) => {
-              const p = PODIUM[index];
-              const rank = index + 1;
-              // #1 center-raised, #2 left-lower, #3 right-lower
-              const orderClass =
-                index === 0 ? "order-2" : index === 1 ? "order-1" : "order-3";
-              const liftClass =
-                index === 0 ? "-mt-7 sm:-mt-11" : "mt-7 sm:mt-11";
+          {/* ─── Error ────────────────────────────────────────────────── */}
+          {error ? (
+            <div className="rounded-xl border border-red-800/50 bg-red-950/30 px-4 py-3 text-sm text-red-300">
+              Could not load leaderboard. Please refresh.
+            </div>
+          ) : null}
 
-              return (
-                <div
-                  key={player.id}
-                  className={`${orderClass} ${liftClass} flex flex-col items-center rounded-2xl border p-3 sm:p-4 md:rounded-[1.5rem] md:p-5 ${p.border} ${p.cardBg} ${p.glow}`}
-                >
-                  {/* ── Rank circle ── */}
+          {/* ─── Podium ───────────────────────────────────────────────── */}
+          {showPodium ? (
+            <div className="grid grid-cols-3 items-end gap-2 pt-2 sm:gap-3 sm:pt-3 md:gap-4">
+              {topPlayers.map((player, index) => {
+                const p = PODIUM[index];
+                const rank = index + 1;
+                const tier = resolveTierForRow(player);
+                // visual order: #1 center-raised, #2 left, #3 right
+                const orderClass =
+                  index === 0 ? "order-2" : index === 1 ? "order-1" : "order-3";
+                const liftClass =
+                  index === 0 ? "-mt-8 sm:-mt-12" : "mt-8 sm:mt-12";
+
+                return (
                   <div
-                    className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black sm:h-8 sm:w-8 sm:text-sm ${p.rankRing}`}
+                    key={player.id}
+                    className={`${orderClass} ${liftClass} relative flex flex-col items-center overflow-visible rounded-2xl border pb-3 pt-2 sm:pt-3 md:rounded-[1.5rem] ${p.cardBorder} ${p.cardBg} ${p.cardGlow}`}
                   >
-                    {rank}
-                  </div>
-
-                  {/* ── Avatar ── */}
-                  <div className="mt-2 sm:mt-3">
-                    {hasValidUserId(player.id) ? (
-                      <Link
-                        href={buildPlayerProfileHref(player.id, player.username)}
-                        className={`flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-b text-sm font-black text-white shadow-[inset_0_2px_0_rgba(255,255,255,0.18)] transition hover:brightness-110 sm:h-16 sm:w-16 sm:text-base md:h-[4.5rem] md:w-[4.5rem] md:text-lg ${p.avatarGrad} ${p.avatarRing}`}
-                      >
-                        {getInitials(player.username)}
-                      </Link>
-                    ) : (
+                    {/* Hex rank badge */}
+                    <div className="flex justify-center">
                       <div
-                        className={`flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-b text-sm font-black text-white shadow-[inset_0_2px_0_rgba(255,255,255,0.18)] sm:h-16 sm:w-16 sm:text-base md:h-[4.5rem] md:w-[4.5rem] md:text-lg ${p.avatarGrad} ${p.avatarRing}`}
+                        className={`flex h-10 w-[38px] items-center justify-center text-[15px] font-black sm:h-12 sm:w-11 sm:text-[18px] ${p.accent}`}
+                        style={{
+                          clipPath:
+                            "polygon(50% 0%, 97% 26%, 97% 74%, 50% 100%, 3% 74%, 3% 26%)",
+                          background: p.hexFill,
+                          filter: `drop-shadow(0 0 8px ${p.hexGlowColor})`,
+                        }}
                       >
-                        {getInitials(player.username)}
+                        {rank}
                       </div>
-                    )}
-                  </div>
+                    </div>
 
-                  {/* ── Name ── */}
-                  <div className="mt-1.5 w-full text-center sm:mt-2">
-                    {hasValidUserId(player.id) ? (
-                      <Link
-                        href={buildPlayerProfileHref(player.id, player.username)}
-                        className={`block truncate text-[11px] font-black transition hover:text-yellow-100 sm:text-[13px] md:text-sm ${p.accent}`}
-                      >
-                        {player.username}
-                      </Link>
-                    ) : (
+                    {/* Avatar */}
+                    <div className="mt-2 sm:mt-3">
+                      {hasValidUserId(player.id) ? (
+                        <Link
+                          href={buildPlayerProfileHref(player.id, player.username)}
+                          className={`flex h-13 w-13 items-center justify-center rounded-full bg-gradient-to-b text-sm font-black text-white shadow-[inset_0_2px_0_rgba(255,255,255,0.22)] transition hover:brightness-110 sm:h-16 sm:w-16 sm:text-base md:h-[72px] md:w-[72px] md:text-lg ${p.avatarGrad} ${p.avatarRing}`}
+                          style={{ height: "52px", width: "52px" }}
+                        >
+                          {getInitials(player.username)}
+                        </Link>
+                      ) : (
+                        <div
+                          className={`flex items-center justify-center rounded-full bg-gradient-to-b text-sm font-black text-white shadow-[inset_0_2px_0_rgba(255,255,255,0.22)] sm:text-base ${p.avatarGrad} ${p.avatarRing}`}
+                          style={{ height: "52px", width: "52px" }}
+                        >
+                          {getInitials(player.username)}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Name */}
+                    <div className="mt-1.5 w-full px-2 text-center sm:mt-2">
+                      {hasValidUserId(player.id) ? (
+                        <Link
+                          href={buildPlayerProfileHref(player.id, player.username)}
+                          className={`block truncate text-[11px] font-black transition hover:text-yellow-100 sm:text-[13px] md:text-sm ${p.accent}`}
+                        >
+                          {player.username}
+                        </Link>
+                      ) : (
+                        <p
+                          className={`truncate text-[11px] font-black sm:text-[13px] md:text-sm ${p.accent}`}
+                        >
+                          {player.username}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Tier */}
+                    <div className="mt-0.5 flex items-center gap-1 px-2">
+                      <span className={`text-[9px] font-bold sm:text-[10px] ${tier.textClass}`}>
+                        {tier.icon} {tier.label}
+                      </span>
+                    </div>
+
+                    {/* Points block */}
+                    <div className="mx-2 mt-2 w-[calc(100%-1rem)] rounded-xl border border-white/8 bg-black/50 py-1.5 text-center sm:mt-2.5 sm:py-2">
                       <p
-                        className={`truncate text-[11px] font-black sm:text-[13px] md:text-sm ${p.accent}`}
+                        className={`text-[20px] font-black tabular-nums leading-none sm:text-2xl md:text-[28px] ${p.accent}`}
+                        style={{
+                          filter: `drop-shadow(0 0 8px ${p.hexGlowColor})`,
+                        }}
                       >
-                        {player.username}
+                        {player.rankPoints}
                       </p>
-                    )}
-                  </div>
+                      <p className="mt-0.5 text-[7px] font-black uppercase tracking-[0.22em] text-zinc-600 sm:text-[8px]">
+                        PTS
+                      </p>
+                    </div>
 
-                  {/* ── Tier ── */}
-                  <div className="mt-1 flex justify-center">
-                    <RankBadge
-                      tier={resolveTierForRow(player)}
-                      rating={player.rankPoints}
-                      matchesPlayed={player.matches}
-                      showRating={false}
-                      variant="chip"
+                    {/* Win rate */}
+                    <p className="mt-1.5 text-center text-[9px] text-zinc-500 sm:text-[10px]">
+                      {player.winRate}% WR · {player.wins}W {player.losses}L
+                    </p>
+
+                    {/* Pedestal base glow */}
+                    <div
+                      className="absolute -bottom-0.5 left-6 right-6 h-1 rounded-full blur-sm"
+                      style={{ background: p.pedestalColor }}
+                    />
+                    <div
+                      className="absolute -bottom-1 left-10 right-10 h-2 rounded-full blur-md opacity-60"
+                      style={{ background: p.pedestalColor }}
                     />
                   </div>
-
-                  {/* ── Points ── */}
-                  <div className="mt-2 w-full rounded-xl border border-white/8 bg-black/45 py-2 text-center sm:mt-2.5 sm:py-2.5">
-                    <p
-                      className={`text-2xl font-black tabular-nums leading-none sm:text-3xl md:text-[2.25rem] ${p.accent} ${p.ptsShadow}`}
-                    >
-                      {player.rankPoints}
-                    </p>
-                    <p className="mt-0.5 text-[8px] font-black uppercase tracking-[0.22em] text-zinc-600">
-                      PTS
-                    </p>
-                  </div>
-
-                  {/* ── Win rate ── */}
-                  <p className="mt-1.5 text-center text-[9px] font-semibold text-zinc-500 sm:text-[10px]">
-                    {player.winRate}% WR · {player.wins}W {player.losses}L
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
-
-        {/* ═══ SEARCH ══════════════════════════════════════════════════════ */}
-        <form
-          action="/leaderboard"
-          method="get"
-          className="flex gap-2 rounded-xl border border-zinc-800/55 bg-black/35 p-2 sm:gap-2.5 sm:p-2.5"
-        >
-          <input type="hidden" name="page" value="1" />
-          <input type="hidden" name="limit" value={limit} />
-          <input
-            type="search"
-            name="search"
-            defaultValue={search}
-            placeholder="Search player…"
-            className="min-w-0 flex-1 rounded-lg border border-zinc-700/60 bg-zinc-900/70 px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
-          />
-          <button
-            type="submit"
-            className="shrink-0 rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold text-white transition hover:border-zinc-500"
-          >
-            Search
-          </button>
-          {hasActiveSearch ? (
-            <Link
-              href={clearSearchHref}
-              className="flex shrink-0 items-center text-sm font-semibold text-yellow-300/80 hover:text-yellow-200"
-            >
-              Clear
-            </Link>
+                );
+              })}
+            </div>
           ) : null}
-        </form>
 
-        {/* ═══ RANKINGS LIST ═══════════════════════════════════════════════ */}
-        {(!showPodium || listPlayers.length > 0) ? (
-          <>
-            {/* Section label */}
-            {(showPodium && listPlayers.length > 0) ? (
-              <div className="flex items-center gap-3">
-                <div className="h-px flex-1 bg-zinc-800/80" />
-                <span className="text-[9px] font-black uppercase tracking-[0.28em] text-zinc-600">
-                  Rankings
-                </span>
-                <div className="h-px flex-1 bg-zinc-800/80" />
-              </div>
+          {/* ─── Search ───────────────────────────────────────────────── */}
+          <form
+            action="/leaderboard"
+            method="get"
+            className="flex gap-2 rounded-xl border border-zinc-800/50 bg-black/30 p-2"
+          >
+            <input type="hidden" name="page" value="1" />
+            <input type="hidden" name="limit" value={limit} />
+            <input
+              type="search"
+              name="search"
+              defaultValue={search}
+              placeholder="Search player…"
+              className="min-w-0 flex-1 rounded-lg border border-zinc-700/60 bg-zinc-900/70 px-3 py-1.5 text-[13px] text-white placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+            />
+            <button
+              type="submit"
+              className="shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-[13px] font-semibold text-white transition hover:border-zinc-500"
+            >
+              Search
+            </button>
+            {hasActiveSearch ? (
+              <Link
+                href={clearSearchHref}
+                className="flex shrink-0 items-center text-[13px] font-semibold text-yellow-300/80 hover:text-yellow-200"
+              >
+                Clear
+              </Link>
             ) : null}
+          </form>
 
-            <div className="overflow-hidden rounded-2xl border border-zinc-800/55 bg-zinc-950/65 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
-              {/* Column headers */}
+          {/* ─── Rankings list ────────────────────────────────────────── */}
+          {(!showPodium || listPlayers.length > 0) ? (
+            <div className="overflow-hidden rounded-xl border border-zinc-800/50 bg-zinc-950/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
+
+              {/* Column header row */}
               {listPlayers.length > 0 ? (
-                <div className="hidden border-b border-zinc-800/55 bg-zinc-900/35 sm:flex sm:items-center sm:gap-2 sm:px-4 sm:py-2">
-                  <div className="w-8 shrink-0 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600">#</div>
-                  <div className="flex-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600">Player</div>
-                  <div className="hidden w-24 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600 md:block">Tier</div>
-                  <div className="w-14 shrink-0 text-right text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600 sm:w-16">PTS</div>
-                  <div className="hidden w-12 shrink-0 text-right text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600 sm:block">WR</div>
-                  <div className="hidden w-6 shrink-0 text-center text-[9px] font-black text-zinc-700 md:block">△</div>
+                <div className="flex items-center gap-2 border-b border-zinc-800/50 bg-zinc-900/30 px-4 py-2 sm:gap-3">
+                  <div className="w-8 shrink-0 text-[9px] font-black uppercase tracking-[0.22em] text-zinc-600">
+                    RANK
+                  </div>
+                  <div className="flex-1 text-[9px] font-black uppercase tracking-[0.22em] text-zinc-600">
+                    PLAYER
+                  </div>
+                  <div className="hidden w-20 shrink-0 text-right text-[9px] font-black uppercase tracking-[0.22em] text-zinc-600 sm:block">
+                    POINTS
+                  </div>
+                  <div className="hidden w-16 shrink-0 text-right text-[9px] font-black uppercase tracking-[0.22em] text-zinc-600 sm:block">
+                    WIN RATE
+                  </div>
+                  <div className="hidden w-6 shrink-0 text-center text-[9px] font-black text-zinc-600 sm:block">
+                    ↑↓
+                  </div>
+                  {/* mobile: points label inline */}
+                  <div className="w-14 shrink-0 text-right text-[9px] font-black uppercase tracking-[0.22em] text-zinc-600 sm:hidden">
+                    PTS
+                  </div>
                 </div>
               ) : null}
 
@@ -507,7 +536,9 @@ export default async function LeaderboardPage({
                   ) : (
                     <div className="space-y-3">
                       <p className="text-sm text-zinc-500">
-                        No ranked players yet. Complete {UNRANKED_MATCHES_THRESHOLD} placement matches to appear.
+                        No ranked players yet. Complete{" "}
+                        {UNRANKED_MATCHES_THRESHOLD} placement matches to
+                        appear.
                       </p>
                       <Link
                         href="/lobby"
@@ -521,91 +552,82 @@ export default async function LeaderboardPage({
               ) : (
                 listPlayers.map((player, index) => {
                   const rank = listRankOffset + index + 1;
+                  const tier = resolveTierForRow(player);
+                  const av = tierAvatarStyle(tier);
+
                   return (
                     <div
                       key={player.id}
-                      className="group flex items-center gap-2 border-b border-zinc-800/35 px-3 py-2 last:border-b-0 transition-colors hover:bg-zinc-800/20 sm:gap-2.5 sm:px-4"
+                      className="group flex items-center gap-2 border-b border-zinc-800/35 px-4 py-2.5 last:border-b-0 transition-colors hover:bg-zinc-800/18 sm:gap-3"
                     >
-                      {/* Rank # */}
-                      <div
-                        className={`w-8 shrink-0 text-[13px] font-black tabular-nums ${rankNumColor(rank)}`}
-                      >
+                      {/* Rank */}
+                      <div className="w-8 shrink-0 text-base font-black tabular-nums text-zinc-300 sm:text-lg">
                         {rank}
                       </div>
 
-                      {/* Avatar + name + (mobile tier) */}
-                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                      {/* Avatar */}
+                      {hasValidUserId(player.id) ? (
+                        <Link
+                          href={buildPlayerProfileHref(player.id, player.username)}
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-b text-[11px] font-black text-white ring-offset-1 ring-offset-zinc-950 transition hover:brightness-110 ${av.grad} ${av.ring} ring-2`}
+                        >
+                          {getInitials(player.username)}
+                        </Link>
+                      ) : (
+                        <div
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-b text-[11px] font-black text-white ring-offset-1 ring-offset-zinc-950 ${av.grad} ${av.ring} ring-2`}
+                        >
+                          {getInitials(player.username)}
+                        </div>
+                      )}
+
+                      {/* Player name + tier */}
+                      <div className="min-w-0 flex-1">
                         {hasValidUserId(player.id) ? (
                           <Link
                             href={buildPlayerProfileHref(player.id, player.username)}
-                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-zinc-700/55 bg-gradient-to-b from-zinc-700/45 to-zinc-900/90 text-[9px] font-black text-white transition hover:border-zinc-500 sm:h-8 sm:w-8 sm:text-[10px]"
+                            className="block truncate text-[13px] font-bold text-white transition hover:text-yellow-100"
                           >
-                            {getInitials(player.username)}
+                            {player.username}
                           </Link>
                         ) : (
-                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-zinc-700/55 bg-gradient-to-b from-zinc-700/45 to-zinc-900/90 text-[9px] font-black text-white sm:h-8 sm:w-8 sm:text-[10px]">
-                            {getInitials(player.username)}
-                          </div>
+                          <span className="block truncate text-[13px] font-bold text-white">
+                            {player.username}
+                          </span>
                         )}
-
-                        <div className="min-w-0">
-                          {hasValidUserId(player.id) ? (
-                            <Link
-                              href={buildPlayerProfileHref(player.id, player.username)}
-                              className="block truncate text-[13px] font-bold text-white transition hover:text-yellow-100"
-                            >
-                              {player.username}
-                            </Link>
-                          ) : (
-                            <span className="block truncate text-[13px] font-bold text-white">
-                              {player.username}
-                            </span>
-                          )}
-                          {/* Tier under name — hidden on md+ */}
-                          <div className="mt-0.5 md:hidden">
-                            <RankBadge
-                              tier={resolveTierForRow(player)}
-                              rating={player.rankPoints}
-                              matchesPlayed={player.matches}
-                              showRating={false}
-                              variant="chip"
-                            />
-                          </div>
+                        <div className={`flex items-center gap-1 text-[11px] font-bold ${tier.textClass}`}>
+                          <span>{tier.icon}</span>
+                          <span>{tier.label}</span>
                         </div>
                       </div>
 
-                      {/* Tier column — md+ */}
-                      <div className="hidden w-24 shrink-0 md:block">
-                        <RankBadge
-                          tier={resolveTierForRow(player)}
-                          rating={player.rankPoints}
-                          matchesPlayed={player.matches}
-                          showRating={false}
-                          variant="chip"
-                        />
-                      </div>
-
-                      {/* Points */}
-                      <div className="w-14 shrink-0 text-right sm:w-16">
+                      {/* Points — desktop */}
+                      <div className="hidden w-20 shrink-0 text-right sm:block">
                         <p className="text-[13px] font-black tabular-nums text-yellow-200">
                           {player.rankPoints}
                         </p>
-                        {/* Win rate under pts — mobile only */}
-                        <p className="text-[10px] tabular-nums text-zinc-600 sm:hidden">
+                      </div>
+
+                      {/* Win Rate — desktop */}
+                      <div className="hidden w-16 shrink-0 text-right sm:block">
+                        <p className="text-[13px] font-bold text-zinc-300">
                           {player.winRate}%
                         </p>
                       </div>
 
-                      {/* Win rate — sm+ */}
-                      <div className="hidden w-12 shrink-0 text-right sm:block">
-                        <p className="text-[13px] font-bold text-zinc-400">
-                          {player.winRate}%
-                        </p>
-                      </div>
-
-                      {/* Movement — md+ */}
-                      <div className="hidden w-6 shrink-0 text-center text-[12px] text-zinc-700 md:block">
+                      {/* Movement — desktop, always — */}
+                      <div className="hidden w-6 shrink-0 text-center text-sm text-zinc-600 sm:block">
                         —
+                      </div>
+
+                      {/* Mobile: points only */}
+                      <div className="w-14 shrink-0 text-right sm:hidden">
+                        <p className="text-[13px] font-black tabular-nums text-yellow-200">
+                          {player.rankPoints}
+                        </p>
+                        <p className="text-[10px] text-zinc-600">
+                          {player.winRate}%
+                        </p>
                       </div>
 
                       {/* Challenge — search only */}
@@ -622,28 +644,36 @@ export default async function LeaderboardPage({
                 })
               )}
             </div>
-          </>
-        ) : null}
+          ) : null}
 
-        {/* ═══ PAGINATION ══════════════════════════════════════════════════ */}
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800/50 bg-black/30 px-4 py-2.5">
-          {page > 1 ? (
-            <Link
-              href={previousPageHref}
-              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm font-semibold text-white transition hover:border-zinc-500"
-            >
-              ← Prev
-            </Link>
-          ) : (
-            <span />
-          )}
-          {showNextPage ? (
-            <Link
-              href={nextPageHref}
-              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm font-semibold text-white transition hover:border-zinc-500"
-            >
-              Next →
-            </Link>
+          {/* ─── Pagination ───────────────────────────────────────────── */}
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800/45 bg-black/30 px-4 py-2.5">
+            {page > 1 ? (
+              <Link
+                href={previousPageHref}
+                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-[13px] font-semibold text-white transition hover:border-zinc-500"
+              >
+                ← Prev
+              </Link>
+            ) : (
+              <span />
+            )}
+            {showNextPage ? (
+              <Link
+                href={nextPageHref}
+                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-[13px] font-semibold text-white transition hover:border-zinc-500"
+              >
+                Next →
+              </Link>
+            ) : null}
+          </div>
+
+          {/* Placement count — compact note, if any */}
+          {placementPlayerCount > 0 ? (
+            <p className="text-center text-[10px] text-zinc-600">
+              {placementPlayerCount} players currently in placement (
+              {UNRANKED_MATCHES_THRESHOLD} matches required to rank)
+            </p>
           ) : null}
         </div>
       </section>
