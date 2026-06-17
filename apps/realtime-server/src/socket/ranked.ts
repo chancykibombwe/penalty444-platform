@@ -1,8 +1,7 @@
 import type { Server, Socket } from "socket.io";
 import { cleanUsername } from "../room/codes";
 import { allowSocketAction } from "../security/rateLimit";
-import { jwtEnforcementEnabled, jwtMatchesPlayer } from "../security/jwt";
-import { requireAuthenticatedSocket } from "../security/socketIdentity";
+import { assertSocketUserMatchesPlayer } from "../security/socketIdentity";
 import { rankedQueue } from "../state/stores";
 import type { MatchType, Room, RoomPlayer } from "../types/room";
 
@@ -150,19 +149,6 @@ export function registerRankedHandlers(socket: Socket) {
         return;
       }
 
-      // Phase 8B — an unauthenticated socket (no verified Supabase JWT)
-      // must not be able to claim any playerId at all when
-      // SOCKET_JWT_ENFORCE=true. jwtMatchesPlayer alone is insufficient
-      // here: it returns true for a token-less socket, so the mismatch
-      // branch below would never run for an anonymous client.
-      const auth = requireAuthenticatedSocket(socket, "ranked:enqueue");
-      if (!auth.ok) {
-        socket.emit("ranked:error", {
-          message: "Authentication required. Please sign in again.",
-        });
-        return;
-      }
-
       const normalizedId =
         typeof playerId === "string" ? playerId.trim() : "";
       if (!normalizedId) {
@@ -170,23 +156,12 @@ export function registerRankedHandlers(socket: Socket) {
         return;
       }
 
-      // Sprint 6 — soft JWT cross-check on the queueing player. Strict in
-      // enforce mode; logged-only otherwise (same posture as room:create).
-      if (!jwtMatchesPlayer(socket, normalizedId)) {
-        if (jwtEnforcementEnabled()) {
-          console.warn(
-            `[Security] ranked:enqueue jwt_player_mismatch socketId=${socket.id} ` +
-              `playerId=${normalizedId} verifiedUserId=${socket.data.userId ?? "—"}`
-          );
-          socket.emit("ranked:error", {
-            message: "Authentication mismatch. Please sign in again.",
-          });
-          return;
-        }
-        console.warn(
-          `[Security] ranked:enqueue jwt_player_mismatch (soft) socketId=${socket.id} ` +
-            `playerId=${normalizedId} verifiedUserId=${socket.data.userId ?? "—"}`
-        );
+      const playerMatchEnqueue = assertSocketUserMatchesPlayer(socket, normalizedId, "ranked:enqueue");
+      if (!playerMatchEnqueue.ok) {
+        socket.emit("ranked:error", {
+          message: "Authentication required. Please sign in again.",
+        });
+        return;
       }
 
       if (typeof username !== "string") {
@@ -231,17 +206,6 @@ export function registerRankedHandlers(socket: Socket) {
   socket.on(
     "ranked:cancel",
     ({ playerId }: { playerId?: string }) => {
-      // Phase 8B — same hard-auth gate as ranked:enqueue. An anonymous
-      // socket must not be able to claim/cancel any playerId's queue
-      // entry when SOCKET_JWT_ENFORCE=true.
-      const auth = requireAuthenticatedSocket(socket, "ranked:cancel");
-      if (!auth.ok) {
-        socket.emit("ranked:error", {
-          message: "Authentication required. Please sign in again.",
-        });
-        return;
-      }
-
       const normalizedId =
         typeof playerId === "string" ? playerId.trim() : "";
       if (!normalizedId) {
@@ -249,22 +213,12 @@ export function registerRankedHandlers(socket: Socket) {
         return;
       }
 
-      // Sprint 6 — soft JWT cross-check, same posture as ranked:enqueue.
-      if (!jwtMatchesPlayer(socket, normalizedId)) {
-        if (jwtEnforcementEnabled()) {
-          console.warn(
-            `[Security] ranked:cancel jwt_player_mismatch socketId=${socket.id} ` +
-              `playerId=${normalizedId} verifiedUserId=${socket.data.userId ?? "—"}`
-          );
-          socket.emit("ranked:error", {
-            message: "Authentication mismatch. Please sign in again.",
-          });
-          return;
-        }
-        console.warn(
-          `[Security] ranked:cancel jwt_player_mismatch (soft) socketId=${socket.id} ` +
-            `playerId=${normalizedId} verifiedUserId=${socket.data.userId ?? "—"}`
-        );
+      const playerMatchCancel = assertSocketUserMatchesPlayer(socket, normalizedId, "ranked:cancel");
+      if (!playerMatchCancel.ok) {
+        socket.emit("ranked:error", {
+          message: "Authentication required. Please sign in again.",
+        });
+        return;
       }
 
       if (!rankedQueue.has(normalizedId)) {

@@ -19,7 +19,7 @@
 
 import type { Socket } from "socket.io";
 import type { Room, RoomPlayer } from "../types/room";
-import { jwtEnforcementEnabled, jwtMatchesPlayer } from "./jwt";
+import { jwtMatchesPlayer } from "./jwt";
 
 export type IdentityCheckResult =
   | { ok: true; player: RoomPlayer }
@@ -91,26 +91,19 @@ export function resolvePlayerForSocket(
     return { ok: false, reason: "tournament_not_allowed" };
   }
 
-  // Sprint 2 TASK 2: soft JWT cross-check. When the socket has a verified
-  // Supabase userId we expect it to equal the claimed playerId. In
-  // enforce-mode mismatches are rejected; otherwise we just log so we can
-  // observe how often clients are still on the legacy unauthenticated
-  // path before flipping the flag.
+  // If the socket has a verified JWT it must match the claimed playerId.
+  // A token proving a different identity is never overridden by a
+  // client-supplied claim, regardless of SOCKET_JWT_ENFORCE mode.
   if (!jwtMatchesPlayer(socket, playerId)) {
-    if (jwtEnforcementEnabled()) {
-      logRejection(
-        action,
-        socket.id,
-        "jwt_player_mismatch",
-        room.code,
-        playerId,
-        socket.data.userId ?? undefined
-      );
-      return { ok: false, reason: "jwt_player_mismatch" };
-    }
-    console.warn(
-      `[Security] jwt_player_mismatch (soft) action=${action} socketId=${socket.id} roomCode=${room.code} playerId=${playerId} verifiedUserId=${socket.data.userId ?? "—"}`
+    logRejection(
+      action,
+      socket.id,
+      "jwt_player_mismatch",
+      room.code,
+      playerId,
+      socket.data.userId ?? undefined
     );
+    return { ok: false, reason: "jwt_player_mismatch" };
   }
 
   return { ok: true, player };

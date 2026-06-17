@@ -77,6 +77,51 @@ export function requireAuthenticatedSocket(
   return { ok: true, userId: socket.data.userId };
 }
 
+export type PlayerMatchResult =
+  | { ok: true }
+  | { ok: false; reason: "jwt_player_mismatch" | "not_authenticated" };
+
+/**
+ * Verify that a client-provided player ID is consistent with the
+ * socket's verified JWT identity.
+ *
+ * The rule:
+ *   - Verified JWT present + matches claimed ID  → ok, silent.
+ *   - Verified JWT present + mismatches claimed ID → rejected, ALWAYS
+ *     (regardless of SOCKET_JWT_ENFORCE). A token proving a different
+ *     identity overrides any client-supplied claim.
+ *   - No verified JWT + SOCKET_JWT_ENFORCE=true → rejected.
+ *   - No verified JWT + soft mode → allowed (legacy free-play / dev path).
+ */
+export function assertSocketUserMatchesPlayer(
+  socket: Socket,
+  claimedPlayerId: string,
+  action: string
+): PlayerMatchResult {
+  const verifiedUserId = socket.data.userId ?? null;
+
+  if (verifiedUserId) {
+    if (verifiedUserId !== claimedPlayerId) {
+      console.warn(
+        `[Security] ${action} jwt_player_mismatch socketId=${socket.id} ` +
+          `claimed=${claimedPlayerId} verified=${verifiedUserId}`
+      );
+      return { ok: false, reason: "jwt_player_mismatch" };
+    }
+    return { ok: true };
+  }
+
+  if (jwtEnforcementEnabled()) {
+    console.warn(
+      `[Security] ${action} not_authenticated socketId=${socket.id} ` +
+        `claimed=${claimedPlayerId}`
+    );
+    return { ok: false, reason: "not_authenticated" };
+  }
+
+  return { ok: true };
+}
+
 export type SocketActionRejectReason =
   | "not_authenticated"
   | "missing_player_id"

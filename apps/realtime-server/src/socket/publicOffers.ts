@@ -14,10 +14,7 @@ import {
   refundMatchEscrowForPlayer,
 } from "../economy";
 import { allowSocketAction } from "../security/rateLimit";
-import {
-  jwtEnforcementEnabled,
-  jwtMatchesPlayer,
-} from "../security/jwt";
+import { assertSocketUserMatchesPlayer } from "../security/socketIdentity";
 import { diagLog } from "../diagnostics/log";
 
 /**
@@ -361,23 +358,12 @@ export function registerPublicOfferHandlers(socket: Socket) {
           return;
         }
 
-        // Sprint 4 TASK 4: soft JWT cross-check (hard reject in
-        // enforce mode) on the host playerId.
-        if (!jwtMatchesPlayer(socket, playerId)) {
-          if (jwtEnforcementEnabled()) {
-            console.warn(
-              `[Security] publicOffer:create jwt_player_mismatch socketId=${socket.id} ` +
-                `playerId=${playerId} verifiedUserId=${socket.data.userId ?? "—"}`
-            );
-            socket.emit("publicOffers:error", {
-              message: "Authentication mismatch. Please sign in again.",
-            });
-            return;
-          }
-          console.warn(
-            `[Security] publicOffer:create jwt_player_mismatch (soft) socketId=${socket.id} ` +
-              `playerId=${playerId} verifiedUserId=${socket.data.userId ?? "—"}`
-          );
+        const playerMatchCreate = assertSocketUserMatchesPlayer(socket, playerId, "publicOffer:create");
+        if (!playerMatchCreate.ok) {
+          socket.emit("publicOffers:error", {
+            message: "Authentication required. Please sign in again.",
+          });
+          return;
         }
 
         for (const offer of publicOffers.values()) {
@@ -530,22 +516,12 @@ export function registerPublicOfferHandlers(socket: Socket) {
           return;
         }
 
-        // Sprint 4 TASK 4: soft JWT cross-check on the joining player.
-        if (!jwtMatchesPlayer(socket, playerId)) {
-          if (jwtEnforcementEnabled()) {
-            console.warn(
-              `[Security] publicOffer:join jwt_player_mismatch socketId=${socket.id} ` +
-                `playerId=${playerId} verifiedUserId=${socket.data.userId ?? "—"}`
-            );
-            socket.emit("publicOffers:error", {
-              message: "Authentication mismatch. Please sign in again.",
-            });
-            return;
-          }
-          console.warn(
-            `[Security] publicOffer:join jwt_player_mismatch (soft) socketId=${socket.id} ` +
-              `playerId=${playerId} verifiedUserId=${socket.data.userId ?? "—"}`
-          );
+        const playerMatchJoin = assertSocketUserMatchesPlayer(socket, playerId, "publicOffer:join");
+        if (!playerMatchJoin.ok) {
+          socket.emit("publicOffers:error", {
+            message: "Authentication required. Please sign in again.",
+          });
+          return;
         }
 
         const offer = publicOffers.get(offerId);
@@ -768,19 +744,12 @@ export function registerPublicOfferHandlers(socket: Socket) {
         return;
       }
 
-      // Sprint 4 TASK 4: soft JWT cross-check on cancel — also blocks
-      // a stranger trying to cancel via the host's playerId.
-      if (!jwtMatchesPlayer(socket, playerId)) {
-        if (jwtEnforcementEnabled()) {
-          console.warn(
-            `[Security] publicOffer:cancel jwt_player_mismatch socketId=${socket.id} ` +
-              `playerId=${playerId} verifiedUserId=${socket.data.userId ?? "—"}`
-          );
-          socket.emit("publicOffers:error", {
-            message: "Authentication mismatch.",
-          });
-          return;
-        }
+      const playerMatchCancel = assertSocketUserMatchesPlayer(socket, playerId, "publicOffer:cancel");
+      if (!playerMatchCancel.ok) {
+        socket.emit("publicOffers:error", {
+          message: "Authentication required. Please sign in again.",
+        });
+        return;
       }
 
       const waitingRoom = rooms.get(offer.roomCode);
