@@ -177,7 +177,7 @@ export default function WalletPanel({ userId }: Props) {
             </span>
           </p>
           <p className="mt-1.5 text-[11px] font-semibold text-zinc-500">
-            Spendable in matches and tournaments.
+            Deposits and withdrawals are disabled during Free Play beta.
           </p>
         </div>
 
@@ -195,7 +195,7 @@ export default function WalletPanel({ userId }: Props) {
           <p className="mt-1.5 text-[11px] font-semibold text-zinc-500">
             {pendingEscrowCount > 0
               ? `${pendingEscrowCount} active reservation${pendingEscrowCount === 1 ? "" : "s"}.`
-              : "Reserved for live stakes and tournament entries."}
+              : "No active reservations."}
           </p>
         </div>
       </div>
