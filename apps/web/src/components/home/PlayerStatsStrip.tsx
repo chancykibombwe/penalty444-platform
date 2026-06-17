@@ -86,8 +86,20 @@ export default function PlayerStatsStrip({
         <StatTile
           compact
           label="Rank"
-          value={placement.inPlacement ? "Unranked" : tier.label}
-          hint={placement.inPlacement ? "Keep playing" : "Climbing"}
+          value={
+            placement.inPlacement
+              ? placement.played > 0
+                ? "Placement"
+                : "Unranked"
+              : tier.label
+          }
+          hint={
+            placement.inPlacement
+              ? placement.played > 0
+                ? `${placement.played}/${placement.required} played`
+                : "Complete placements"
+              : "Climbing"
+          }
           tone={
             placement.inPlacement
               ? "cyan"
@@ -101,7 +113,7 @@ export default function PlayerStatsStrip({
           compact
           label="Win Rate"
           value={ranked ? `${winRate}%` : "—"}
-          hint={ranked ? "Last season" : "After placements"}
+          hint={ranked ? undefined : "After placements"}
           tone="violet"
         />
         <StatTile

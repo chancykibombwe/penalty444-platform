@@ -407,12 +407,13 @@ function PlayerList({ players }: { players: AdminPlayerRow[] }) {
               className="shrink-0 rounded-full px-1.5 py-0.5 font-bold"
               style={{
                 fontSize: "8px",
-                color: "#71717a",
-                background: "rgba(113,113,122,0.12)",
-                border: "1px solid rgba(113,113,122,0.25)",
+                color: "#60a5fa",
+                background: "rgba(96,165,250,0.10)",
+                border: "1px solid rgba(96,165,250,0.25)",
               }}
+              title={`${UNRANKED_MATCHES_THRESHOLD - p.matches} more matches to rank`}
             >
-              Placement
+              Placement {p.matches}/{UNRANKED_MATCHES_THRESHOLD}
             </span>
           )}
         </div>
