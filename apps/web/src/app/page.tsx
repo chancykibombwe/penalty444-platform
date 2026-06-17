@@ -34,7 +34,7 @@ import {
   type ActiveTournament,
 } from "../lib/tournament/activeTournament";
 
-const MOCK_GAMES: GameCardData[] = [
+const ARENA_GAMES: GameCardData[] = [
   {
     id: "penalty444",
     title: "Penalty444",
@@ -305,7 +305,7 @@ export default function HomePage() {
         </p>
 
         <div className="home-game-scroll relative mt-2 -mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1.5 sm:gap-4">
-          {MOCK_GAMES.map((game) => (
+          {ARENA_GAMES.map((game) => (
             <GameCard key={game.id} game={game} />
           ))}
         </div>
