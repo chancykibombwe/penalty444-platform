@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "../../../../lib/supabase/admin";
 import { UNRANKED_MATCHES_THRESHOLD } from "../../../../lib/player/ranks";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 // ─── Admin email gate (server-only) ──────────────────────────────────────────
 // Set ADMIN_EMAILS=email1@example.com,email2@example.com on the server.
 // Never use NEXT_PUBLIC_ADMIN_EMAILS — that would expose the list to all clients.
