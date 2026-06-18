@@ -119,6 +119,15 @@ export default function ActiveMatchRecovery() {
       }
     }
 
+    // Server snapshot sent after a page-refresh rejoin. If the match is
+    // already over, the Resume Match card must be cleared immediately even
+    // though `match:end` was never received in this page load.
+    function onMatchRejoinState(payload: { matchEnded?: boolean }) {
+      if (payload.matchEnded) {
+        clearActiveMatch();
+      }
+    }
+
     function onPublicOfferCancelled() {
       clearActiveMatch();
     }
@@ -127,6 +136,17 @@ export default function ActiveMatchRecovery() {
     // matching so a player in a different room is never affected. Falls back to
     // an unconditional clear when the payload carries no roomCode (defensive).
     function onRoomCancelled(payload: { roomCode?: string }) {
+      const existing = getActiveMatch();
+      if (!existing) return;
+      const code = payload?.roomCode?.trim().toUpperCase();
+      if (code && existing.roomCode !== code) return;
+      clearActiveMatch();
+    }
+
+    // Readiness-authority pre-start cancellation (opponent never showed up).
+    // MatchRoomPanel handles this when it's mounted, but if the user navigated
+    // away from the match page, only ActiveMatchRecovery is listening.
+    function onMatchCancelled(payload: { roomCode?: string }) {
       const existing = getActiveMatch();
       if (!existing) return;
       const code = payload?.roomCode?.trim().toUpperCase();
@@ -144,6 +164,8 @@ export default function ActiveMatchRecovery() {
     socket.on("activeRoom:snapshot", onActiveRoomSnapshot);
     socket.on("match:end", onMatchEnd);
     socket.on("match:update", onMatchUpdate);
+    socket.on("match:rejoinState", onMatchRejoinState);
+    socket.on("match:cancelled", onMatchCancelled);
 
     // If the socket is already connected at mount (common on the lobby),
     // the `connect` event won't fire again — request a snapshot now,
@@ -169,6 +191,8 @@ export default function ActiveMatchRecovery() {
       socket.off("activeRoom:snapshot", onActiveRoomSnapshot);
       socket.off("match:end", onMatchEnd);
       socket.off("match:update", onMatchUpdate);
+      socket.off("match:rejoinState", onMatchRejoinState);
+      socket.off("match:cancelled", onMatchCancelled);
     };
   }, [router]);
 
