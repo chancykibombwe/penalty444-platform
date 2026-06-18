@@ -813,13 +813,18 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setConnected(true);
       setStatus("Connected. Joining room...");
       if (identity) {
-        // Gate room:join + player:present on the server completing JWT
-        // verification. Without this, both events race the async
-        // verification window and are rejected under
-        // SOCKET_JWT_ENFORCE=true, leaving the player stuck at
-        // "Waiting for opponent" with no retry mechanism.
-        void waitForSocketAuth(5000).then(() => {
-          if (effectActive && identity) joinRoom(identity);
+        void waitForSocketAuth(5000).then((auth) => {
+          if (!effectActive || !identity) return;
+          // Only join when the server's verified userId matches the local
+          // identity. A null/mismatched userId means auth failed or timed
+          // out — emitting room:join would be rejected and the player
+          // would remain stuck. Show a safe status and rely on the next
+          // reconnect cycle (which re-runs this check) to recover.
+          if (auth.userId !== identity.playerId) {
+            setStatus("Securing session…");
+            return;
+          }
+          joinRoom(identity);
         });
       }
     }
