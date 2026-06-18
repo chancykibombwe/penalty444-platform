@@ -3,12 +3,8 @@ import { tryResumeAfterDisconnectGrace } from "../gameplay/disconnectGrace";
 import { clearRoomTimer } from "../gameplay/timers";
 import { cleanUsername, normalizeRoomCode } from "../room/codes";
 import { evaluateMatchStart } from "../room/readiness";
-import {
-  jwtEnforcementEnabled,
-  jwtMatchesPlayer,
-} from "../security/jwt";
 import { allowSocketAction } from "../security/rateLimit";
-import { requireAuthenticatedSocket } from "../security/socketIdentity";
+import { assertSocketUserMatchesPlayer } from "../security/socketIdentity";
 import { rooms } from "../state/stores";
 import type { MatchType, Room, RoomPlayer } from "../types/room";
 import { diagLog } from "../diagnostics/log";
@@ -71,34 +67,16 @@ export function registerRoomSocketHandlers(socket: Socket) {
 
         const normalizedPlayerId = playerId.trim();
 
-        // Phase 9 — bring activeRoom:clear in line with the auth/audit
-        // posture of nearby active-room handlers (room:create, etc).
-        // This action stays cosmetic (clears the client's Resume Match
-        // hint only) — these checks just stop one socket from clearing
-        // another player's active-room memory.
-        const auth = requireAuthenticatedSocket(socket, "activeRoom:clear");
-        if (!auth.ok) {
+        const playerMatch = assertSocketUserMatchesPlayer(
+          socket,
+          normalizedPlayerId,
+          "activeRoom:clear"
+        );
+        if (!playerMatch.ok) {
           socket.emit("activeRoom:clear:error", {
             message: "Authentication required. Please sign in again.",
           });
           return;
-        }
-
-        if (!jwtMatchesPlayer(socket, normalizedPlayerId)) {
-          if (jwtEnforcementEnabled()) {
-            console.warn(
-              `[Security] activeRoom:clear jwt_player_mismatch socketId=${socket.id} ` +
-                `playerId=${normalizedPlayerId} verifiedUserId=${socket.data.userId ?? "—"}`
-            );
-            socket.emit("activeRoom:clear:error", {
-              message: "Authentication mismatch. Please sign in again.",
-            });
-            return;
-          }
-          console.warn(
-            `[Security] activeRoom:clear jwt_player_mismatch (soft) socketId=${socket.id} ` +
-              `playerId=${normalizedPlayerId} verifiedUserId=${socket.data.userId ?? "—"}`
-          );
         }
 
         deps.clearPlayerActiveRoom(normalizedPlayerId);
@@ -145,18 +123,12 @@ export function registerRoomSocketHandlers(socket: Socket) {
         return;
       }
 
-      // Sprint 4 TASK 4: soft JWT cross-check on the creator.
-      if (!jwtMatchesPlayer(socket, playerId)) {
-        if (jwtEnforcementEnabled()) {
-          console.warn(
-            `[Security] room:create jwt_player_mismatch socketId=${socket.id} ` +
-              `playerId=${playerId} verifiedUserId=${socket.data.userId ?? "—"}`
-          );
-          socket.emit("error:message", {
-            message: "Authentication mismatch. Please sign in again.",
-          });
-          return;
-        }
+      const playerMatchCreate = assertSocketUserMatchesPlayer(socket, playerId, "room:create");
+      if (!playerMatchCreate.ok) {
+        socket.emit("error:message", {
+          message: "Authentication required. Please sign in again.",
+        });
+        return;
       }
 
       const busyRoomCode = deps.getTrackedActiveRoom(playerId);
@@ -274,17 +246,12 @@ export function registerRoomSocketHandlers(socket: Socket) {
         return;
       }
 
-      if (!jwtMatchesPlayer(socket, normalizedPlayerId)) {
-        if (jwtEnforcementEnabled()) {
-          console.warn(
-            `[Security] room:cancel jwt_player_mismatch socketId=${socket.id} ` +
-              `playerId=${normalizedPlayerId} verifiedUserId=${socket.data.userId ?? "—"}`
-          );
-          socket.emit("error:message", {
-            message: "Authentication mismatch. Please sign in again.",
-          });
-          return;
-        }
+      const playerMatchCancel = assertSocketUserMatchesPlayer(socket, normalizedPlayerId, "room:cancel");
+      if (!playerMatchCancel.ok) {
+        socket.emit("error:message", {
+          message: "Authentication required. Please sign in again.",
+        });
+        return;
       }
 
       clearRoomTimer(room);
@@ -317,19 +284,12 @@ export function registerRoomSocketHandlers(socket: Socket) {
         return;
       }
 
-      // Sprint 4 TASK 4: soft JWT cross-check on the joining player.
-      // Strict in enforce mode; logged-only otherwise.
-      if (!jwtMatchesPlayer(socket, playerId)) {
-        if (jwtEnforcementEnabled()) {
-          console.warn(
-            `[Security] room:join jwt_player_mismatch socketId=${socket.id} ` +
-              `playerId=${playerId} verifiedUserId=${socket.data.userId ?? "—"}`
-          );
-          socket.emit("error:message", {
-            message: "Authentication mismatch. Please sign in again.",
-          });
-          return;
-        }
+      const playerMatchJoin = assertSocketUserMatchesPlayer(socket, playerId, "room:join");
+      if (!playerMatchJoin.ok) {
+        socket.emit("error:message", {
+          message: "Authentication required. Please sign in again.",
+        });
+        return;
       }
 
       const code = normalizeRoomCode(roomCode);
@@ -574,16 +534,8 @@ export function registerRoomSocketHandlers(socket: Socket) {
       const room = rooms.get(code);
       if (!room) return;
 
-      // JWT cross-check — same posture as `room:join`.
-      if (!jwtMatchesPlayer(socket, playerId)) {
-        if (jwtEnforcementEnabled()) {
-          console.warn(
-            `[Security] player:present jwt_player_mismatch socketId=${socket.id} ` +
-              `playerId=${playerId} verifiedUserId=${socket.data.userId ?? "—"}`
-          );
-          return;
-        }
-      }
+      const playerMatchPresent = assertSocketUserMatchesPlayer(socket, playerId, "player:present");
+      if (!playerMatchPresent.ok) return;
 
       const player = room.players.find((p) => p.playerId === playerId);
       if (!player) return;

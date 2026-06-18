@@ -1950,25 +1950,18 @@ io.on("connection", (socket) => {
 
       const trimmed = playerId.trim();
 
-      // Sprint 5 TASK 7: pin the notification subscription to the
-      // verified Supabase user when JWT enforcement is on. In dev /
-      // soft mode we just warn so we can observe how often clients
-      // are still on the legacy unauthenticated registration path.
+      // If the socket has a verified JWT it must match the claimed playerId.
+      // A token proving a different identity is never overridden by a
+      // client-supplied claim, regardless of SOCKET_JWT_ENFORCE mode.
       const verifiedUserId = socket.data.userId ?? null;
-      const enforce = process.env.SOCKET_JWT_ENFORCE === "true";
       if (verifiedUserId && verifiedUserId !== trimmed) {
-        if (enforce) {
-          console.warn(
-            `[Security] player:register identity mismatch socketId=${socket.id} ` +
-              `claimed=${trimmed} verified=${verifiedUserId} — rejected`
-          );
-          return;
-        }
         console.warn(
-          `[Security] player:register identity mismatch (soft) socketId=${socket.id} ` +
-            `claimed=${trimmed} verified=${verifiedUserId}`
+          `[Security] player:register identity mismatch socketId=${socket.id} ` +
+            `claimed=${trimmed} verified=${verifiedUserId} — rejected`
         );
-      } else if (!verifiedUserId && enforce) {
+        return;
+      }
+      if (!verifiedUserId && process.env.SOCKET_JWT_ENFORCE === "true") {
         console.warn(
           `[Security] player:register unauthenticated socketId=${socket.id} ` +
             `claimed=${trimmed} — rejected`
