@@ -61,6 +61,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
+    console.info(
+      `[TournamentStart] attempt tournamentId=${tournamentId} userId=${user.id}`
+    );
+
     const result = await startTournament({
       tournamentId,
       requestedByUserId: user.id,
@@ -69,6 +73,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
 
     if (!result.ok) {
+      console.warn(
+        `[TournamentStart] rejected tournamentId=${tournamentId} status=${result.status} reason=${result.error}`
+      );
       return NextResponse.json(
         {
           error: result.error,
@@ -78,6 +85,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         { status: result.status }
       );
     }
+
+    console.info(
+      `[TournamentStart] success tournamentId=${result.tournamentId} matchCount=${result.matchCount} playerCount=${result.playerCount}`
+    );
 
     return NextResponse.json({
       ok: true,
