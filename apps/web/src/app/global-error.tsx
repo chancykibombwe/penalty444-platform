@@ -4,10 +4,10 @@ import { useEffect } from "react";
 
 export default function GlobalError({
   error,
-  unstable_retry,
+  reset,
 }: {
   error: Error & { digest?: string };
-  unstable_retry: () => void;
+  reset: () => void;
 }) {
   useEffect(() => {
     console.error("[global error boundary]", error.digest ?? error.message);
@@ -40,7 +40,7 @@ export default function GlobalError({
 
           <div className="flex flex-wrap items-center justify-center gap-3">
             <button
-              onClick={unstable_retry}
+              onClick={reset}
               className="rounded-xl bg-gradient-to-r from-cyan-400 to-cyan-500 px-5 py-2.5 text-sm font-black text-zinc-950 hover:from-cyan-300"
             >
               Reload

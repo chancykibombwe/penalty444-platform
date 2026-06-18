@@ -24,7 +24,7 @@ export default function NotFound() {
           Home
         </Link>
         <Link
-          href="/games/penalty444"
+          href="/lobby"
           className="rounded-xl border border-zinc-700 px-5 py-2.5 text-sm font-bold text-white hover:border-zinc-500"
         >
           Play Penalty444
