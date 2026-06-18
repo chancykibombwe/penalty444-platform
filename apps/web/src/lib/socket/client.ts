@@ -65,6 +65,19 @@ let authListenerBound = false;
 let lastAttachedUserId: string | null = null;
 let suppressNextDisconnectLog = false;
 
+// Per-connection JWT verification readiness. Resolved by the server's
+// `socket:authenticated` event. Reset on every `connect` so each new
+// connection gets a fresh promise.
+let socketAuthReadyPromise: Promise<{ userId: string | null }> | null = null;
+let resolveSocketAuth: ((result: { userId: string | null }) => void) | null =
+  null;
+
+function createFreshSocketAuthPromise(): void {
+  socketAuthReadyPromise = new Promise((resolve) => {
+    resolveSocketAuth = resolve;
+  });
+}
+
 const REALTIME_URL =
   process.env.NEXT_PUBLIC_REALTIME_URL || "http://localhost:4000";
 
@@ -269,9 +282,28 @@ export function getSocket(): Socket {
       },
     });
 
+    // Create the initial auth promise before the first connect fires.
+    createFreshSocketAuthPromise();
+
+    // Resolved by the server after async JWT verification completes.
+    // Always emitted (userId: null on failure) so waitForSocketAuth()
+    // never hangs indefinitely.
+    socket.on("socket:authenticated", (payload: { userId?: string | null }) => {
+      lifecycleLog("socket:authenticated", {
+        authenticated: Boolean(payload?.userId),
+      });
+      if (resolveSocketAuth) {
+        resolveSocketAuth({ userId: payload?.userId ?? null });
+        resolveSocketAuth = null;
+      }
+    });
+
     // Production-visible lifecycle diagnostics. No tokens, no payload
     // contents — only event names, reasons, and counters.
     socket.on("connect", () => {
+      // Reset per-connection auth promise so reconnects go through the
+      // full JWT verification cycle before emitting player-owned events.
+      createFreshSocketAuthPromise();
       lifecycleLog("connect", {
         socketId: socket?.id ?? null,
         transport: socket?.io?.engine?.transport?.name ?? null,
@@ -348,6 +380,42 @@ export async function getAuthenticatedSocket(): Promise<AuthenticatedSocketResul
     authenticated: userId !== null,
     userId,
   };
+}
+
+/**
+ * Wait until the server has finished JWT verification on the current
+ * connection (i.e., `socket:authenticated` has been received), then
+ * return the verified userId (or null for anonymous/failed sockets).
+ *
+ * Use this before emitting any player-owned event (room:join,
+ * player:present, player:register) to avoid the connect→authenticate
+ * race that causes rejections under SOCKET_JWT_ENFORCE=true.
+ *
+ * If verification does not complete within `timeoutMs` (default 5s),
+ * resolves with `{ userId: null }` so callers are never stuck forever.
+ * The timeout is a safety net — in practice the server resolves the
+ * Supabase JWT verification well within 1s.
+ */
+export async function waitForSocketAuth(
+  timeoutMs = 5000
+): Promise<{ userId: string | null }> {
+  // Ensure the socket singleton (and its auth promise) exist.
+  getSocket();
+
+  if (!socketAuthReadyPromise) {
+    return { userId: null };
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<{ userId: string | null }>((resolve) => {
+    timer = setTimeout(() => resolve({ userId: null }), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([socketAuthReadyPromise, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 /**

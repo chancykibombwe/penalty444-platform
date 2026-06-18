@@ -36,6 +36,10 @@ export default function SignupPage() {
 
     setLoading(true);
 
+    // No emailRedirectTo — Supabase uses the Site URL configured in the
+    // Supabase Dashboard (Authentication → URL Configuration). Ensure the
+    // Dashboard Site URL points to the production domain before beta launch,
+    // or confirmation emails will link back to localhost.
     const { error } = await supabase.auth.signUp({
       email: email.trim(),
       password,

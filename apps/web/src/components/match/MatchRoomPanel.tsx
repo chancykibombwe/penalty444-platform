@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getSocket, isSocketEventForRoom } from "../../lib/socket/client";
+import {
+  getSocket,
+  isSocketEventForRoom,
+  waitForSocketAuth,
+} from "../../lib/socket/client";
 import {
   clearActiveMatch,
   clearActiveMatchIfPlayerMismatch,
@@ -784,6 +788,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     if (!identity) return;
 
     const socket = getSocket();
+    let effectActive = true;
 
     function joinRoom(currentIdentity: PlayerIdentity) {
       saveActiveMatch(normalizedRoomCode, currentIdentity.playerId);
@@ -807,7 +812,16 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     function onConnect() {
       setConnected(true);
       setStatus("Connected. Joining room...");
-      if (identity) joinRoom(identity);
+      if (identity) {
+        // Gate room:join + player:present on the server completing JWT
+        // verification. Without this, both events race the async
+        // verification window and are rejected under
+        // SOCKET_JWT_ENFORCE=true, leaving the player stuck at
+        // "Waiting for opponent" with no retry mechanism.
+        void waitForSocketAuth(5000).then(() => {
+          if (effectActive && identity) joinRoom(identity);
+        });
+      }
     }
 
     function onDisconnect() {
@@ -1710,6 +1724,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     }
 
     return () => {
+      effectActive = false;
       // Phase 6C — drop match-page presence FIRST so the server
       // re-evaluates readiness immediately. If pre-match, this can
       // arm the return window; if post-match, the server ignores it.

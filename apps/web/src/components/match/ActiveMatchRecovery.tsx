@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { getSocket } from "../../lib/socket/client";
+import { getSocket, waitForSocketAuth } from "../../lib/socket/client";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
 import {
   saveActiveMatch,
@@ -59,8 +59,14 @@ export default function ActiveMatchRecovery() {
     }
 
     function onConnect() {
-      // Re-sync the authoritative active room after every (re)connect.
-      requestActiveRoomSnapshot();
+      // Wait for the server's JWT verification to complete before
+      // requesting the snapshot. Without this guard, the request races
+      // the async verification window and is rejected under
+      // SOCKET_JWT_ENFORCE=true (returning a null snapshot that clears
+      // the Resume Match card incorrectly).
+      void waitForSocketAuth(5000).then(() => {
+        if (!cancelled) requestActiveRoomSnapshot();
+      });
     }
 
     function onRoomCreated(payload: { roomCode?: string }) {
@@ -137,9 +143,13 @@ export default function ActiveMatchRecovery() {
     socket.on("match:update", onMatchUpdate);
 
     // If the socket is already connected at mount (common on the lobby),
-    // the `connect` event won't fire again — request a snapshot now.
+    // the `connect` event won't fire again — request a snapshot now,
+    // but still gate on socket:authenticated in case JWT verification
+    // is still in flight.
     if (socket.connected) {
-      requestActiveRoomSnapshot();
+      void waitForSocketAuth(5000).then(() => {
+        if (!cancelled) requestActiveRoomSnapshot();
+      });
     }
 
     return () => {

@@ -1892,6 +1892,13 @@ io.on("connection", (socket) => {
       // Surface the authoritative active room so the lobby can restore
       // the Resume Match card after a reconnect/refresh.
       emitActiveRoomSnapshot(result.userId);
+
+      // Signal the client that JWT verification is complete so it can
+      // safely emit player-owned events (room:join, player:present,
+      // player:register). Without this, clients that emit on `connect`
+      // race the async verification window and get rejected under
+      // SOCKET_JWT_ENFORCE=true.
+      socket.emit("socket:authenticated", { userId: result.userId });
     } else {
       const reason = result.reason;
       if (reason !== "no_token" && reason !== "no_backend") {
@@ -1899,6 +1906,9 @@ io.on("connection", (socket) => {
           `[Security] jwt verify failed socketId=${socket.id} reason=${reason}`
         );
       }
+      // Always emit so the client's waitForSocketAuth() resolves even
+      // on failure (anonymous sockets, missing token, etc.).
+      socket.emit("socket:authenticated", { userId: null });
     }
   });
 

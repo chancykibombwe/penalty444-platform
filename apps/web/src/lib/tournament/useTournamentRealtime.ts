@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { getSocket } from "../socket/client";
+import { getSocket, waitForSocketAuth } from "../socket/client";
 import { supabase } from "../supabase/client";
 
 export type TournamentMatchReadyPayload = {
@@ -167,6 +167,13 @@ export function useTournamentRealtime({
      * decides to send).
      */
     const registerAndSubscribe = async () => {
+      // Gate on server-side JWT verification completing before emitting
+      // player:register. Supabase may have a valid local session, but the
+      // server still needs to verify the token from the handshake — emitting
+      // before that resolves causes a rejection under SOCKET_JWT_ENFORCE=true.
+      await waitForSocketAuth(5000);
+      if (cancelled) return;
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
