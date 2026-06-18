@@ -68,11 +68,16 @@ export default function TournamentAdminActions({
   }
 
   const isCancelled = tournament.status === "cancelled";
-  const canCancel = CANCELLABLE_STATUSES.has(tournament.status);
   const isPreStart = STARTABLE_STATUSES.has(tournament.status);
   const hasScheduledStart = Boolean(tournament.starts_at);
   const activeCount = registeredEntryCount ?? 0;
   const withinCapacity = activeCount <= tournament.max_players;
+  // Cancel is only available before a startable player count is reached.
+  // Once >= 2 players are registered the host should start, not cancel.
+  const canCancel =
+    CANCELLABLE_STATUSES.has(tournament.status) &&
+    registeredEntryCount !== null &&
+    activeCount < 2;
   const canStart =
     !isCancelled &&
     isPreStart &&
@@ -116,6 +121,10 @@ export default function TournamentAdminActions({
       return;
     }
 
+    console.info(
+      `[TournamentStart] attempt tournamentId=${tournament.id} activeCount=${activeCount}`
+    );
+
     setBusy(true);
     setMessage("Starting tournament on server...");
 
@@ -137,10 +146,16 @@ export default function TournamentAdminActions({
       } | null;
 
       if (!response.ok) {
+        console.warn(
+          `[TournamentStart] rejected tournamentId=${tournament.id} reason=${payload?.error ?? "unknown"}`
+        );
         setMessage(payload?.error ?? "Failed to start tournament.");
         return;
       }
 
+      console.info(
+        `[TournamentStart] success tournamentId=${tournament.id} matchCount=${payload?.matchCount ?? 0} playerCount=${payload?.playerCount ?? 0}`
+      );
       setMessage(
         payload?.matchCount
           ? `Bracket is Live. ${payload.matchCount} slots created${
@@ -152,6 +167,9 @@ export default function TournamentAdminActions({
       );
       onUpdated();
     } catch {
+      console.warn(
+        `[TournamentStart] rejected tournamentId=${tournament.id} reason=network_error`
+      );
       setMessage("Failed to start tournament.");
     } finally {
       setBusy(false);
@@ -169,36 +187,54 @@ export default function TournamentAdminActions({
 
     setMessage("");
 
-    const identity = await getCurrentPlayerIdentity();
-    if (!identity) {
-      setMessage("You must be logged in.");
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      setMessage("Session expired. Please log in again.");
       return;
     }
 
-    if (identity.playerId !== tournament.created_by) {
-      setMessage("Only the tournament creator can cancel this tournament.");
-      return;
-    }
+    console.info(
+      `[TournamentCancel] attempt tournamentId=${tournament.id}`
+    );
 
     setBusy(true);
     setMessage("Cancelling tournament...");
 
     try {
-      const { error } = await supabase
-        .from("tournaments")
-        .update({ status: "cancelled" })
-        .eq("id", tournament.id)
-        .eq("created_by", identity.playerId)
-        .in("status", ["draft", "registration", "check_in"]);
+      const response = await fetch(
+        `/api/tournaments/${tournament.id}/cancel`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
 
-      if (error) {
-        setMessage(error.message);
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+
+      if (!response.ok) {
+        console.warn(
+          `[TournamentCancel] rejected tournamentId=${tournament.id} reason=${payload?.error ?? "unknown"}`
+        );
+        setMessage(payload?.error ?? "Failed to cancel tournament.");
         return;
       }
 
+      console.info(
+        `[TournamentCancel] success tournamentId=${tournament.id}`
+      );
       setMessage("Tournament cancelled.");
       onUpdated();
     } catch {
+      console.warn(
+        `[TournamentCancel] rejected tournamentId=${tournament.id} reason=network_error`
+      );
       setMessage("Failed to cancel tournament.");
     } finally {
       setBusy(false);
@@ -261,8 +297,15 @@ export default function TournamentAdminActions({
       </div>
 
       {registeredEntryCount !== null && activeCount < 2 ? (
-        <p className="mt-2 text-xs text-red-300">
-          Need at least 2 registered players to start.
+        <p className="mt-2 text-xs text-amber-300/80">
+          Waiting for more players — need at least 2 to start. You can cancel
+          the tournament while fewer than 2 players are registered.
+        </p>
+      ) : null}
+      {registeredEntryCount !== null && activeCount >= 2 && withinCapacity ? (
+        <p className="mt-2 text-xs text-emerald-300/80">
+          {activeCount} player{activeCount !== 1 ? "s" : ""} registered — ready
+          to start. Cancel is not available once enough players have joined.
         </p>
       ) : null}
       {registeredEntryCount !== null && activeCount > 0 && !withinCapacity ? (
