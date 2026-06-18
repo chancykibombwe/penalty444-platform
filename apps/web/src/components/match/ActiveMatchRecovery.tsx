@@ -119,6 +119,15 @@ export default function ActiveMatchRecovery() {
       }
     }
 
+    // Server snapshot sent after a page-refresh rejoin. If the match is
+    // already over, the Resume Match card must be cleared immediately even
+    // though `match:end` was never received in this page load.
+    function onMatchRejoinState(payload: { matchEnded?: boolean }) {
+      if (payload.matchEnded) {
+        clearActiveMatch();
+      }
+    }
+
     function onPublicOfferCancelled() {
       clearActiveMatch();
     }
@@ -144,6 +153,7 @@ export default function ActiveMatchRecovery() {
     socket.on("activeRoom:snapshot", onActiveRoomSnapshot);
     socket.on("match:end", onMatchEnd);
     socket.on("match:update", onMatchUpdate);
+    socket.on("match:rejoinState", onMatchRejoinState);
 
     // If the socket is already connected at mount (common on the lobby),
     // the `connect` event won't fire again — request a snapshot now,
@@ -169,6 +179,7 @@ export default function ActiveMatchRecovery() {
       socket.off("activeRoom:snapshot", onActiveRoomSnapshot);
       socket.off("match:end", onMatchEnd);
       socket.off("match:update", onMatchUpdate);
+      socket.off("match:rejoinState", onMatchRejoinState);
     };
   }, [router]);
 

@@ -1459,6 +1459,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
     function onRematchDeclined(payload: RematchDeclinedPayload) {
       setRematchDeclinedBy(payload.declinedBy);
+      clearActiveMatch();
     }
 
     function onRematchAccepted() {
@@ -1540,6 +1541,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       }
 
       if (data.matchEnded) {
+        clearActiveMatch();
         return;
       }
 
