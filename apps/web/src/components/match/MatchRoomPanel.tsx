@@ -1608,6 +1608,11 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     function onErrorMessage(payload: { message: string }) {
       setLeaveMatchBusy(false);
       setStatus(payload.message);
+      // Server rejects room:join when the room is completed. Clear localStorage
+      // so the Resume Match card is removed on next navigation to home.
+      if (payload.message === "This match has already ended.") {
+        clearActiveMatch();
+      }
     }
 
     function onMatchAborted(_payload: MatchAbortedPayload) {

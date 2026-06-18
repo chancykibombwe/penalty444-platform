@@ -143,6 +143,17 @@ export default function ActiveMatchRecovery() {
       clearActiveMatch();
     }
 
+    // Readiness-authority pre-start cancellation (opponent never showed up).
+    // MatchRoomPanel handles this when it's mounted, but if the user navigated
+    // away from the match page, only ActiveMatchRecovery is listening.
+    function onMatchCancelled(payload: { roomCode?: string }) {
+      const existing = getActiveMatch();
+      if (!existing) return;
+      const code = payload?.roomCode?.trim().toUpperCase();
+      if (code && existing.roomCode !== code) return;
+      clearActiveMatch();
+    }
+
     socket.on("connect", onConnect);
     socket.on("room:created", onRoomCreated);
     socket.on("room:joined", onRoomJoined);
@@ -154,6 +165,7 @@ export default function ActiveMatchRecovery() {
     socket.on("match:end", onMatchEnd);
     socket.on("match:update", onMatchUpdate);
     socket.on("match:rejoinState", onMatchRejoinState);
+    socket.on("match:cancelled", onMatchCancelled);
 
     // If the socket is already connected at mount (common on the lobby),
     // the `connect` event won't fire again — request a snapshot now,
@@ -180,6 +192,7 @@ export default function ActiveMatchRecovery() {
       socket.off("match:end", onMatchEnd);
       socket.off("match:update", onMatchUpdate);
       socket.off("match:rejoinState", onMatchRejoinState);
+      socket.off("match:cancelled", onMatchCancelled);
     };
   }, [router]);
 
