@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { getSocket } from "../socket/client";
+import { getSocket, waitForSocketAuth } from "../socket/client";
 import { supabase } from "../supabase/client";
 
 export type TournamentMatchReadyPayload = {
@@ -167,6 +167,13 @@ export function useTournamentRealtime({
      * decides to send).
      */
     const registerAndSubscribe = async () => {
+      // Gate on server-side JWT verification completing before emitting
+      // player:register. Supabase may have a valid local session, but the
+      // server still needs to verify the token from the handshake — emitting
+      // before that resolves causes a rejection under SOCKET_JWT_ENFORCE=true.
+      const auth = await waitForSocketAuth(5000);
+      if (cancelled) return;
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -174,13 +181,18 @@ export function useTournamentRealtime({
 
       const sessionUserId = session?.user?.id ?? null;
 
-      // Mismatch or anonymous viewer — do NOT emit authenticated
-      // events. Tournament UI can still render publicly available
-      // bracket data via REST.
-      if (!sessionUserId || sessionUserId !== trimmedPlayerId) {
+      // Require both the local Supabase session and the server-verified
+      // socket userId to agree on the player identity before emitting.
+      // A null or mismatched auth.userId means JWT verification failed or
+      // timed out on the server side; emitting would be rejected.
+      if (
+        !sessionUserId ||
+        sessionUserId !== trimmedPlayerId ||
+        auth.userId !== sessionUserId
+      ) {
         if (process.env.NODE_ENV !== "production") {
           console.info(
-            "[socket-auth] skipping player:register / tournament:subscribe — no matching session"
+            "[socket-auth] skipping player:register / tournament:subscribe — session or socket auth mismatch"
           );
         }
         return;

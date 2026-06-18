@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getSocket, isSocketEventForRoom } from "../../lib/socket/client";
+import {
+  getSocket,
+  isSocketEventForRoom,
+  waitForSocketAuth,
+} from "../../lib/socket/client";
 import {
   clearActiveMatch,
   clearActiveMatchIfPlayerMismatch,
@@ -784,6 +788,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     if (!identity) return;
 
     const socket = getSocket();
+    let effectActive = true;
 
     function joinRoom(currentIdentity: PlayerIdentity) {
       saveActiveMatch(normalizedRoomCode, currentIdentity.playerId);
@@ -807,7 +812,21 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     function onConnect() {
       setConnected(true);
       setStatus("Connected. Joining room...");
-      if (identity) joinRoom(identity);
+      if (identity) {
+        void waitForSocketAuth(5000).then((auth) => {
+          if (!effectActive || !identity) return;
+          // Only join when the server's verified userId matches the local
+          // identity. A null/mismatched userId means auth failed or timed
+          // out — emitting room:join would be rejected and the player
+          // would remain stuck. Show a safe status and rely on the next
+          // reconnect cycle (which re-runs this check) to recover.
+          if (auth.userId !== identity.playerId) {
+            setStatus("Securing session…");
+            return;
+          }
+          joinRoom(identity);
+        });
+      }
     }
 
     function onDisconnect() {
@@ -1710,6 +1729,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     }
 
     return () => {
+      effectActive = false;
       // Phase 6C — drop match-page presence FIRST so the server
       // re-evaluates readiness immediately. If pre-match, this can
       // arm the return window; if post-match, the server ignores it.

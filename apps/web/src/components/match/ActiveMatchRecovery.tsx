@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { getSocket } from "../../lib/socket/client";
+import { getSocket, waitForSocketAuth } from "../../lib/socket/client";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
 import {
   saveActiveMatch,
@@ -59,8 +59,17 @@ export default function ActiveMatchRecovery() {
     }
 
     function onConnect() {
-      // Re-sync the authoritative active room after every (re)connect.
-      requestActiveRoomSnapshot();
+      void waitForSocketAuth(5000).then((auth) => {
+        if (cancelled) return;
+        // Only request the snapshot when the server's verified userId
+        // matches our local playerId. A null or mismatched userId means
+        // auth failed or timed out; emitting would be rejected anyway and
+        // the server's proactive snapshot (sent after successful verify)
+        // is the recovery path.
+        const pid = playerIdRef.current;
+        if (!pid || auth.userId !== pid) return;
+        requestActiveRoomSnapshot();
+      });
     }
 
     function onRoomCreated(payload: { roomCode?: string }) {
@@ -137,9 +146,15 @@ export default function ActiveMatchRecovery() {
     socket.on("match:update", onMatchUpdate);
 
     // If the socket is already connected at mount (common on the lobby),
-    // the `connect` event won't fire again — request a snapshot now.
+    // the `connect` event won't fire again — request a snapshot now,
+    // but still gate on socket:authenticated and userId match.
     if (socket.connected) {
-      requestActiveRoomSnapshot();
+      void waitForSocketAuth(5000).then((auth) => {
+        if (cancelled) return;
+        const pid = playerIdRef.current;
+        if (!pid || auth.userId !== pid) return;
+        requestActiveRoomSnapshot();
+      });
     }
 
     return () => {
