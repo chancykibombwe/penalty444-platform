@@ -480,6 +480,22 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   // tournament context lets the staging UI render immediately.
   const [playerCount, setPlayerCount] = useState(1);
   const [timer, setTimer] = useState<number | null>(null);
+  // Absolute expiry epoch for the current pick window, set by onMatchStatus.
+  // The RAF countdown loop reads this instead of decrementing state, so
+  // there is no cumulative drift over a 10-second round.
+  const timerDeadlineRef = useRef<number | null>(null);
+  // Incremented each time a new timer deadline is set; drives the RAF effect
+  // without creating a feedback loop from timer-state updates.
+  const [timerTick, setTimerTick] = useState(0);
+  // True once the remote opponent has locked their pick this round.
+  // Derived from server broadcasts; reset on every round advance.
+  const [opponentPicked, setOpponentPicked] = useState(false);
+  // Ref mirror of hasSubmittedPick so socket-handler closures can read it
+  // without stale-closure bugs (closures don't list hasSubmittedPick as dep).
+  const hasSubmittedPickRef = useRef(false);
+  // Immediate lock on the first click — prevents double-tap before React
+  // re-renders to flip hasSubmittedPick. Reset when pick state resets.
+  const pickInFlightRef = useRef(false);
 
   // Phase 6C — readiness authority pre-start states.
   //
@@ -589,6 +605,15 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   useEffect(() => {
     revealStageRef.current = revealStage;
   }, [revealStage]);
+
+  useEffect(() => {
+    hasSubmittedPickRef.current = hasSubmittedPick;
+    // When pick state resets (round advance / match end), also unlock the
+    // immediate double-tap guard so the next round's first click goes through.
+    if (!hasSubmittedPick) {
+      pickInFlightRef.current = false;
+    }
+  }, [hasSubmittedPick]);
 
   /**
    * Hotfix — single source of truth for "is the local reveal
@@ -853,6 +878,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     function onDisconnect() {
       setConnected(false);
       setStatus("Disconnected from server");
+      timerDeadlineRef.current = null;
       setTimer(null);
     }
 
@@ -892,6 +918,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
       if (payload.playerCount < 2 && !matchEnded) {
         setStatus("Waiting for opponent...");
+        timerDeadlineRef.current = null;
         setTimer(null);
       }
     }
@@ -1068,6 +1095,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         setPendingResult(null);
         setResultFlavorMessage(null);
         setOpponentStatus("");
+        setOpponentPicked(false);
+        // pickInFlightRef resets via the hasSubmittedPick sync effect above.
         setRevealStage("IDLE");
       }
 
@@ -1091,6 +1120,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         resolvingPickRoundRef.current = null;
         setMatchEnded(true);
         setStatus("Match finished");
+        timerDeadlineRef.current = null;
         setTimer(null);
         setFinalScores(data.scores);
         clearActiveMatch();
@@ -1134,8 +1164,30 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         selfName.length > 0 &&
         data.message === `${selfName} locked pick.`;
 
+      // An opponent lock broadcast looks like "<OtherName> locked pick." and
+      // is neither self-lock nor a system message. Replace the raw server
+      // copy with phase-appropriate wording.
+      const isOpponentLockBroadcast =
+        !isSelfLockBroadcast &&
+        !revealActive &&
+        typeof data.message === "string" &&
+        data.message.endsWith(" locked pick.");
+
       if (!isSelfLockBroadcast && !revealActive) {
-        setStatus(data.message);
+        if (isOpponentLockBroadcast) {
+          // Do not let "SomeName locked pick." overwrite the timer / status.
+          // Instead set the opponent indicator and, if I've already picked,
+          // show the shared "both locked" copy immediately.
+          setOpponentPicked(true);
+          if (hasSubmittedPickRef.current) {
+            setStatus("Locked in — revealing soon");
+            setOpponentStatus("");
+          } else {
+            setOpponentStatus("Opponent locked in — choose your lane");
+          }
+        } else {
+          setStatus(data.message);
+        }
       }
 
       const messageLower = data.message.toLowerCase();
@@ -1186,48 +1238,42 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       }
 
       if (typeof data.timeoutSeconds === "number") {
-        // Hotfix — authoritative gameplay-has-begun signal.
+        // Authoritative gameplay-has-begun signal.
         //
-        // `match:status` with `timeoutSeconds` is emitted by the
-        // server's `startRoundTimer` (and only by it). Every
-        // pre-start overlay state must be torn down here so the
-        // overlay never lingers past the moment the pick window
-        // actually opens, regardless of whether `match:stagingBegin`
-        // or `match:update(matchStartedAt)` arrived in the expected
-        // order — or at all.
+        // `match:status` with `timeoutSeconds` is emitted ONLY by
+        // `startRoundTimer`. Every pre-start overlay state must be torn
+        // down here so overlays never linger past the moment the pick
+        // window actually opens, regardless of whether `match:stagingBegin`
+        // or `match:update(matchStartedAt)` arrived in the expected order.
         setIsStaging(false);
         setStagingStartsAt(null);
         setWaitingForReturnDeadline(null);
         setAbsentOpponentName(null);
         setReturnSecondsRemaining(null);
+        // Kill the tournament staging screen (z-50) immediately — its
+        // client-side countdown runs ~1.5 s longer than the server's
+        // STAGING_COUNTDOWN_MS (3700 ms) which would block lane clicks.
+        setTournamentStagingCountdown(null);
+        tournamentStagingDismissedRef.current = true;
+        // Reset per-round pick state for the new round.
+        setOpponentPicked(false);
+        pickInFlightRef.current = false;
 
         if (disconnectCountdownRef.current !== null) {
           clearDisconnectCountdownVisual();
         }
 
-        // `timeoutSeconds` is the authoritative "pick window is open" signal
-        // from `startRoundTimer`. The server emits it as soon as the new
-        // round is armed — which may be while the client's reveal-hold
-        // timer is still running (up to 4 s for tournament). Previously
-        // the `!isRevealActive()` gate blocked `hasSubmittedPick` reset,
-        // so the timer started but buttons stayed disabled until the hold
-        // fired on its own: the "timer active but can't pick" Day 0 bug.
-        //
-        // Fix: force-flush the reveal pipeline here, exactly as the hold
-        // timer itself does. Clear the hold timer, flush any queued
-        // round-advance `match:update`, and reset pick state immediately.
+        // Force-flush the reveal pipeline (PR #108 fix). The hold timer
+        // can be up to 4 s for tournament; without this flush, the timer
+        // started but buttons stayed disabled — "timer active but can't
+        // pick" Day 0 bug.
         const pendingUpdate = deferredMatchUpdatePayloadRef.current;
         deferredMatchUpdatePayloadRef.current = null;
         clearAllRevealTimers();
 
         if (pendingUpdate) {
-          // Normal path: flush the deferred round-advance update.
-          // `onMatchUpdate` resets hasSubmittedPick, myPick, revealStage,
-          // result, etc. and applies the new round's server state.
           onMatchUpdate(pendingUpdate);
         } else {
-          // Edge case (rejoin / out-of-order delivery): no deferred update,
-          // but the timer signal still means we're in a new pick window.
           setRevealStage("IDLE");
           setHasSubmittedPick(false);
           setMyPick(null);
@@ -1237,7 +1283,20 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           setOpponentStatus("");
         }
 
-        setTimer(data.timeoutSeconds);
+        // Clamp to 10 so a reconnect resumption with timeoutSeconds = 11
+        // (Math.ceil rounding) never shows an impossible value.
+        const clampedSeconds = Math.min(data.timeoutSeconds, 10);
+        timerDeadlineRef.current = Date.now() + clampedSeconds * 1000;
+        setTimer(clampedSeconds);
+        setTimerTick((n) => n + 1);
+
+        if (process.env.NODE_ENV !== "production") {
+          console.info("[timer] timer_authoritative_sync", {
+            timeoutSeconds: data.timeoutSeconds,
+            clamped: clampedSeconds,
+            deadline: timerDeadlineRef.current,
+          });
+        }
       }
     }
 
@@ -1395,11 +1454,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       closingRevealRoundSnapshotRef.current =
         authoritative.round ?? expectedRound ?? lastPickRoundRef.current;
 
-      // Hotfix — the "Opponent locked their choice" interstitial
-      // is no longer relevant once the result is in flight. Clear
-      // it immediately so the reveal narrative is the only thing
-      // on screen.
+      // Clear per-round pick indicators — reveal narrative takes over.
       setOpponentStatus("");
+      setOpponentPicked(false);
+      timerDeadlineRef.current = null;
       setTimer(null);
 
       const bothLocked = Boolean(
@@ -1426,9 +1484,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setPendingResult(authoritative);
       setRevealStage("REVEALING");
       revealingStartedAtRef.current = Date.now();
-      const lockedLabel = bothLocked
-        ? "Both players locked. Revealing..."
-        : "Locked. Revealing result...";
+      const lockedLabel = "Locked in — revealing soon";
       setStatus(lockedLabel);
       matchResultRevealArmedRef.current = true;
 
@@ -1461,6 +1517,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setFinalScores(payload.scores);
       setDisplayScores(payload.scores);
       setStatus("Match complete");
+      timerDeadlineRef.current = null;
       setTimer(null);
       clearActiveMatch();
       setRematchVotes(0);
@@ -1608,8 +1665,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           data.round ?? lastPickRoundRef.current ?? null;
 
         if (serverResolving || opponentLocked) {
-          setStatus("Both players locked. Revealing...");
-          setOpponentStatus("Opponent locked their choice");
+          setOpponentPicked(true);
+          setStatus("Locked in — revealing soon");
+          setOpponentStatus("");
           setRevealStage("REVEALING");
           revealingStartedAtRef.current = Date.now();
         } else if (graceRestored) {
@@ -1634,8 +1692,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         setHasSubmittedPick(false);
         resolvingPickRoundRef.current = null;
         if (opponentLocked) {
-          setStatus("Opponent locked. Make your pick.");
-          setOpponentStatus("Opponent locked their choice");
+          setOpponentPicked(true);
+          setStatus("Opponent locked in — choose your lane");
+          setOpponentStatus("Opponent locked in — choose your lane");
         } else {
           setOpponentStatus("");
         }
@@ -2075,24 +2134,35 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     };
   }, [revealStage, result?.result, result?.round]);
 
+  // Deadline-accurate countdown via requestAnimationFrame.
+  // Driven by timerTick (set in onMatchStatus alongside timerDeadlineRef)
+  // so React re-renders from setTimer() calls do NOT restart the loop.
+  // Integers for ≥ 4 s, one decimal for < 4 s ("3.9 → 0.1") so the final
+  // seconds feel alive rather than mechanically snapping between integers.
   useEffect(() => {
-    if (timer === null || timer <= 0) return;
+    if (timerDeadlineRef.current === null) return;
 
-    const interval = setInterval(() => {
-      setTimer((previous) => {
-        if (previous === null) return null;
+    let rafId: ReturnType<typeof requestAnimationFrame>;
+    let active = true;
 
-        if (previous <= 1) {
-          clearInterval(interval);
-          return 0;
-        }
+    function tick() {
+      if (!active || timerDeadlineRef.current === null) return;
+      const ms = timerDeadlineRef.current - Date.now();
+      const clamped = Math.max(0, ms);
+      setTimer(
+        clamped >= 4000
+          ? Math.min(Math.ceil(clamped / 1000), 10)
+          : parseFloat((clamped / 1000).toFixed(1))
+      );
+      if (clamped > 0) rafId = requestAnimationFrame(tick);
+    }
 
-        return previous - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [timer]);
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      active = false;
+      cancelAnimationFrame(rafId);
+    };
+  }, [timerTick]);
 
   const myPlayerId = identity?.playerId || "";
   const myRole = myPlayerId ? roles[myPlayerId] : undefined;
@@ -2208,6 +2278,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     return "Keeper";
   }, [shownResult, playerNames]);
   const isTimerUrgent = timer !== null && timer > 0 && timer <= 3;
+  // Final second — button disabling + "Time almost up" label prevents
+  // clicks the server is about to reject anyway.
+  const isTimerAlmostDone =
+    timer !== null && timer > 0 && timer <= 1 && !hasSubmittedPick;
   const isRevealLocked =
     revealStage === "REVEALING" || revealStage === "REVEALED";
 
@@ -2229,7 +2303,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     revealStage !== "REVEALING" &&
     revealStage !== "REVEALED" &&
     !isPreStartGate &&
-    !!identity;
+    !!identity &&
+    // Prevent clicks in the final second — visually honest, prevents
+    // sending picks the server deadline is about to reject.
+    !isTimerAlmostDone;
 
   const matchEndOutcome = useMemo(() => {
     if (!matchEnded) return null;
@@ -2293,6 +2370,15 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
   function pick(lane: Lane) {
     if (!canPick || !identity) return;
+    // Double-tap guard: a second pointer event can arrive before React
+    // re-renders to flip `hasSubmittedPick`. The ref is reset synchronously
+    // when `hasSubmittedPick` goes back to false (round advance / match end).
+    if (pickInFlightRef.current) return;
+    pickInFlightRef.current = true;
+
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[match:pick] pick_clicked", { lane, round, phase });
+    }
 
     // Hotfix Sprint TASK 4: client-side defence-in-depth. The server
     // is the authoritative validator (see
@@ -2342,15 +2428,27 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     setHasSubmittedPick(true);
     setMyPick(lane);
     setRevealStage("LOCKED");
-    // If the opponent is disconnected and the abort grace is still
-    // running, the red countdown is the authoritative signal — don't
-    // claim we're merely "waiting" / that the opponent is "thinking".
+
+    // Phase-aware copy: never show "Waiting for opponent" when both locked.
     if (isDisconnectGraceStillActive()) {
+      // Opponent disconnected — abort grace is the authoritative signal.
       setOpponentStatus("");
       setStatus(`You locked ${lane}. Opponent disconnected.`);
+    } else if (opponentPicked) {
+      // Opponent already locked before us — both are now locked.
+      setStatus("Locked in — revealing soon");
+      setOpponentStatus("");
     } else {
+      setStatus("Pick locked in — waiting for opponent");
       setOpponentStatus("Opponent is thinking...");
-      setStatus(`You locked ${lane}. Waiting for opponent...`);
+    }
+
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[match:pick] pick_locally_locked", {
+        lane,
+        round,
+        opponentAlreadyPicked: opponentPicked,
+      });
     }
   }
 
@@ -2733,45 +2831,57 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
             <div
               className={`flex w-full items-center justify-between gap-2 self-stretch rounded-lg border px-2 py-0.5 text-left shadow-lg transition-all duration-300 sm:rounded-3xl sm:px-5 sm:py-3 sm:text-center md:block md:w-auto md:min-w-[9.5rem] md:self-auto md:px-6 md:py-5 ${
-                isTimerUrgent
-                  ? "match-timer-urgent border-red-400/90 bg-red-500/20"
-                  : isSuddenDeath
-                    ? "match-timer-sudden-death border-yellow-400/80 bg-yellow-500/15"
-                    : "border-zinc-700 bg-zinc-900"
+                isTimerAlmostDone
+                  ? "match-timer-almost-done border-red-500/95 bg-red-600/25"
+                  : isTimerUrgent
+                    ? "match-timer-urgent border-red-400/90 bg-red-500/20"
+                    : isSuddenDeath
+                      ? "match-timer-sudden-death border-yellow-400/80 bg-yellow-500/15"
+                      : "border-zinc-700 bg-zinc-900"
               }`}
             >
               <p
                 className={`text-[8px] font-black uppercase tracking-[0.22em] sm:text-xs ${
-                  isTimerUrgent
+                  isTimerAlmostDone || isTimerUrgent
                     ? "text-red-200"
                     : isSuddenDeath
                       ? "text-yellow-200/90"
                       : "text-zinc-400"
                 }`}
               >
-                {isTimerUrgent ? "Lock in!" : "Timer"}
+                {isTimerAlmostDone
+                  ? "Time almost up…"
+                  : isTimerUrgent
+                    ? "Lock in!"
+                    : "Timer"}
               </p>
               <p
                 className={`text-base font-black tabular-nums transition-transform duration-300 sm:text-5xl sm:mt-1 md:text-6xl ${
-                  isTimerUrgent
+                  isTimerAlmostDone || isTimerUrgent
                     ? "text-red-200"
                     : isSuddenDeath
                       ? "text-yellow-100"
                       : "text-white"
                 }`}
               >
-                {timer !== null ? timer : "—"}
+                {hasSubmittedPick && opponentPicked
+                  ? "—"
+                  : timer !== null
+                    ? Number.isInteger(timer)
+                      ? timer
+                      : timer.toFixed(1)
+                    : "—"}
               </p>
               <p
                 className={`hidden text-[11px] font-bold uppercase tracking-wider sm:block ${
-                  isTimerUrgent
+                  isTimerAlmostDone || isTimerUrgent
                     ? "text-red-200/85"
                     : isSuddenDeath
                       ? "text-yellow-200/70"
                       : "text-zinc-500"
                 }`}
               >
-                {isTimerUrgent ? "Hurry" : "seconds"}
+                {isTimerAlmostDone ? "last chance" : isTimerUrgent ? "Hurry" : "seconds"}
               </p>
             </div>
           </div>
@@ -2993,7 +3103,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                 tensionCountdown !== null ? (
                   <span
                     key={tensionCountdown}
-                    className="tabular-nums text-white drop-shadow-[0_0_28px_rgba(56,189,248,0.45)]"
+                    className="p444-tension-digit tabular-nums text-white drop-shadow-[0_0_28px_rgba(56,189,248,0.45)]"
                   >
                     {tensionCountdown}
                   </span>
