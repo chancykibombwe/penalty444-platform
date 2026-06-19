@@ -101,8 +101,15 @@ export function evaluateMatchStart(roomCode: string, room: Room): void {
   }
 
   const allPresent = room.players.every((player) => player.present);
+  const isTournament = room.matchType === "tournament";
 
   if (allPresent) {
+    if (isTournament) {
+      console.log(
+        `[TournamentReady] both_present roomCode=${roomCode} ` +
+          `players=${room.players.map((p) => p.playerId).join(",")}`
+      );
+    }
     clearReturnWindow(room);
     // If staging is already armed, leave it alone — let it complete.
     // Otherwise, start staging now.
@@ -114,6 +121,21 @@ export function evaluateMatchStart(roomCode: string, room: Room): void {
   // Two slots filled, but at least one player is absent. If staging
   // was running, abort it (the absent player must come back from the
   // start). Then arm the return window if it isn't already armed.
+  if (isTournament) {
+    const presentIds =
+      room.players
+        .filter((p) => p.present)
+        .map((p) => p.playerId)
+        .join(",") || "none";
+    const absentIds = room.players
+      .filter((p) => !p.present)
+      .map((p) => p.playerId)
+      .join(",");
+    console.log(
+      `[TournamentReady] blocked_timer_until_both_present roomCode=${roomCode} ` +
+        `present=${presentIds} absent=${absentIds}`
+    );
+  }
   abortStaging(room);
   if (room.waitingForReturnTimeout) return;
   armReturnWindow(roomCode, room);
@@ -162,6 +184,14 @@ function armStaging(roomCode: string, room: Room): void {
 
     live.stagingCountdownTimeout = undefined;
     live.stagingStartsAt = undefined;
+
+    if (live.matchType === "tournament") {
+      console.log(
+        `[TournamentReady] countdown_started roomCode=${roomCode} ` +
+          `players=${live.players.map((p) => p.playerId).join(",")}`
+      );
+    }
+
     startRoundTimer(roomCode, live);
   }, STAGING_COUNTDOWN_MS);
 }
@@ -217,6 +247,14 @@ function armReturnWindow(roomCode: string, room: Room): void {
       `absent=${absentPlayers.map((p) => p.playerId).join(",")} ` +
       `tournament=${isTournament} expiresAt=${deadline}`
   );
+
+  if (isTournament) {
+    console.log(
+      `[TournamentReady] waiting_for_opponent roomCode=${roomCode} ` +
+        `present=${presentPlayers.map((p) => p.playerId).join(",") || "none"} ` +
+        `absent=${absentPlayers.map((p) => p.playerId).join(",")}`
+    );
+  }
 
   room.waitingForReturnTimeout = setTimeout(() => {
     const live = rooms.get(roomCode);

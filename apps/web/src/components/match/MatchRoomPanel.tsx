@@ -414,6 +414,27 @@ function WaitingForOpponentCard({ roomCode }: { roomCode: string }) {
   );
 }
 
+/**
+ * Pre-start waiting card for tournament rooms — both players are assigned
+ * by the bracket; room-code sharing is not the entry path. Shown when
+ * only one assigned player is in the room (playerCount < 2).
+ */
+function TournamentWaitingForOpponentCard() {
+  return (
+    <>
+      <p className="text-[10px] font-black uppercase tracking-[0.32em] text-amber-300/90 sm:text-xs">
+        Waiting for opponent
+      </p>
+      <p className="mt-2 text-xs text-zinc-300 sm:mt-3 sm:text-sm">
+        Your opponent needs to click Enter Match. Waiting for them to join.
+      </p>
+      <p className="mt-3 text-[10px] uppercase tracking-[0.24em] text-zinc-500">
+        The timer will not start until both players are ready.
+      </p>
+    </>
+  );
+}
+
 export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const router = useRouter();
   const [identity, setIdentity] = useState<PlayerIdentity | null>(null);
@@ -2519,9 +2540,13 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                   Waiting for opponent
                 </p>
                 <p className="mt-2 text-xs text-zinc-300 sm:mt-3 sm:text-sm">
-                  {absentOpponentName
-                    ? `${absentOpponentName} stepped away. Holding until they return.`
-                    : "Holding the match until your opponent returns."}
+                  {isTournamentMatch
+                    ? absentOpponentName
+                      ? `${absentOpponentName} hasn't entered yet. Waiting for them to join.`
+                      : "Waiting for your opponent to enter the match."
+                    : absentOpponentName
+                      ? `${absentOpponentName} stepped away. Holding until they return.`
+                      : "Holding the match until your opponent returns."}
                 </p>
                 <p className="mt-3 text-4xl font-black tabular-nums text-white sm:mt-4 sm:text-5xl">
                   {returnSecondsRemaining ?? "—"}s
@@ -2530,6 +2555,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                   No penalty if cancelled
                 </p>
               </>
+            ) : isTournamentMatch ? (
+              <TournamentWaitingForOpponentCard />
             ) : (
               <WaitingForOpponentCard roomCode={normalizedRoomCode} />
             )}
