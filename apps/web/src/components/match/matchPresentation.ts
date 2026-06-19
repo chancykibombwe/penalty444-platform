@@ -185,6 +185,8 @@ export const MATCH_PRESENTATION_CSS = `
 @keyframes p444ScreenShake{0%,100%{transform:translate3d(0,0,0)}15%{transform:translate3d(-10px,0,0)}30%{transform:translate3d(10px,0,0)}45%{transform:translate3d(-8px,0,0)}60%{transform:translate3d(8px,0,0)}75%{transform:translate3d(-4px,0,0)}90%{transform:translate3d(4px,0,0)}}
 @keyframes p444TimerUrgentPulse{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,0.45),0 0 24px rgba(248,113,113,0.18)}50%{box-shadow:0 0 0 10px rgba(248,113,113,0),0 0 36px rgba(248,113,113,0.42)}}
 @keyframes p444TimerUrgentScale{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+@keyframes p444TimerAlmostDonePulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.65),0 0 28px rgba(239,68,68,0.28)}50%{box-shadow:0 0 0 12px rgba(239,68,68,0),0 0 44px rgba(239,68,68,0.55)}}
+@keyframes p444TensionDigit{0%{opacity:0;transform:scale(0.55) translateY(10px)}70%{opacity:1;transform:scale(1.08) translateY(0)}100%{opacity:1;transform:scale(1) translateY(0)}}
 @keyframes p444SuddenDeathTimerGlow{0%,100%{box-shadow:0 0 18px rgba(250,204,21,0.18),inset 0 0 18px rgba(250,204,21,0.08)}50%{box-shadow:0 0 30px rgba(250,204,21,0.34),inset 0 0 24px rgba(250,204,21,0.12)}}
 @keyframes p444GoalFlash{0%{box-shadow:0 0 0 0 rgba(52,211,153,0.55)}100%{box-shadow:0 0 0 18px rgba(52,211,153,0)}}
 @keyframes p444SaveFlash{0%{box-shadow:0 0 0 0 rgba(56,189,248,0.55)}100%{box-shadow:0 0 0 16px rgba(56,189,248,0)}}
@@ -206,7 +208,9 @@ export const MATCH_PRESENTATION_CSS = `
 .p444-result-burst{animation:p444ResultBurst ${RESULT_OVERLAY_VISIBLE_MS}ms ease-out forwards}
 .p444-pick-locked-pulse{animation:p444PickLockedPulse 1.5s ease-in-out infinite}
 .p444-kicker-badge-pulse{animation:p444KickerBadgePulse 2s ease-in-out infinite}
-.match-timer-urgent{animation:p444TimerUrgentPulse 0.9s ease-in-out infinite,p444TimerUrgentScale 0.9s ease-in-out infinite}
+.match-timer-urgent{animation:p444TimerUrgentPulse 1s ease-in-out infinite,p444TimerUrgentScale 1s ease-in-out infinite}
+.match-timer-almost-done{animation:p444TimerAlmostDonePulse 0.45s ease-in-out infinite,p444TimerUrgentScale 0.45s ease-in-out infinite}
+.p444-tension-digit{animation:p444TensionDigit 0.28s cubic-bezier(0.34,1.56,0.64,1) both}
 .match-timer-sudden-death{animation:p444SuddenDeathTimerGlow 1.4s ease-in-out infinite}
 .goal-flash{animation:p444GoalFlash 0.6s ease-out}
 .save-flash{animation:p444SaveFlash 0.6s ease-out}
