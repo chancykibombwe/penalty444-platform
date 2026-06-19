@@ -1184,18 +1184,35 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           clearDisconnectCountdownVisual();
         }
 
-        // Hotfix — use the timer-based `isRevealActive()` gate
-        // instead of inspecting `revealStageRef`. The reveal
-        // pipeline's hold timer is what ultimately clears the
-        // stage; if no local reveal timer is in flight (e.g.
-        // `onMatchRejoinState` seeded a placeholder REVEALING
-        // from a server snapshot without arming one), we are
-        // free to apply the round-reset clears here. Pre-start
-        // staging / waiting clears above come from PR #14.
-        if (!isRevealActive()) {
-          clearAllRevealTimers();
+        // `timeoutSeconds` is the authoritative "pick window is open" signal
+        // from `startRoundTimer`. The server emits it as soon as the new
+        // round is armed — which may be while the client's reveal-hold
+        // timer is still running (up to 4 s for tournament). Previously
+        // the `!isRevealActive()` gate blocked `hasSubmittedPick` reset,
+        // so the timer started but buttons stayed disabled until the hold
+        // fired on its own: the "timer active but can't pick" Day 0 bug.
+        //
+        // Fix: force-flush the reveal pipeline here, exactly as the hold
+        // timer itself does. Clear the hold timer, flush any queued
+        // round-advance `match:update`, and reset pick state immediately.
+        const pendingUpdate = deferredMatchUpdatePayloadRef.current;
+        deferredMatchUpdatePayloadRef.current = null;
+        clearAllRevealTimers();
+
+        if (pendingUpdate) {
+          // Normal path: flush the deferred round-advance update.
+          // `onMatchUpdate` resets hasSubmittedPick, myPick, revealStage,
+          // result, etc. and applies the new round's server state.
+          onMatchUpdate(pendingUpdate);
+        } else {
+          // Edge case (rejoin / out-of-order delivery): no deferred update,
+          // but the timer signal still means we're in a new pick window.
           setRevealStage("IDLE");
           setHasSubmittedPick(false);
+          setMyPick(null);
+          setResult(null);
+          setPendingResult(null);
+          setResultFlavorMessage(null);
           setOpponentStatus("");
         }
 
