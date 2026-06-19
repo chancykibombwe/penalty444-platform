@@ -480,6 +480,12 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   // tournament context lets the staging UI render immediately.
   const [playerCount, setPlayerCount] = useState(1);
   const [timer, setTimer] = useState<number | null>(null);
+  // Absolute deadline for the current round timer (ms since epoch).
+  // Set by onMatchStatus; cleared whenever setTimer(null) is called so the
+  // RAF loop self-terminates rather than fighting an explicit clear.
+  const timerDeadlineRef = useRef<number | null>(null);
+  // Incremented each time a new round timer starts; drives the RAF effect.
+  const [timerTick, setTimerTick] = useState(0);
 
   // Phase 6C — readiness authority pre-start states.
   //
@@ -853,6 +859,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     function onDisconnect() {
       setConnected(false);
       setStatus("Disconnected from server");
+      timerDeadlineRef.current = null;
       setTimer(null);
     }
 
@@ -892,6 +899,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
       if (payload.playerCount < 2 && !matchEnded) {
         setStatus("Waiting for opponent...");
+        timerDeadlineRef.current = null;
         setTimer(null);
       }
     }
@@ -1091,6 +1099,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         resolvingPickRoundRef.current = null;
         setMatchEnded(true);
         setStatus("Match finished");
+        timerDeadlineRef.current = null;
         setTimer(null);
         setFinalScores(data.scores);
         clearActiveMatch();
@@ -1237,7 +1246,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           setOpponentStatus("");
         }
 
+        timerDeadlineRef.current =
+          Date.now() + data.timeoutSeconds * 1000;
         setTimer(data.timeoutSeconds);
+        setTimerTick((n) => n + 1);
       }
     }
 
@@ -1400,6 +1412,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       // it immediately so the reveal narrative is the only thing
       // on screen.
       setOpponentStatus("");
+      timerDeadlineRef.current = null;
       setTimer(null);
 
       const bothLocked = Boolean(
@@ -1461,6 +1474,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setFinalScores(payload.scores);
       setDisplayScores(payload.scores);
       setStatus("Match complete");
+      timerDeadlineRef.current = null;
       setTimer(null);
       clearActiveMatch();
       setRematchVotes(0);
@@ -2075,24 +2089,35 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     };
   }, [revealStage, result?.result, result?.round]);
 
+  // Deadline-accurate, sub-second countdown via requestAnimationFrame.
+  // Triggered by `timerTick` (incremented in onMatchStatus alongside
+  // timerDeadlineRef) rather than by `timer` state, so React re-renders
+  // from the RAF do not restart the loop. Shows integers when ≥ 4 s,
+  // one decimal when < 4 s so the final seconds feel alive, not robotic.
   useEffect(() => {
-    if (timer === null || timer <= 0) return;
+    if (timerDeadlineRef.current === null) return;
 
-    const interval = setInterval(() => {
-      setTimer((previous) => {
-        if (previous === null) return null;
+    let rafId: ReturnType<typeof requestAnimationFrame>;
+    let active = true;
 
-        if (previous <= 1) {
-          clearInterval(interval);
-          return 0;
-        }
+    function tick() {
+      if (!active || timerDeadlineRef.current === null) return;
+      const ms = timerDeadlineRef.current - Date.now();
+      const clamped = Math.max(0, ms);
+      setTimer(
+        clamped >= 4000
+          ? Math.ceil(clamped / 1000)
+          : parseFloat((clamped / 1000).toFixed(1))
+      );
+      if (clamped > 0) rafId = requestAnimationFrame(tick);
+    }
 
-        return previous - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [timer]);
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      active = false;
+      cancelAnimationFrame(rafId);
+    };
+  }, [timerTick]);
 
   const myPlayerId = identity?.playerId || "";
   const myRole = myPlayerId ? roles[myPlayerId] : undefined;
@@ -2760,7 +2785,11 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                       : "text-white"
                 }`}
               >
-                {timer !== null ? timer : "—"}
+                {timer !== null
+                  ? Number.isInteger(timer)
+                    ? timer
+                    : timer.toFixed(1)
+                  : "—"}
               </p>
               <p
                 className={`hidden text-[11px] font-bold uppercase tracking-wider sm:block ${

@@ -206,7 +206,7 @@ export const MATCH_PRESENTATION_CSS = `
 .p444-result-burst{animation:p444ResultBurst ${RESULT_OVERLAY_VISIBLE_MS}ms ease-out forwards}
 .p444-pick-locked-pulse{animation:p444PickLockedPulse 1.5s ease-in-out infinite}
 .p444-kicker-badge-pulse{animation:p444KickerBadgePulse 2s ease-in-out infinite}
-.match-timer-urgent{animation:p444TimerUrgentPulse 0.9s ease-in-out infinite,p444TimerUrgentScale 0.9s ease-in-out infinite}
+.match-timer-urgent{animation:p444TimerUrgentPulse 1s ease-in-out infinite,p444TimerUrgentScale 1s ease-in-out infinite}
 .match-timer-sudden-death{animation:p444SuddenDeathTimerGlow 1.4s ease-in-out infinite}
 .goal-flash{animation:p444GoalFlash 0.6s ease-out}
 .save-flash{animation:p444SaveFlash 0.6s ease-out}
