@@ -34,6 +34,39 @@ import {
   type ActiveTournament,
 } from "../lib/tournament/activeTournament";
 
+const HOW_IT_WORKS = [
+  {
+    step: "01",
+    label: "Sign in",
+    detail: "Create a free account to save your stats.",
+  },
+  {
+    step: "02",
+    label: "Enter Lobby",
+    detail: "Find an open public match or create a private room.",
+  },
+  {
+    step: "03",
+    label: "Pick a lane",
+    detail: "Choose left, centre, or right each round.",
+  },
+  {
+    step: "04",
+    label: "Score & save",
+    detail: "You alternate between kicker and keeper each round.",
+  },
+  {
+    step: "05",
+    label: "Climb the ranks",
+    detail: "Wins improve your rank. All free — no entry fees.",
+  },
+  {
+    step: "06",
+    label: "Join tournaments",
+    detail: "Free-entry single-elimination brackets. Beta only.",
+  },
+] as const;
+
 const ARENA_GAMES: GameCardData[] = [
   {
     id: "penalty444",
@@ -269,21 +302,48 @@ export default function HomePage() {
         aria-label="Quick actions"
       >
         <QuickActionCard
-          title="Quick Match"
-          subtitle="Find an opponent instantly"
+          title="Enter Lobby"
+          subtitle="Find an open game or create a private room"
           href="/lobby"
-          cta="Find Match"
+          cta="Play Free"
           icon="⚡"
           tone="cyan"
         />
         <QuickActionCard
-          title="Create Room"
-          subtitle="Challenge your friends"
-          href="/lobby"
-          cta="Create Room"
-          icon="🎯"
-          tone="purple"
+          title="How to Play"
+          subtitle="Rules, tips, and beta overview"
+          href="/how-to-play"
+          cta="Learn"
+          icon="📖"
+          tone="amber"
         />
+      </section>
+
+      <section aria-label="How the beta works">
+        <div className="flex items-center gap-2">
+          <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-500 sm:text-[10px] sm:tracking-[0.28em]">
+            How It Works
+          </p>
+          <span className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-cyan-300/80">
+            Free Play Beta
+          </span>
+        </div>
+        <ol className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {HOW_IT_WORKS.map((item) => (
+            <li
+              key={item.step}
+              className="rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2.5"
+            >
+              <span className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-600">
+                {item.step}
+              </span>
+              <p className="mt-1 text-sm font-black text-white">{item.label}</p>
+              <p className="mt-0.5 text-[11px] leading-snug text-zinc-400">
+                {item.detail}
+              </p>
+            </li>
+          ))}
+        </ol>
       </section>
 
       <section aria-label="Games on 444 Arena">
@@ -300,8 +360,7 @@ export default function HomePage() {
         </div>
 
         <p className="mt-1 hidden text-xs text-zinc-400 sm:block">
-          Free Play — no real money. Play ranked matches and climb the
-          leaderboard.
+          Free Play — no real money, no entry fees.
         </p>
 
         <div className="home-game-scroll relative mt-2 -mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1.5 sm:gap-4">
