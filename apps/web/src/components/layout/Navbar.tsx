@@ -77,16 +77,6 @@ function AccountIcon(props: NavIconProps) {
   );
 }
 
-function WalletIcon(props: NavIconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <rect x="2" y="6" width="20" height="14" rx="2" />
-      <path d="M16 14h.01" />
-      <path d="M2 10h20" />
-    </svg>
-  );
-}
-
 const NAV_ITEMS: NavItem[] = [
   { id: "home", label: "Home", buildHref: () => "/", matchPrefixes: ["/"], Icon: HomeIcon },
   { id: "lobby", label: "Lobby", buildHref: () => "/lobby", matchPrefixes: ["/lobby", "/play", "/games"], Icon: LobbyIcon },
@@ -99,7 +89,6 @@ const NAV_ITEMS: NavItem[] = [
     competitive: true,
   },
   { id: "leaderboard", label: "Leaderboard", buildHref: () => "/leaderboard", matchPrefixes: ["/leaderboard"], Icon: LeaderboardIcon },
-  { id: "wallet", label: "Wallet", buildHref: () => "/wallet", matchPrefixes: ["/wallet"], Icon: WalletIcon },
   {
     id: "account",
     label: "Account",
@@ -304,7 +293,7 @@ export default function Navbar() {
         className="fixed inset-x-0 bottom-0 z-50 border-t border-[#1B2433] bg-[#0A0E14]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-[#0A0E14]/85 md:hidden"
         aria-label="Primary mobile"
       >
-        <ul className="mx-auto grid max-w-md grid-cols-6 px-1">
+        <ul className="mx-auto grid max-w-md grid-cols-5 px-1">
           {NAV_ITEMS.map((item) => {
             const href = item.buildHref(loggedIn);
             const active = isItemActive(pathname, item);
