@@ -1428,7 +1428,12 @@ async function abortMatchEarly(
     matchInstance: room.matchInstance ?? 1,
     reason: "early_cancel",
   };
-  io.to(roomCode).emit("match:aborted", abortPayload);
+  // Emit directly to each player socket so the event reaches players who
+  // navigated away from the match page (and left the socket.io room) before
+  // the abort fired. Mirrors the delivery pattern used by match:cancelled.
+  for (const p of room.players) {
+    io.to(p.socketId).emit("match:aborted", abortPayload);
+  }
   mirrorToSpectators(room, "match:aborted", abortPayload);
 
   emitMatchState(roomCode, room);
