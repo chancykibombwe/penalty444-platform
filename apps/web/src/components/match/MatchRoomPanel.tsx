@@ -2781,8 +2781,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         }`}
       >
         <div className="border-b border-zinc-800 px-1.5 py-1 sm:px-4 sm:py-4 md:px-6 md:py-5">
-          <div className="flex flex-col gap-0.5 md:flex-row md:items-start md:justify-between md:gap-4">
-            <div className="min-w-0">
+          <div className="flex flex-row items-start gap-2 justify-between md:gap-4">
+            <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1 sm:gap-2">
                 <span
                   className={`rounded-full px-1.5 py-0.5 font-black uppercase tracking-[0.2em] sm:px-3 sm:py-1 ${
@@ -2919,7 +2919,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             </div>
 
             <div
-              className={`flex w-full items-center justify-between gap-2 self-stretch rounded-lg border px-2 py-0.5 text-left shadow-lg transition-all duration-300 sm:rounded-3xl sm:px-5 sm:py-3 sm:text-center md:block md:w-auto md:min-w-[9.5rem] md:self-auto md:px-6 md:py-5 ${
+              className={`flex shrink-0 flex-col items-center justify-center gap-0 self-stretch rounded-lg border px-3 py-1 text-center shadow-lg transition-all duration-300 sm:w-full sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:rounded-3xl sm:px-5 sm:py-3 sm:text-center md:block md:w-auto md:min-w-[9.5rem] md:self-auto md:px-6 md:py-5 ${
                 isTimerAlmostDone
                   ? "match-timer-almost-done border-red-500/95 bg-red-600/25"
                   : isTimerUrgent
@@ -3050,7 +3050,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       </div>
 
       <section
-        className="relative shrink-0 h-[34vh] sm:h-[44vh] md:h-[52vh] w-full overflow-hidden rounded-xl sm:rounded-2xl border border-zinc-800 bg-black/60"
+        className="relative hidden shrink-0 sm:block sm:h-[24vh] sm:max-h-[220px] md:h-[28vh] md:max-h-[280px] lg:h-[32vh] lg:max-h-[340px] xl:h-[36vh] xl:max-h-[420px] w-full overflow-hidden rounded-xl sm:rounded-2xl border border-zinc-800 bg-black/60"
         aria-hidden
       >
         <div className="absolute inset-0 flex items-center justify-center">
@@ -3080,7 +3080,27 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             </div>
           ) : null}
 
-          {/* Header hidden on mobile — buttons are self-labelled; shown sm+ */}
+          {/* Mobile-only compact pick status bar */}
+          <div className="mb-1 flex items-center justify-between sm:hidden">
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
+              {revealStage === "LOCKED" || hasSubmittedPick || myPick
+                ? "Pick locked in"
+                : "Choose your lane"}
+            </p>
+            {myRole && !isRevealLocked ? (
+              <span
+                className={`rounded-full border px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] ${
+                  myRole === "KICKER"
+                    ? "border-amber-400/60 bg-amber-500/10 text-amber-100"
+                    : "border-sky-400/60 bg-sky-500/10 text-sky-100"
+                }`}
+              >
+                {myRole}
+              </span>
+            ) : null}
+          </div>
+
+          {/* Header shown sm+ — more detail, role badge, waiting dots */}
           <div className="hidden sm:flex sm:items-center sm:justify-between sm:gap-3">
             <h2 className="text-base font-black sm:text-2xl md:text-3xl">
               {revealStage === "LOCKED"
@@ -3122,14 +3142,14 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             </div>
           </div>
 
-          <div className="mt-0 grid grid-cols-3 gap-1 sm:mt-3 sm:gap-3 md:mt-5 md:gap-4">
+          <div className="mt-0 grid grid-cols-3 gap-2 sm:mt-3 sm:gap-3 md:mt-5 md:gap-4">
             {LANES.map((lane) => (
               <button
                 key={lane}
                 onClick={() => pick(lane)}
                 disabled={!canPick}
                 aria-pressed={myPick === lane}
-                className={`group flex flex-col items-center justify-center h-6 gap-0 rounded-md border px-1 sm:h-10 sm:gap-0.5 sm:rounded-2xl sm:px-3 md:h-14 md:px-4 ${getLaneButtonClass(
+                className={`group flex flex-col items-center justify-center h-14 gap-0.5 rounded-xl border px-2 sm:h-12 sm:gap-0.5 sm:rounded-2xl sm:px-3 md:h-14 md:px-4 ${getLaneButtonClass(
                   lane,
                   {
                     canPick,
@@ -3139,10 +3159,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                   }
                 )}`}
               >
-                <span className="hidden leading-none sm:block sm:text-xl md:text-3xl">
+                <span className="text-lg leading-none sm:text-xl md:text-3xl">
                   {laneEmoji(lane)}
                 </span>
-                <span className="text-[8px] font-black leading-none sm:mt-0.5 sm:text-xs md:mt-1 md:text-base">
+                <span className="text-xs font-black leading-none sm:mt-0.5 sm:text-xs md:mt-1 md:text-base">
                   {lane}{myPick === lane ? " ✓" : ""}
                 </span>
                 {myPick === lane ? (
@@ -3294,7 +3314,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       </section>
 
       {!matchEnded ? (
-        <div className="grid grid-cols-2 gap-1.5 shrink-0" style={{height:"12vh"}}>
+        <div className="hidden sm:grid sm:grid-cols-2 sm:gap-1.5 sm:shrink-0">
           <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-2 py-1.5 flex flex-col justify-center">
             <p className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400">
               Prize Pool
