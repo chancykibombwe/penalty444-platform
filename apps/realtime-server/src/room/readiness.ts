@@ -1,5 +1,6 @@
 import type { Server } from "socket.io";
 import { refundAllMatchEscrows } from "../economy";
+import { diagLog } from "../diagnostics/log";
 import { rooms } from "../state/stores";
 import type { Room } from "../types/room";
 import { refundBothStakes } from "../wallet/stakes";
