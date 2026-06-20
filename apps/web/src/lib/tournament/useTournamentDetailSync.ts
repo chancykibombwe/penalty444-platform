@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TournamentMatchRow } from "../../components/tournament/TournamentBracketPanel";
 import type { TournamentEntryRow } from "../../components/tournament/TournamentListPanel";
 import { useVisibleInterval } from "../polling/useVisibleInterval";
@@ -34,6 +34,7 @@ export function useTournamentDetailSync(tournamentId: string) {
   const [error, setError] = useState("");
 
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevTournamentStatusRef = useRef<string | null>(null);
 
   const applyFetchResult = useCallback((result: TournamentDetailFetchResult) => {
     if (!result.ok) {
@@ -132,6 +133,32 @@ export function useTournamentDetailSync(tournamentId: string) {
       deps: [scheduleSilentReload, pollingPaused],
     }
   );
+
+  // Track the tournament status so we can detect terminal transitions.
+  // `useMemo` keeps the derived value stable without a separate useEffect dep.
+  const tournamentStatus = useMemo(
+    () => tournament?.status ?? null,
+    [tournament]
+  );
+
+  // When the tournament status first transitions INTO a terminal state
+  // (completed/cancelled), schedule one final silent reload. This ensures the
+  // bracket, winner_id, and last-round result are visible even if the normal
+  // polling stopped immediately after that transition was detected.
+  useEffect(() => {
+    const current = tournamentStatus;
+    const prev = prevTournamentStatusRef.current;
+    prevTournamentStatusRef.current = current;
+
+    if (
+      current !== null &&
+      prev !== null &&
+      prev !== current &&
+      (current === "completed" || current === "cancelled")
+    ) {
+      scheduleSilentReload();
+    }
+  }, [tournamentStatus, scheduleSilentReload]);
 
   return {
     tournament,

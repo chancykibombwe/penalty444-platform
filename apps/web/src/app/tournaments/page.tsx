@@ -153,6 +153,34 @@ export default function TournamentsPage() {
     };
   }, []);
 
+  // Visibility refresh — tab switch without a window-focus event (e.g. clicking
+  // between browser tabs). Not gated on active-tournament state so a player who
+  // left the list empty still sees newly created tournaments on return.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setListVersion((version) => version + 1);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  // Low-frequency baseline poll (30 s) — keeps the list alive even when no
+  // active tournaments are present and neither focus nor visibility has fired.
+  // Allows a freshly created tournament in another browser to appear without a
+  // manual reload.
+  useEffect(() => {
+    const BASELINE_POLL_MS = 30_000;
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      setListVersion((version) => version + 1);
+    }, BASELINE_POLL_MS);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
   useEffect(() => {
     if (!activeTournament) return;
     if (activeTournament.lastKnownState !== "in_progress") return;
