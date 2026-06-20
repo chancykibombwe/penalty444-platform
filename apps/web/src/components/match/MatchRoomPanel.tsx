@@ -175,6 +175,12 @@ type MatchStatusPayload = {
   // status. Used to resume the abort countdown from the true remaining
   // time and to know whether grace is still live.
   expiresAt?: number;
+  // Server-set on reconnect timer resumes (resumePickTimer). When true,
+  // the pick window is continuing for the CURRENT round — clients must
+  // NOT reset pick state (hasSubmittedPick, myPick) for players who
+  // already locked a pick before the opponent disconnected.
+  isResume?: boolean;
+  round?: number;
 };
 
 function getLaneButtonClass(
@@ -1273,15 +1279,24 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         deferredMatchUpdatePayloadRef.current = null;
         clearAllRevealTimers();
 
+        // isResume: true means the pick window for the CURRENT round is
+        // resuming after a reconnect. Preserve the already-locked pick
+        // so Player A is not forced to re-pick after Player B reconnects.
+        const isTimerResume = data.isResume === true;
+
         if (pendingUpdate) {
           onMatchUpdate(pendingUpdate);
-        } else {
+        } else if (!isTimerResume) {
           setRevealStage("IDLE");
           setHasSubmittedPick(false);
           setMyPick(null);
           setResult(null);
           setPendingResult(null);
           setResultFlavorMessage(null);
+          setOpponentStatus("");
+        } else {
+          // Resume: clear any reveal state but keep existing pick intact
+          setRevealStage("IDLE");
           setOpponentStatus("");
         }
 
@@ -1625,7 +1640,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       const serverResolving = Boolean(data.isResolving);
 
       if (process.env.NODE_ENV !== "production") {
-        console.info("[match:rejoinState] applying", {
+        console.info("[Reconnect] applied_authoritative_state", {
           roomCode: data.roomCode ?? normalizedRoomCode,
           playerId: identity?.playerId,
           socketId: socket.id,
@@ -1642,6 +1657,20 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       if (data.matchEnded) {
         console.info("[ActiveMatch] cleared_terminal", { reason: "match:rejoinState_ended" });
         clearActiveMatch();
+        // Tear down any pre-start overlay, then show the cancelled message
+        // so the player gets a clear "Back to Lobby" path instead of a
+        // blank or "Waiting for opponent" screen.
+        setIsStaging(false);
+        setStagingStartsAt(null);
+        setWaitingForReturnDeadline(null);
+        setAbsentOpponentName(null);
+        setReturnSecondsRemaining(null);
+        setCancelledMessage("This match has already ended.");
+        clearAbortRedirectTimeout();
+        abortRedirectTimeoutRef.current = window.setTimeout(() => {
+          abortRedirectTimeoutRef.current = null;
+          router.push("/lobby");
+        }, 2500);
         return;
       }
 
@@ -1710,15 +1739,26 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     function onErrorMessage(payload: { message: string }) {
       setLeaveMatchBusy(false);
       setStatus(payload.message);
-      // Server rejects room:join when the room is completed. Clear the local
-      // active-match entry and show the cancelled overlay so the player gets
-      // a clear "Back to Lobby" path instead of the waiting-for-opponent screen.
-      if (payload.message === "This match has already ended.") {
-        console.info("[ActiveMatch] cleared_join_rejected", {
+
+      const isTerminalRoomError =
+        payload.message === "This match has already ended." ||
+        payload.message === "Room not found";
+
+      if (isTerminalRoomError) {
+        const terminalMessage =
+          payload.message === "Room not found"
+            ? "This match is no longer active."
+            : payload.message;
+        const logReason =
+          payload.message === "Room not found"
+            ? "room_not_found"
+            : "already_ended";
+        console.info("[ActiveMatch] cleared_terminal_room", {
+          reason: logReason,
           message: payload.message,
         });
         clearActiveMatch();
-        setCancelledMessage("This match has already ended.");
+        setCancelledMessage(terminalMessage);
         clearAbortRedirectTimeout();
         abortRedirectTimeoutRef.current = window.setTimeout(() => {
           abortRedirectTimeoutRef.current = null;
@@ -2166,11 +2206,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       if (!active || timerDeadlineRef.current === null) return;
       const ms = timerDeadlineRef.current - Date.now();
       const clamped = Math.max(0, ms);
-      setTimer(
-        clamped >= 4000
-          ? Math.min(Math.ceil(clamped / 1000), 10)
-          : parseFloat((clamped / 1000).toFixed(1))
-      );
+      setTimer(Math.min(Math.ceil(clamped / 1000), 10));
       if (clamped > 0) rafId = requestAnimationFrame(tick);
     }
 
@@ -2884,9 +2920,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                 {hasSubmittedPick && opponentPicked
                   ? "—"
                   : timer !== null
-                    ? Number.isInteger(timer)
-                      ? timer
-                      : timer.toFixed(1)
+                    ? timer
                     : "—"}
               </p>
               <p

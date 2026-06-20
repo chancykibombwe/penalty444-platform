@@ -232,6 +232,8 @@ export function startRoundTimer(roomCode: string, room: Room) {
     timeoutSeconds: 10,
     phase: room.phase,
     suddenDeathRound: room.suddenDeathRound,
+    round: room.round,
+    isResume: false,
   });
 
   const pickEpoch = bumpPickTimerEpoch(roomCode);
@@ -311,6 +313,11 @@ export function resumePickTimer(
       `remainingMs=${remainingMs} effectiveMs=${effectiveMs} timeoutSeconds=${timeoutSeconds}`
   );
 
+  console.log(
+    `[Reconnect] replay_state roomCode=${roomCode} round=${room.round} ` +
+      `effectiveMs=${effectiveMs} timeoutSeconds=${timeoutSeconds}`
+  );
+
   io.to(roomCode).emit("match:status", {
     message:
       room.phase === "SUDDEN_DEATH"
@@ -319,6 +326,8 @@ export function resumePickTimer(
     timeoutSeconds,
     phase: room.phase,
     suddenDeathRound: room.suddenDeathRound,
+    round: room.round,
+    isResume: true,
   });
 
   const pickEpoch = bumpPickTimerEpoch(roomCode);

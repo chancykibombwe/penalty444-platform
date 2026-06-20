@@ -325,6 +325,32 @@ export function registerRoomSocketHandlers(socket: Socket) {
         existingPlayer.socketId = socket.id;
         existingPlayer.username = playerName;
 
+        // Terminal room guard: if the match ended between this player's
+        // disconnect and their reconnect, send the authoritative ended state
+        // immediately. Do NOT socket.join, setPlayerActiveRoom, or emit
+        // room:joined — any of those would re-track the stale room and cause
+        // the client to show "Waiting for opponent" or re-save the active match.
+        if (room.matchEnded) {
+          console.log(
+            `[RoomJoin] rejected_terminal roomCode=${code} playerId=${playerId} ` +
+              `reason=already_ended matchEnded=${room.matchEnded}`
+          );
+          socket.emit("match:rejoinState", {
+            roomCode: code,
+            matchEnded: true,
+            myRole: room.roles[playerId] ?? null,
+            myPick: null,
+            opponentHasLocked: false,
+            round: room.round,
+            phase: room.phase,
+            suddenDeathRound: room.suddenDeathRound,
+            matchInstance: room.matchInstance ?? 1,
+            isResolving: false,
+            disconnectGrace: { active: false as const },
+          });
+          return;
+        }
+
         deps.setPlayerActiveRoom(playerId, code);
 
         // Strict-disconnect policy follow-up:

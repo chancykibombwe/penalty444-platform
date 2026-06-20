@@ -1867,7 +1867,16 @@ io.on("connection", (socket) => {
       socket.emit("activeRoom:snapshot", { roomCode: null });
       return;
     }
+    // Capture whether the player was tracked before getTrackedActiveRoom
+    // auto-evicts ended rooms, so we can emit a targeted diagnostic.
+    const wasTracked = playerActiveRooms.has(id);
     const roomCode = getTrackedActiveRoom(id);
+    if (wasTracked && !roomCode) {
+      console.log(
+        `[ActiveRoom] terminal_snapshot socketId=${socket.id} player=${id} ` +
+          `reason=match_ended_or_cleaned`
+      );
+    }
     socket.emit("activeRoom:snapshot", { roomCode: roomCode ?? null });
     diagLog(
       `[active-room:snapshot] socketId=${socket.id} player=${id} room=${roomCode ?? "none"}`

@@ -1,5 +1,6 @@
 import type { Server } from "socket.io";
 import { refundAllMatchEscrows } from "../economy";
+import { diagLog } from "../diagnostics/log";
 import { rooms } from "../state/stores";
 import type { Room } from "../types/room";
 import { refundBothStakes } from "../wallet/stakes";
@@ -88,7 +89,13 @@ export function evaluateMatchStart(roomCode: string, room: Room): void {
   // Post-start: never re-evaluate. `startRoundTimer` already ran;
   // the rest of the match flow (resolveRound / endMatch / rematch)
   // owns timing from here.
-  if (room.matchStartedAt !== undefined) return;
+  if (room.matchStartedAt !== undefined) {
+    diagLog(
+      `[Readiness] skip_restage_active_match roomCode=${roomCode} ` +
+        `round=${room.round} matchStartedAt=${room.matchStartedAt}`
+    );
+    return;
+  }
   if (room.matchEnded) return;
 
   if (room.players.length < 2) {
