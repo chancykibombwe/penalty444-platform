@@ -2780,7 +2780,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                     : "border-zinc-800 from-zinc-950 via-zinc-900 to-black"
         }`}
       >
-        <div className="border-b border-zinc-800 px-1.5 py-1 sm:px-4 sm:py-4 md:px-6 md:py-5">
+        <div className="border-b border-zinc-800 px-1.5 py-1 sm:px-3 sm:py-2 md:px-6 md:py-4">
           <div className="flex flex-row items-start gap-2 justify-between md:gap-4">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1 sm:gap-2">
@@ -2843,7 +2843,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                   </span>
                 </div>
               ) : null}
-              <h1 className="break-words text-xs font-black leading-tight sm:text-2xl md:mt-4 md:text-4xl lg:text-5xl">
+              <h1 className="min-w-0 truncate text-xs font-black leading-tight sm:text-lg md:mt-2 md:text-2xl lg:text-3xl">
                 {myName}{" "}
                 <span
                   className={
@@ -2919,7 +2919,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             </div>
 
             <div
-              className={`flex shrink-0 flex-col items-center justify-center gap-0 self-stretch rounded-lg border px-3 py-1 text-center shadow-lg transition-all duration-300 sm:w-full sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:rounded-3xl sm:px-5 sm:py-3 sm:text-center md:block md:w-auto md:min-w-[9.5rem] md:self-auto md:px-6 md:py-5 ${
+              className={`flex shrink-0 flex-col items-center justify-center gap-0 self-stretch rounded-lg border px-3 py-1 text-center shadow-lg transition-all duration-300 sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:rounded-xl sm:px-4 sm:py-2 sm:text-center md:block md:w-auto md:min-w-[9.5rem] md:self-auto md:rounded-3xl md:px-6 md:py-5 ${
                 isTimerAlmostDone
                   ? "match-timer-almost-done border-red-500/95 bg-red-600/25"
                   : isTimerUrgent
@@ -2974,18 +2974,18 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-1 p-1 sm:gap-3 sm:p-4 md:gap-4 md:p-6">
-          <div className="flex min-w-0 items-center justify-between gap-1 rounded-lg border border-zinc-800 bg-black/40 px-1.5 py-0.5 sm:block sm:rounded-2xl sm:p-3 md:rounded-3xl md:p-5">
+        <div className="grid grid-cols-2 gap-1 p-1 sm:gap-2 sm:p-2 md:gap-4 md:p-5">
+          <div className="flex min-w-0 items-center justify-between gap-1 rounded-lg border border-zinc-800 bg-black/40 px-1.5 py-0.5 sm:block sm:rounded-xl sm:p-2 md:rounded-3xl md:p-4">
             <p className="truncate text-[8px] font-bold uppercase tracking-[0.1em] text-zinc-500 sm:text-[10px] sm:tracking-[0.18em] md:text-xs">
               Role
             </p>
-            <p className="truncate text-[11px] font-black leading-none sm:mt-2 sm:text-xl md:mt-3 md:text-2xl">
+            <p className="truncate text-[11px] font-black leading-none sm:mt-1 sm:text-base md:mt-2 md:text-xl">
               {myRole || "—"}
             </p>
           </div>
 
           <div
-            className={`flex min-w-0 items-center justify-between gap-1 rounded-lg border bg-black/40 px-1.5 py-0.5 sm:block sm:rounded-2xl sm:p-3 md:rounded-3xl md:p-5 ${
+            className={`flex min-w-0 items-center justify-between gap-1 rounded-lg border bg-black/40 px-1.5 py-0.5 sm:block sm:rounded-xl sm:p-2 md:rounded-3xl md:p-4 ${
               isSuddenDeath
                 ? "border-amber-400/45 shadow-[inset_0_0_24px_rgba(251,191,36,0.06)]"
                 : isLateGame
@@ -3005,12 +3005,12 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               Round
             </p>
             <p
-              className={`truncate font-black leading-none sm:mt-2 md:mt-3 ${
+              className={`truncate font-black leading-none sm:mt-1 md:mt-2 ${
                 isSuddenDeath
-                  ? "text-[11px] text-amber-200 sm:text-2xl md:text-4xl"
+                  ? "text-[11px] text-amber-200 sm:text-lg md:text-2xl"
                   : isLateGame
-                    ? "text-[11px] text-zinc-100 sm:text-xl md:text-2xl"
-                    : "text-[11px] sm:text-xl md:text-2xl"
+                    ? "text-[11px] text-zinc-100 sm:text-base md:text-xl"
+                    : "text-[11px] sm:text-base md:text-xl"
               }`}
             >
               {roundLabel}
@@ -3020,14 +3020,14 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       </section>
 
       {isSuddenDeath && !matchEnded ? (
-        <section className="shrink-0 rounded-xl border border-yellow-400 bg-yellow-500/10 px-2 py-1.5 shadow-xl sm:rounded-3xl sm:p-6 md:rounded-[2rem]">
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-yellow-300 sm:text-sm">
+        <section className="shrink-0 rounded-xl border border-yellow-400 bg-yellow-500/10 px-2 py-1.5 shadow-xl sm:rounded-2xl sm:px-3 sm:py-2 md:rounded-[2rem] md:p-5">
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-yellow-300 sm:text-xs">
             Sudden Death
           </p>
-          <h2 className="mt-1 text-lg font-black sm:mt-2 sm:text-3xl">
+          <h2 className="mt-0.5 text-sm font-black sm:mt-1 sm:text-xl md:text-2xl">
             One clean cycle decides everything.
           </h2>
-          <p className="mt-1 text-xs text-yellow-100 sm:mt-2 sm:text-base">
+          <p className="mt-0.5 text-xs text-yellow-100 sm:mt-1 sm:text-sm md:text-base">
             Both players were tied after normal rounds. Score while your
             opponent fails and the match ends.
           </p>
@@ -3061,7 +3061,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       </section>
 
       {!matchEnded ? (
-        <section className="relative shrink-0 rounded-lg border border-zinc-800 bg-zinc-900/95 px-1 py-0.5 shadow-xl sm:rounded-[2rem] sm:p-5 md:p-7">
+        <section className="relative shrink-0 rounded-lg border border-zinc-800 bg-zinc-900/95 px-1 py-0.5 shadow-xl sm:rounded-2xl sm:p-3 md:rounded-[2rem] md:p-5">
           {revealStage === "LOCKED" && !isRevealLocked ? (
             <div
               className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-black/50 backdrop-blur-[2px] sm:rounded-[2rem]"
@@ -3102,7 +3102,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
           {/* Header shown sm+ — more detail, role badge, waiting dots */}
           <div className="hidden sm:flex sm:items-center sm:justify-between sm:gap-3">
-            <h2 className="text-base font-black sm:text-2xl md:text-3xl">
+            <h2 className="text-base font-black sm:text-lg md:text-2xl">
               {revealStage === "LOCKED"
                 ? "Pick locked"
                 : hasSubmittedPick || myPick
@@ -3181,7 +3181,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       ) : null}
 
       <section
-        className={`shrink-0 rounded-lg border p-1.5 shadow-2xl transition-all duration-300 sm:rounded-[2rem] sm:p-5 md:p-7 ${resultStyle(
+        className={`shrink-0 rounded-lg border p-1.5 shadow-2xl transition-all duration-300 sm:rounded-2xl sm:p-3 md:rounded-[2rem] md:p-5 ${resultStyle(
           shownResult?.result
         )} ${
           revealStage === "REVEALED"
@@ -3192,7 +3192,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         }`}
         aria-live="polite"
       >
-        <div className="flex flex-col gap-1 sm:gap-6 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-1 sm:gap-3 md:flex-row md:items-center md:justify-between">
           <div className="md:max-w-xl">
             <p className="text-[8px] font-black uppercase tracking-[0.25em] text-white/60 sm:text-xs">
               {shownResult?.round
@@ -3201,7 +3201,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             </p>
 
             <h2
-              className={`inline-flex items-center gap-1 text-sm font-black transition-all duration-300 sm:mt-3 sm:gap-3 sm:text-5xl md:text-7xl ${resultHeadlineClass(
+              className={`inline-flex items-center gap-1 text-sm font-black transition-all duration-300 sm:mt-2 sm:gap-2 sm:text-3xl md:text-5xl ${resultHeadlineClass(
                 shownResult?.result,
                 revealStage
               )}`}
@@ -3222,7 +3222,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               ) : (
                 <>
                   {shownResult?.result ? (
-                    <span aria-hidden className="text-sm sm:text-3xl md:text-5xl">
+                    <span aria-hidden className="text-sm sm:text-2xl md:text-4xl">
                       {resultEmoji(shownResult.result)}
                     </span>
                   ) : null}
@@ -3261,9 +3261,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             ) : null}
           </div>
 
-          <div className="grid grid-cols-2 gap-1 text-xs sm:gap-3 sm:text-sm md:w-[440px] md:gap-4">
+          <div className="grid grid-cols-2 gap-1 text-xs sm:gap-2 sm:text-xs md:gap-3">
             <div
-              className={`min-w-0 rounded-md border bg-black/25 px-1.5 py-1 transition-all duration-300 sm:rounded-2xl sm:p-4 ${
+              className={`min-w-0 rounded-md border bg-black/25 px-1.5 py-1 transition-all duration-300 sm:rounded-xl sm:p-2.5 ${
                 shownResult?.result === "GOAL"
                   ? "border-emerald-300/40 shadow-[0_0_24px_rgba(52,211,153,0.18)]"
                   : shownResult?.result === "SAVE"
@@ -3277,7 +3277,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                 {kickerResultLabel}
                 <span className="ml-1 text-white/40">· Kicker</span>
               </p>
-              <p className="truncate text-xs font-black leading-tight sm:mt-2 sm:text-3xl md:text-4xl">
+              <p className="truncate text-xs font-black leading-tight sm:mt-1 sm:text-xl md:text-2xl">
                 {shownResult?.kickerPick
                   ? `${laneEmoji(shownResult.kickerPick)} ${
                       shownResult.kickerPick
@@ -3287,7 +3287,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             </div>
 
             <div
-              className={`min-w-0 rounded-md border bg-black/25 px-1.5 py-1 transition-all duration-300 sm:rounded-2xl sm:p-4 ${
+              className={`min-w-0 rounded-md border bg-black/25 px-1.5 py-1 transition-all duration-300 sm:rounded-xl sm:p-2.5 ${
                 shownResult?.result === "GOAL"
                   ? "border-emerald-300/40 shadow-[0_0_24px_rgba(52,211,153,0.18)]"
                   : shownResult?.result === "SAVE"
@@ -3301,7 +3301,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                 {keeperResultLabel}
                 <span className="ml-1 text-white/40">· Keeper</span>
               </p>
-              <p className="truncate text-xs font-black leading-tight sm:mt-2 sm:text-3xl md:text-4xl">
+              <p className="truncate text-xs font-black leading-tight sm:mt-1 sm:text-xl md:text-2xl">
                 {shownResult?.keeperPick
                   ? `${laneEmoji(shownResult.keeperPick)} ${
                       shownResult.keeperPick
@@ -3332,7 +3332,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
       {matchEnded && matchEndOutcome ? (
         <section
-          className={`shrink-0 rounded-2xl border p-3 shadow-2xl sm:rounded-3xl sm:p-5 md:rounded-[2rem] md:p-10 pb-[max(0.75rem,env(safe-area-inset-bottom,0.75rem))] ${
+          className={`shrink-0 rounded-2xl border p-3 shadow-2xl sm:rounded-2xl sm:p-3.5 md:rounded-[2rem] md:p-7 pb-[max(0.75rem,env(safe-area-inset-bottom,0.75rem))] ${
             matchEndOutcome === "victory"
               ? "border-emerald-400/70 bg-gradient-to-br from-emerald-950/55 via-zinc-950 to-amber-950/35 ring-2 ring-emerald-400/25 shadow-[0_0_48px_rgba(16,185,129,0.22)]"
               : matchEndOutcome === "defeat"
@@ -3369,7 +3369,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           ) : null}
 
           <h2
-            className={`mt-1.5 break-words text-2xl font-black uppercase tracking-tight sm:mt-2 sm:text-4xl md:mt-3 md:text-6xl ${
+            className={`mt-1 truncate text-xl font-black uppercase tracking-tight sm:mt-1.5 sm:text-2xl md:mt-2 md:text-4xl ${
               isFinalTournamentMatch && matchEndOutcome === "victory"
                 ? "bg-gradient-to-r from-yellow-200 via-amber-200 to-orange-200 bg-clip-text text-transparent drop-shadow-[0_0_32px_rgba(234,179,8,0.5)]"
                 : matchEndOutcome === "victory"
@@ -3397,7 +3397,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           </p>
 
           <div
-            className={`mt-2 rounded-xl border px-2 py-2 sm:mt-6 sm:rounded-2xl sm:px-6 sm:py-6 md:px-8 md:py-8 ${
+            className={`mt-2 rounded-xl border px-2 py-2 sm:mt-3 sm:rounded-xl sm:px-4 sm:py-3 md:px-6 md:py-5 ${
               matchEndOutcome === "victory"
                 ? "border-emerald-400/30 bg-black/35"
                 : matchEndOutcome === "defeat"
@@ -3408,23 +3408,23 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             <p className="text-center text-[10px] font-bold uppercase tracking-[0.25em] text-zinc-500 sm:text-xs">
               Final score
             </p>
-            <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-center sm:mt-3 sm:gap-4 md:mt-4 md:gap-8">
-              <div className="min-w-[4.5rem] sm:min-w-[7rem]">
-                <p className="truncate text-[10px] font-semibold text-zinc-400 sm:text-sm">
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-center sm:mt-2 sm:gap-3 md:mt-3 md:gap-6">
+              <div className="min-w-[4rem] sm:min-w-[5rem] md:min-w-[6.5rem]">
+                <p className="truncate text-[10px] font-semibold text-zinc-400 sm:text-xs md:text-sm">
                   {myName}
                 </p>
-                <p className="mt-0.5 text-3xl font-black tabular-nums text-white sm:text-6xl md:text-8xl">
+                <p className="mt-0.5 text-3xl font-black tabular-nums text-white sm:text-4xl md:text-6xl">
                   {myScore}
                 </p>
               </div>
-              <span className="text-xl font-black text-zinc-600 sm:text-4xl md:text-5xl">
+              <span className="text-xl font-black text-zinc-600 sm:text-2xl md:text-4xl">
                 —
               </span>
-              <div className="min-w-[4.5rem] sm:min-w-[7rem]">
-                <p className="truncate text-[10px] font-semibold text-zinc-400 sm:text-sm">
+              <div className="min-w-[4rem] sm:min-w-[5rem] md:min-w-[6.5rem]">
+                <p className="truncate text-[10px] font-semibold text-zinc-400 sm:text-xs md:text-sm">
                   {opponentName}
                 </p>
-                <p className="mt-0.5 text-3xl font-black tabular-nums text-white sm:text-6xl md:text-8xl">
+                <p className="mt-0.5 text-3xl font-black tabular-nums text-white sm:text-4xl md:text-6xl">
                   {opponentScore}
                 </p>
               </div>
