@@ -3050,7 +3050,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       </div>
 
       <section
-        className="relative hidden shrink-0 sm:block sm:h-[36vh] md:h-[44vh] w-full overflow-hidden rounded-xl sm:rounded-2xl border border-zinc-800 bg-black/60"
+        className="relative hidden shrink-0 sm:block sm:h-[24vh] sm:max-h-[220px] md:h-[28vh] md:max-h-[280px] lg:h-[32vh] lg:max-h-[340px] xl:h-[36vh] xl:max-h-[420px] w-full overflow-hidden rounded-xl sm:rounded-2xl border border-zinc-800 bg-black/60"
         aria-hidden
       >
         <div className="absolute inset-0 flex items-center justify-center">
