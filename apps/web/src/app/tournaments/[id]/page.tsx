@@ -96,16 +96,36 @@ export default function TournamentDetailPage() {
     });
 
   useEffect(() => {
+    // Shared debounce for both visibility and focus paths so a tab-switch
+    // (which may fire both events) only triggers one refresh.
+    const REFRESH_DEBOUNCE_MS = 1_500;
+    let lastRefreshAt = 0;
+
+    function maybeRefresh() {
+      const now = Date.now();
+      if (now - lastRefreshAt < REFRESH_DEBOUNCE_MS) return;
+      lastRefreshAt = now;
+      refresh();
+    }
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        refresh();
+        maybeRefresh();
       }
     };
 
+    // window.focus covers returning from another app or from a match page
+    // in a second window — cases where visibilitychange alone doesn't fire.
+    const handleFocus = () => {
+      maybeRefresh();
+    };
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
     };
   }, [refresh]);
 
