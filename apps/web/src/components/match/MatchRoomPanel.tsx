@@ -1106,6 +1106,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
       if (data.matchEnded) {
         if (matchAbortedRef.current) {
+          console.info("[ActiveMatch] cleared_terminal", { reason: "match:update_aborted" });
           clearActiveMatch();
           return;
         }
@@ -1123,6 +1124,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         timerDeadlineRef.current = null;
         setTimer(null);
         setFinalScores(data.scores);
+        console.info("[ActiveMatch] cleared_terminal", { reason: "match:update_ended" });
         clearActiveMatch();
         lastPickRoundRef.current = null;
         setHasSubmittedPick(false);
@@ -1519,6 +1521,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setStatus("Match complete");
       timerDeadlineRef.current = null;
       setTimer(null);
+      console.info("[ActiveMatch] cleared_terminal", { reason: "match:end" });
       clearActiveMatch();
       setRematchVotes(0);
       setRematchRequired(2);
@@ -1554,6 +1557,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
     function onRematchDeclined(payload: RematchDeclinedPayload) {
       setRematchDeclinedBy(payload.declinedBy);
+      console.info("[ActiveMatch] cleared_terminal", { reason: "match:rematch:declined" });
       clearActiveMatch();
     }
 
@@ -1636,6 +1640,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       }
 
       if (data.matchEnded) {
+        console.info("[ActiveMatch] cleared_terminal", { reason: "match:rejoinState_ended" });
         clearActiveMatch();
         return;
       }
@@ -1705,10 +1710,20 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     function onErrorMessage(payload: { message: string }) {
       setLeaveMatchBusy(false);
       setStatus(payload.message);
-      // Server rejects room:join when the room is completed. Clear localStorage
-      // so the Resume Match card is removed on next navigation to home.
+      // Server rejects room:join when the room is completed. Clear the local
+      // active-match entry and show the cancelled overlay so the player gets
+      // a clear "Back to Lobby" path instead of the waiting-for-opponent screen.
       if (payload.message === "This match has already ended.") {
+        console.info("[ActiveMatch] cleared_join_rejected", {
+          message: payload.message,
+        });
         clearActiveMatch();
+        setCancelledMessage("This match has already ended.");
+        clearAbortRedirectTimeout();
+        abortRedirectTimeoutRef.current = window.setTimeout(() => {
+          abortRedirectTimeoutRef.current = null;
+          router.push("/lobby");
+        }, 2500);
       }
     }
 
@@ -1725,6 +1740,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
       clearAllRevealTimers();
       clearDeferredMatchUpdate();
+      console.info("[ActiveMatch] cleared_terminal", { reason: "match:aborted" });
       clearActiveMatch();
       setStatus("Match cancelled. No penalty applied.");
 
@@ -1801,6 +1817,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setIsStaging(false);
       setStagingStartsAt(null);
       setStatus(message);
+      console.info("[ActiveMatch] cleared_terminal", { reason: "match:cancelled" });
       clearActiveMatch();
 
       clearAbortRedirectTimeout();

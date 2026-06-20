@@ -105,11 +105,36 @@ export default function ActiveMatchRecovery() {
       // race guard).
       const existing = getActiveMatch();
       if (!existing) return;
-      if (Date.now() - existing.savedAt < SNAPSHOT_NULL_CLEAR_GUARD_MS) return;
+      if (Date.now() - existing.savedAt < SNAPSHOT_NULL_CLEAR_GUARD_MS) {
+        console.info("[ActiveMatch] keeping_in_progress", {
+          roomCode: existing.roomCode,
+          ageSec: Math.round((Date.now() - existing.savedAt) / 1000),
+        });
+        return;
+      }
+      console.info("[ActiveMatch] cleared_no_active_room", {
+        roomCode: existing.roomCode,
+      });
+      clearActiveMatch();
+    }
+
+    // Early-cancel abort (first 5 s of a match). Emitted directly to each
+    // player socket so this reaches players who navigated away from the
+    // match page before the abort fired.
+    function onMatchAborted(payload: { roomCode?: string }) {
+      const existing = getActiveMatch();
+      if (!existing) return;
+      const code = payload?.roomCode?.trim().toUpperCase();
+      if (code && existing.roomCode !== code) return;
+      console.info("[ActiveMatch] cleared_terminal", {
+        reason: "match:aborted",
+        roomCode: code ?? existing.roomCode,
+      });
       clearActiveMatch();
     }
 
     function onMatchEnd() {
+      console.info("[ActiveMatch] cleared_terminal", { reason: "match:end" });
       clearActiveMatch();
     }
 
@@ -166,6 +191,7 @@ export default function ActiveMatchRecovery() {
     socket.on("match:update", onMatchUpdate);
     socket.on("match:rejoinState", onMatchRejoinState);
     socket.on("match:cancelled", onMatchCancelled);
+    socket.on("match:aborted", onMatchAborted);
 
     // If the socket is already connected at mount (common on the lobby),
     // the `connect` event won't fire again — request a snapshot now,
@@ -193,6 +219,7 @@ export default function ActiveMatchRecovery() {
       socket.off("match:update", onMatchUpdate);
       socket.off("match:rejoinState", onMatchRejoinState);
       socket.off("match:cancelled", onMatchCancelled);
+      socket.off("match:aborted", onMatchAborted);
     };
   }, [router]);
 
