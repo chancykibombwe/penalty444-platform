@@ -149,6 +149,12 @@ export default function ActiveMatchRecovery() {
     // though `match:end` was never received in this page load.
     function onMatchRejoinState(payload: { matchEnded?: boolean }) {
       if (payload.matchEnded) {
+        const existing = getActiveMatch();
+        if (existing) {
+          console.info("[ActiveMatch] ignored_stale_resume", {
+            roomCode: existing.roomCode,
+          });
+        }
         clearActiveMatch();
       }
     }
