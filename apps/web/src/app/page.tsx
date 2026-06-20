@@ -312,7 +312,7 @@ export default function HomePage() {
         <QuickActionCard
           title="How to Play"
           subtitle="Rules, tips, and beta overview"
-          href="/games/penalty444"
+          href="/how-to-play"
           cta="Learn"
           icon="📖"
           tone="amber"
