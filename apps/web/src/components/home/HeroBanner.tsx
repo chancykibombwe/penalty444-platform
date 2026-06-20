@@ -45,7 +45,7 @@ export default function HeroBanner({
               className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.9)]"
               aria-hidden
             />
-            444 Arena · Live
+            444 Arena · Free Play Beta
           </p>
 
           <h1 className="mt-1 text-base font-black uppercase leading-tight tracking-tight sm:text-xl md:text-2xl">
@@ -56,7 +56,7 @@ export default function HeroBanner({
           </h1>
 
           <p className="mt-0.5 hidden max-w-md text-xs leading-relaxed text-zinc-300 sm:block sm:text-sm">
-            Real players. Real battles. Real rewards.
+            Free to play — no entry fees, no cash prizes.
           </p>
 
           <div className="mt-2 flex items-center gap-2">
@@ -64,7 +64,7 @@ export default function HeroBanner({
               href={primaryHref}
               className="inline-flex min-h-[36px] flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] px-4 py-1 text-xs font-black uppercase tracking-wide text-white shadow-[0_0_28px_rgba(59,158,255,0.4)] transition-transform hover:scale-[1.02] sm:flex-none sm:px-6 sm:py-1.5 sm:text-sm"
             >
-              ▶ Play Now
+              ▶ Play Free
             </Link>
             <Link
               href={secondaryHref}
