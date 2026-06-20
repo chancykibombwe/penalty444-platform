@@ -981,8 +981,8 @@ export default function TournamentListPanel({
                         href={`/tournaments/${tournament.id}`}
                         className={
                           isCompleted
-                            ? "hover:opacity-90"
-                            : "hover:text-amber-200"
+                            ? "transition-opacity duration-150 hover:opacity-90"
+                            : "transition-colors duration-150 hover:text-amber-200"
                         }
                       >
                         {tournament.name}
@@ -1064,7 +1064,7 @@ export default function TournamentListPanel({
                   {isCompleted ? (
                     <Link
                       href={`/tournaments/${tournament.id}`}
-                      className="inline-flex text-sm font-bold text-amber-300/90 hover:text-amber-200"
+                      className="inline-flex transition-colors duration-150 text-sm font-bold text-amber-300/90 hover:text-amber-200"
                     >
                       View Bracket →
                     </Link>
@@ -1092,7 +1092,7 @@ export default function TournamentListPanel({
                           </p>
                           <Link
                             href={`/tournaments/${tournament.id}`}
-                            className="inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-500 to-amber-500 px-4 py-3 text-sm font-black text-zinc-950 shadow-lg hover:from-cyan-400 hover:to-amber-400 sm:w-auto sm:py-2"
+                            className="inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-500 to-amber-500 px-4 py-3 text-sm font-black text-zinc-950 shadow-lg transition-all duration-150 hover:from-cyan-400 hover:to-amber-400 sm:w-auto sm:py-2"
                           >
                             Resume Tournament →
                           </Link>
@@ -1108,7 +1108,7 @@ export default function TournamentListPanel({
                           </p>
                           <Link
                             href={`/tournaments/${tournament.id}`}
-                            className="inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-3 text-sm font-black text-zinc-950 hover:from-amber-400 hover:to-orange-500 sm:w-auto sm:py-2"
+                            className="inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-3 text-sm font-black text-zinc-950 transition-all duration-150 hover:from-amber-400 hover:to-orange-500 sm:w-auto sm:py-2"
                           >
                             Enter Tournament Lobby →
                           </Link>
