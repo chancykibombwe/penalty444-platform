@@ -3049,17 +3049,6 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         />
       </div>
 
-      <section
-        className="relative hidden shrink-0 sm:block sm:h-[24vh] sm:max-h-[220px] md:h-[28vh] md:max-h-[280px] lg:h-[32vh] lg:max-h-[340px] xl:h-[36vh] xl:max-h-[420px] w-full overflow-hidden rounded-xl sm:rounded-2xl border border-zinc-800 bg-black/60"
-        aria-hidden
-      >
-        <div className="absolute inset-0 flex items-center justify-center">
-          <p className="text-[9px] font-black uppercase tracking-[0.32em] text-zinc-600">
-            3D View
-          </p>
-        </div>
-      </section>
-
       {!matchEnded ? (
         <section className="relative shrink-0 rounded-lg border border-zinc-800 bg-zinc-900/95 px-1 py-0.5 shadow-xl sm:rounded-2xl sm:p-3 md:rounded-[2rem] md:p-5">
           {revealStage === "LOCKED" && !isRevealLocked ? (
