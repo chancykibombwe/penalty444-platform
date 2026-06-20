@@ -607,6 +607,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const revealHoldTimeoutRef = useRef<number | null>(null);
   /** Pending deferred onMatchUpdate payload. Flushed by `revealHoldTimeoutRef`. */
   const deferredMatchUpdatePayloadRef = useRef<MatchUpdatePayload | null>(null);
+  /** The match:result payload currently mid-reveal. Set on REVEALING entry, cleared after hold. */
+  const pendingRevealPayloadRef = useRef<MatchResultPayload | null>(null);
+  /** match:end payload deferred when a reveal was in progress on arrival. */
+  const deferredMatchEndPayloadRef = useRef<MatchEndPayload | null>(null);
 
   useEffect(() => {
     revealStageRef.current = revealStage;
@@ -666,6 +670,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     clearMatchResultRevealTimeout();
     clearRevealHoldTimeout();
     matchResultRevealArmedRef.current = false;
+    pendingRevealPayloadRef.current = null;
+    deferredMatchEndPayloadRef.current = null;
   }
 
   function clearDeferredMatchUpdate() {
@@ -939,21 +945,20 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       }
 
       // === REVEAL GATE ===
-      // Hotfix — the reveal pipeline owns all UI state mutations
-      // while a result is on screen. Any `match:update` arriving
-      // during REVEALING / REVEALED is queued; the latest payload
-      // is replayed by `revealHoldTimeoutRef` when the hold ends.
-      //
-      // `match:end` is the one exception — a match-ending payload
-      // is allowed through so we can tear down cleanly even if it
-      // races the reveal hold.
-      if (isRevealActive() && !data.matchEnded) {
+      // The reveal pipeline owns all UI state mutations while a result is on
+      // screen. ALL `match:update` payloads (including matchEnded:true) are
+      // queued here so the GOAL/SAVE/DRAW headline always gets its full hold
+      // before any round-advance or match-end state lands. The hold timer in
+      // `applyRevealedResult` flushes the deferred payload when it expires.
+      if (isRevealActive()) {
         deferredMatchUpdatePayloadRef.current = data;
         console.info(
           "[RevealTiming] match:update queued — reveal active (stage=",
           revealStageRef.current,
           ", round=",
           data.round,
+          ", matchEnded=",
+          data.matchEnded,
           ")"
         );
         return;
@@ -1271,18 +1276,45 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           clearDisconnectCountdownVisual();
         }
 
-        // Force-flush the reveal pipeline (PR #108 fix). The hold timer
-        // can be up to 4 s for tournament; without this flush, the timer
-        // started but buttons stayed disabled — "timer active but can't
-        // pick" Day 0 bug.
-        const pendingUpdate = deferredMatchUpdatePayloadRef.current;
-        deferredMatchUpdatePayloadRef.current = null;
-        clearAllRevealTimers();
-
         // isResume: true means the pick window for the CURRENT round is
         // resuming after a reconnect. Preserve the already-locked pick
         // so Player A is not forced to re-pick after Player B reconnects.
         const isTimerResume = data.isResume === true;
+
+        // Arm the timer deadline immediately so it is accurate the moment
+        // picks open (whether that's now or after the reveal hold).
+        const clampedSeconds = Math.min(data.timeoutSeconds, 10);
+        timerDeadlineRef.current = Date.now() + clampedSeconds * 1000;
+        setTimer(clampedSeconds);
+        setTimerTick((n) => n + 1);
+
+        // Reveal-pacing guard: when a result is currently mid-reveal, preserve
+        // it instead of force-flushing. The timer deadline is already set above
+        // so the RAF loop is accurate; picks are visually gated by revealStage
+        // until the hold timer transitions back to IDLE. The hold timer then
+        // flushes any deferred match:update naturally.
+        // Exception: reconnect resumes (isTimerResume) always flush immediately
+        // because there is no armed reveal to protect in that path.
+        if (isRevealActive() && !isTimerResume) {
+          // Fast-forward REVEALING → REVEALED so the result shows immediately
+          // rather than waiting out the remaining tension window.
+          if (matchResultRevealArmedRef.current && pendingRevealPayloadRef.current) {
+            clearMatchResultRevealTimeout();
+            matchResultRevealArmedRef.current = false;
+            applyRevealedResult(pendingRevealPayloadRef.current);
+          }
+          if (process.env.NODE_ENV !== "production") {
+            console.info(
+              "[RevealTiming] timeoutSeconds during reveal — fast-forwarded to REVEALED; picks gated until hold completes"
+            );
+          }
+          return;
+        }
+
+        // No active reveal — original PR #108 force-flush so picks open immediately.
+        const pendingUpdate = deferredMatchUpdatePayloadRef.current;
+        deferredMatchUpdatePayloadRef.current = null;
+        clearAllRevealTimers();
 
         if (pendingUpdate) {
           onMatchUpdate(pendingUpdate);
@@ -1299,13 +1331,6 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           setRevealStage("IDLE");
           setOpponentStatus("");
         }
-
-        // Clamp to 10 so a reconnect resumption with timeoutSeconds = 11
-        // (Math.ceil rounding) never shows an impossible value.
-        const clampedSeconds = Math.min(data.timeoutSeconds, 10);
-        timerDeadlineRef.current = Date.now() + clampedSeconds * 1000;
-        setTimer(clampedSeconds);
-        setTimerTick((n) => n + 1);
 
         if (process.env.NODE_ENV !== "production") {
           console.info("[timer] timer_authoritative_sync", {
@@ -1361,6 +1386,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       clearRevealHoldTimeout();
       revealHoldTimeoutRef.current = window.setTimeout(() => {
         revealHoldTimeoutRef.current = null;
+        pendingRevealPayloadRef.current = null;
         setRevealStage("IDLE");
 
         const pending = deferredMatchUpdatePayloadRef.current;
@@ -1371,6 +1397,13 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             pending.round
           );
           onMatchUpdate(pending);
+        }
+
+        const pendingEnd = deferredMatchEndPayloadRef.current;
+        deferredMatchEndPayloadRef.current = null;
+        if (pendingEnd) {
+          console.info("[RevealTiming] flushing deferred match:end");
+          onMatchEnd(pendingEnd);
         }
       }, holdMs);
 
@@ -1393,36 +1426,24 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
       if (authoritative.result === "GOAL") {
         setImpactResult("GOAL");
-        window.setTimeout(() => {
-          setImpactResult(null);
-        }, 600);
+        window.setTimeout(() => { setImpactResult(null); }, 900);
       } else if (authoritative.result === "SAVE") {
         setImpactResult("SAVE");
-        window.setTimeout(() => {
-          setImpactResult(null);
-        }, 600);
+        window.setTimeout(() => { setImpactResult(null); }, 900);
       } else if (authoritative.result === "DRAW") {
         setImpactResult("DRAW");
-        window.setTimeout(() => {
-          setImpactResult(null);
-        }, 500);
+        window.setTimeout(() => { setImpactResult(null); }, 700);
       }
 
       if (authoritative.result === "GOAL") {
         setScreenEffect("GOAL");
-        window.setTimeout(() => {
-          setScreenEffect(null);
-        }, 600);
+        window.setTimeout(() => { setScreenEffect(null); }, 900);
       } else if (authoritative.result === "SAVE") {
         setScreenEffect("SAVE");
-        window.setTimeout(() => {
-          setScreenEffect(null);
-        }, 600);
+        window.setTimeout(() => { setScreenEffect(null); }, 900);
       } else if (authoritative.result === "DRAW") {
         setScreenEffect("DRAW");
-        window.setTimeout(() => {
-          setScreenEffect(null);
-        }, 500);
+        window.setTimeout(() => { setScreenEffect(null); }, 700);
       }
     }
 
@@ -1499,6 +1520,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       }
 
       setPendingResult(authoritative);
+      pendingRevealPayloadRef.current = authoritative;
       setRevealStage("REVEALING");
       revealingStartedAtRef.current = Date.now();
       const lockedLabel = "Locked in — revealing soon";
@@ -1513,6 +1535,20 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     }
 
     function onMatchEnd(payload: MatchEndPayload) {
+      // If a result reveal is in progress, defer match-end so the GOAL/SAVE/DRAW
+      // headline gets its full hold before the match-end screen appears.
+      if (isRevealActive()) {
+        deferredMatchEndPayloadRef.current = payload;
+        // Fast-forward from REVEALING → REVEALED so the result shows immediately
+        // rather than waiting out the remaining tension window.
+        if (matchResultRevealArmedRef.current && pendingRevealPayloadRef.current) {
+          clearMatchResultRevealTimeout();
+          matchResultRevealArmedRef.current = false;
+          applyRevealedResult(pendingRevealPayloadRef.current);
+        }
+        return;
+      }
+
       if (disconnectCountdownRef.current !== null) {
         clearDisconnectCountdownVisual();
       }
@@ -2594,11 +2630,11 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       return null;
     }
     const elapsed = Date.now() - revealingStartedAtRef.current;
-    if (elapsed < 400) return null;
-    if (elapsed < 700) return 3;
-    if (elapsed < 1000) return 2;
-    if (elapsed < 1300) return 1;
-    return null;
+    if (elapsed < 400) return null;   // brief locked-in pause
+    if (elapsed < 1200) return 3;     // show "3" for ~800ms
+    if (elapsed < 2000) return 2;     // show "2" for ~800ms
+    if (elapsed < 2700) return 1;     // show "1" for ~700ms
+    return null;                       // last ~300ms: brief gap before REVEALED
   }, [revealStage, tensionTick]);
 
   const myRoleNow: Role | null = myPlayerId ? roles[myPlayerId] ?? null : null;
@@ -2917,7 +2953,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
                       : "text-white"
                 }`}
               >
-                {hasSubmittedPick && opponentPicked
+                {(hasSubmittedPick && opponentPicked) || isRevealLocked
                   ? "—"
                   : timer !== null
                     ? timer
