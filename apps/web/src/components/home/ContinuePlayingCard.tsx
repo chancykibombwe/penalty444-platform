@@ -51,7 +51,7 @@ export default function ContinuePlayingCard({
 
   return (
     <article
-      className={`relative overflow-hidden rounded-2xl border-2 bg-gradient-to-br p-3.5 shadow-2xl sm:p-4 ${t.border} ${t.gradient} ${t.glow}`}
+      className={`relative overflow-hidden rounded-2xl border-2 bg-gradient-to-br p-3.5 shadow-2xl sm:p-4 motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98] ${t.border} ${t.gradient} ${t.glow}`}
     >
       <div
         aria-hidden
@@ -91,7 +91,7 @@ export default function ContinuePlayingCard({
 
         <Link
           href={href}
-          className={`inline-flex min-h-[44px] w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r px-5 py-2.5 text-sm font-black tracking-wide text-zinc-950 shadow-lg sm:w-auto ${t.cta}`}
+          className={`inline-flex min-h-[44px] w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r px-5 py-2.5 text-sm font-black tracking-wide text-zinc-950 shadow-lg transition-all duration-150 sm:w-auto ${t.cta}`}
         >
           {cta}
           <span aria-hidden>→</span>

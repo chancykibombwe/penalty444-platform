@@ -13,7 +13,7 @@ const VARIANT_CLASS: Record<GradientButtonVariant, string> = {
 };
 
 const BASE_CLASS =
-  "inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl px-6 py-3 text-[15px] font-black uppercase tracking-wide transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none";
+  "inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl px-6 py-3 text-[15px] font-black uppercase tracking-wide transition-all duration-200 motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none";
 
 type CommonProps = {
   variant?: GradientButtonVariant;

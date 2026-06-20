@@ -22,12 +22,12 @@ export default function ExpandToggle({
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
-        className="mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#1B2433] bg-[#111827]/60 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-zinc-300 transition-colors hover:border-cyan-500/40 hover:text-cyan-200"
+        className="mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#1B2433] bg-[#111827]/60 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-zinc-300 transition-colors duration-150 hover:border-cyan-500/40 hover:text-cyan-200"
       >
         {open ? expandedLabel : label}
         <span
           aria-hidden
-          className={`inline-block transition-transform ${open ? "rotate-180" : ""}`}
+          className={`inline-block transition-transform duration-200 ${open ? "rotate-180" : ""}`}
         >
           ▾
         </span>

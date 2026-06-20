@@ -261,7 +261,7 @@ export default function Navbar() {
             {activeRoomCode ? (
               <Link
                 href={`/match/${activeRoomCode}`}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-3 py-2 text-sm font-black text-zinc-950 shadow-lg hover:from-emerald-300 hover:to-cyan-300"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-3 py-2 text-sm font-black text-zinc-950 shadow-lg transition-all duration-150 hover:from-emerald-300 hover:to-cyan-300 motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98]"
               >
                 <span
                   className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-950/70"
@@ -279,7 +279,7 @@ export default function Navbar() {
             {activeRoomCode ? (
               <Link
                 href={`/match/${activeRoomCode}`}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-400 to-cyan-400 px-2.5 py-1.5 text-[11px] font-black text-zinc-950 shadow-md"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-400 to-cyan-400 px-2.5 py-1.5 text-[11px] font-black text-zinc-950 shadow-md transition-all duration-150 motion-safe:active:scale-[0.97]"
                 aria-label="Resume match in progress"
               >
                 <span
