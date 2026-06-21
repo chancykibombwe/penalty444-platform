@@ -146,6 +146,10 @@ export function clearRoomTimer(
       room.picks = {};
     }
   }
+  if (room.interRoundTimeout) {
+    clearTimeout(room.interRoundTimeout);
+    room.interRoundTimeout = undefined;
+  }
   if (room.disconnectForfeitTimeout) {
     clearTimeout(room.disconnectForfeitTimeout);
     room.disconnectForfeitTimeout = undefined;

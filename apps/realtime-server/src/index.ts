@@ -4,6 +4,7 @@ import { Server, type Socket } from "socket.io";
 import cors from "cors";
 import {
   EARLY_CANCEL_MS,
+  INTER_ROUND_PAUSE_MS,
   MAX_SUDDEN_DEATH_CYCLES,
   PICK_TIMEOUT_MS,
   realtimeInternalSecret,
@@ -11,7 +12,8 @@ import {
   supabase,
 } from "./config";
 
-const TOURNAMENT_ROUND_CONTINUATION_MS = 1200;
+// Covers tournament reveal cycle: 1500ms REVEALING + 4000ms REVEALED.
+const TOURNAMENT_ROUND_CONTINUATION_MS = 5500;
 import {
   playerActiveRooms,
   publicOffers,
@@ -1705,20 +1707,17 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
           return;
         }
 
-        // Both players present → safe to announce the 10s sudden-death
-        // window AND start the pick timer. `startRoundTimer` will also
-        // emit a `match:status` with `timeoutSeconds: 10` immediately
-        // after; this entry-banner emit is kept for the explicit
-        // "Match tied. Sudden Death begins." copy.
+        // Both players present — announce sudden death entry (no timeoutSeconds
+        // here so the client doesn't start the pick timer early), then run the
+        // inter-round pause before the real 10s pick window opens.
         io.to(roomCode).emit("match:status", {
           roomCode,
           message: "Match tied. Sudden Death begins.",
-          timeoutSeconds: 10,
           phase: r.phase,
           suddenDeathRound: r.suddenDeathRound,
         });
 
-        startRoundTimer(roomCode, r);
+        startRoundAfterInterRound(roomCode, r);
         return;
       }
 
@@ -1768,8 +1767,35 @@ function resolveRound(roomCode: string, room: Room, fromTimeout = false) {
       );
       return;
     }
-    startRoundTimer(roomCode, r);
+    startRoundAfterInterRound(roomCode, r);
   }, continuationPauseMs);
+}
+
+/**
+ * Emit `match:interRound` then arm the inter-round pause before starting the
+ * next pick timer.  The client hides the countdown and disables lane buttons
+ * while `match:interRound` is active; `startRoundTimer` clears that state via
+ * `match:status { timeoutSeconds: 10 }`.
+ *
+ * Using a named function instead of an inline setTimeout so the handle can be
+ * stored on the room and cleared by `clearRoomTimer` on disconnect.
+ */
+function startRoundAfterInterRound(roomCode: string, r: Room): void {
+  io.to(roomCode).emit("match:interRound", {
+    roomCode,
+    round: r.round,
+    phase: r.phase,
+    suddenDeathRound: r.suddenDeathRound,
+  });
+  if (r.interRoundTimeout) {
+    clearTimeout(r.interRoundTimeout);
+  }
+  r.interRoundTimeout = setTimeout(() => {
+    r.interRoundTimeout = undefined;
+    const liveRoom = rooms.get(roomCode);
+    if (!liveRoom || liveRoom.matchEnded) return;
+    startRoundTimer(roomCode, liveRoom);
+  }, INTER_ROUND_PAUSE_MS);
 }
 
 bindRoundTimers({
