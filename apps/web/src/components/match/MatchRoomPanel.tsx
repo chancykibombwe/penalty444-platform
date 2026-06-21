@@ -496,6 +496,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   // True once the remote opponent has locked their pick this round.
   // Derived from server broadcasts; reset on every round advance.
   const [opponentPicked, setOpponentPicked] = useState(false);
+  // True between match:interRound and the next match:status { timeoutSeconds }.
+  // Disables lane buttons and shows "Next round…" instead of the countdown.
+  const [isInterRound, setIsInterRound] = useState(false);
   // Ref mirror of hasSubmittedPick so socket-handler closures can read it
   // without stale-closure bugs (closures don't list hasSubmittedPick as dep).
   const hasSubmittedPickRef = useRef(false);
@@ -1268,6 +1271,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         // STAGING_COUNTDOWN_MS (3700 ms) which would block lane clicks.
         setTournamentStagingCountdown(null);
         tournamentStagingDismissedRef.current = true;
+        // Pick timer is genuinely open — clear the inter-round pause flag.
+        setIsInterRound(false);
         // Reset per-round pick state for the new round.
         setOpponentPicked(false);
         pickInFlightRef.current = false;
@@ -1532,6 +1537,11 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         matchResultRevealArmedRef.current = false;
         applyRevealedResult(authoritative);
       }, revealDelayMs);
+    }
+
+    function onMatchInterRound(data: { roomCode?: string; code?: string }) {
+      if (!isSocketEventForRoom(data, normalizedRoomCode)) return;
+      setIsInterRound(true);
     }
 
     function onMatchEnd(payload: MatchEndPayload) {
@@ -1910,6 +1920,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     socket.on("match:rejoinState", onMatchRejoinState);
     socket.on("match:status", onMatchStatus);
     socket.on("match:result", onMatchResult);
+    socket.on("match:interRound", onMatchInterRound);
     socket.on("match:end", onMatchEnd);
     socket.on("match:rematch:update", onRematchUpdate);
     socket.on("match:rematch:accepted", onRematchAccepted);
@@ -1948,6 +1959,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       socket.off("match:rejoinState", onMatchRejoinState);
       socket.off("match:status", onMatchStatus);
       socket.off("match:result", onMatchResult);
+      socket.off("match:interRound", onMatchInterRound);
       socket.off("match:end", onMatchEnd);
       socket.off("match:rematch:update", onRematchUpdate);
       socket.off("match:rematch:accepted", onRematchAccepted);
@@ -2391,6 +2403,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     !hasSubmittedPick &&
     revealStage !== "REVEALING" &&
     revealStage !== "REVEALED" &&
+    !isInterRound &&
     !isPreStartGate &&
     !!identity &&
     // Prevent clicks in the final second — visually honest, prevents
@@ -2920,55 +2933,73 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
 
             <div
               className={`flex shrink-0 flex-col items-center justify-center gap-0 self-stretch rounded-lg border px-3 py-1 text-center shadow-lg transition-all duration-300 sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:rounded-xl sm:px-4 sm:py-2 sm:text-center md:block md:w-auto md:min-w-[9.5rem] md:self-auto md:rounded-3xl md:px-6 md:py-5 ${
-                isTimerAlmostDone
-                  ? "match-timer-almost-done border-red-500/95 bg-red-600/25"
-                  : isTimerUrgent
-                    ? "match-timer-urgent border-red-400/90 bg-red-500/20"
-                    : isSuddenDeath
-                      ? "match-timer-sudden-death border-yellow-400/80 bg-yellow-500/15"
-                      : "border-zinc-700 bg-zinc-900"
+                isInterRound
+                  ? "border-zinc-600 bg-zinc-900/70"
+                  : isTimerAlmostDone
+                    ? "match-timer-almost-done border-red-500/95 bg-red-600/25"
+                    : isTimerUrgent
+                      ? "match-timer-urgent border-red-400/90 bg-red-500/20"
+                      : isSuddenDeath
+                        ? "match-timer-sudden-death border-yellow-400/80 bg-yellow-500/15"
+                        : "border-zinc-700 bg-zinc-900"
               }`}
             >
               <p
                 className={`text-[8px] font-black uppercase tracking-[0.22em] sm:text-xs ${
-                  isTimerAlmostDone || isTimerUrgent
-                    ? "text-red-200"
-                    : isSuddenDeath
-                      ? "text-yellow-200/90"
-                      : "text-zinc-400"
+                  isInterRound
+                    ? "text-zinc-500"
+                    : isTimerAlmostDone || isTimerUrgent
+                      ? "text-red-200"
+                      : isSuddenDeath
+                        ? "text-yellow-200/90"
+                        : "text-zinc-400"
                 }`}
               >
-                {isTimerAlmostDone
-                  ? "Time almost up…"
-                  : isTimerUrgent
-                    ? "Lock in!"
-                    : "Timer"}
+                {isInterRound
+                  ? "Get ready"
+                  : isTimerAlmostDone
+                    ? "Time almost up…"
+                    : isTimerUrgent
+                      ? "Lock in!"
+                      : "Timer"}
               </p>
               <p
                 className={`text-base font-black tabular-nums transition-transform duration-300 sm:text-5xl sm:mt-1 md:text-6xl ${
-                  isTimerAlmostDone || isTimerUrgent
-                    ? "text-red-200"
-                    : isSuddenDeath
-                      ? "text-yellow-100"
-                      : "text-white"
+                  isInterRound
+                    ? "text-zinc-600"
+                    : isTimerAlmostDone || isTimerUrgent
+                      ? "text-red-200"
+                      : isSuddenDeath
+                        ? "text-yellow-100"
+                        : "text-white"
                 }`}
               >
-                {(hasSubmittedPick && opponentPicked) || isRevealLocked
+                {isInterRound
                   ? "—"
-                  : timer !== null
-                    ? timer
-                    : "—"}
+                  : (hasSubmittedPick && opponentPicked) || isRevealLocked
+                    ? "—"
+                    : timer !== null
+                      ? timer
+                      : "—"}
               </p>
               <p
                 className={`hidden text-[11px] font-bold uppercase tracking-wider sm:block ${
-                  isTimerAlmostDone || isTimerUrgent
-                    ? "text-red-200/85"
-                    : isSuddenDeath
-                      ? "text-yellow-200/70"
-                      : "text-zinc-500"
+                  isInterRound
+                    ? "text-zinc-600"
+                    : isTimerAlmostDone || isTimerUrgent
+                      ? "text-red-200/85"
+                      : isSuddenDeath
+                        ? "text-yellow-200/70"
+                        : "text-zinc-500"
                 }`}
               >
-                {isTimerAlmostDone ? "last chance" : isTimerUrgent ? "Hurry" : "seconds"}
+                {isInterRound
+                  ? "next round"
+                  : isTimerAlmostDone
+                    ? "last chance"
+                    : isTimerUrgent
+                      ? "Hurry"
+                      : "seconds"}
               </p>
             </div>
           </div>

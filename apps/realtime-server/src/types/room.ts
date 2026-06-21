@@ -65,6 +65,8 @@ export type Room = {
   timeout?: NodeJS.Timeout;
   isResolving: boolean;
   resolveContinuationTimeout?: NodeJS.Timeout;
+  /** Handle for the "get ready" pause between reveal completing and the next pick timer. */
+  interRoundTimeout?: NodeJS.Timeout;
   disconnectedPlayerId?: string;
   disconnectedAt?: number;
   disconnectForfeitTimeout?: NodeJS.Timeout;
