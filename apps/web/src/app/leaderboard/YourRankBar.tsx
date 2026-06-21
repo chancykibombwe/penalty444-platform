@@ -103,7 +103,7 @@ export default function YourRankBar() {
   if (bar.status === "loading") {
     return (
       <div className={wrap}>
-        <div className="mx-auto max-w-[520px]">
+        <div className="mx-auto max-w-[520px] md:max-w-[700px]">
           <div
             className="h-[62px] animate-pulse rounded-2xl"
             style={{
@@ -120,7 +120,7 @@ export default function YourRankBar() {
   if (bar.status === "placement") {
     return (
       <div className={wrap}>
-        <div className="mx-auto max-w-[520px]">
+        <div className="mx-auto max-w-[520px] md:max-w-[700px]">
           <div
             className="flex h-[62px] items-center justify-between gap-3 rounded-2xl px-4"
             style={{
@@ -210,7 +210,7 @@ export default function YourRankBar() {
 
   return (
     <div className={wrap}>
-      <div className="mx-auto max-w-[520px]">
+      <div className="mx-auto max-w-[520px] md:max-w-[700px]">
         <div
           className="flex h-[62px] items-center gap-3 rounded-2xl px-4"
           style={{
