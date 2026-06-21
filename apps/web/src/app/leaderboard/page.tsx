@@ -5,6 +5,7 @@ import {
   UNRANKED_MATCHES_THRESHOLD,
   type RankTier,
 } from "../../lib/player/ranks";
+import { LEADERBOARD_QUALIFICATION_THRESHOLD } from "./constants";
 import YourRankBar from "./YourRankBar";
 
 const supabase = createClient(
@@ -13,6 +14,8 @@ const supabase = createClient(
 );
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+type RankBy = "rating" | "win_rate";
 
 type PlayerStatsRow = {
   user_id: string;
@@ -35,6 +38,10 @@ type LeaderboardPlayer = {
   goalsFor: number;
   rankPoints: number;
   winRate: number;
+  /** true when matches < LEADERBOARD_QUALIFICATION_THRESHOLD (10–19 matches past placement) */
+  provisional: boolean;
+  /** 1-based position among officially qualified players; null for provisional */
+  officialRank: number | null;
 };
 
 // ─── Per-medal inline-style config ────────────────────────────────────────────
@@ -144,28 +151,50 @@ function getInitials(username: string) {
   );
 }
 
-function buildLeaderboard(rows: PlayerStatsRow[]): LeaderboardPlayer[] {
-  return rows
-    .map(
-      (row): LeaderboardPlayer => ({
-        id: row.user_id,
-        username: row.username,
-        wins: row.wins,
-        losses: row.losses,
-        draws: row.draws,
-        matches: row.matches,
-        goalsFor: row.goals_for,
-        rankPoints: row.rank_points,
-        winRate:
-          row.matches > 0 ? Math.round((row.wins / row.matches) * 100) : 0,
-      })
-    )
-    .sort((a, b) => {
+function buildLeaderboard(rows: PlayerStatsRow[], rankBy: RankBy = "rating"): LeaderboardPlayer[] {
+  const toPlayer = (row: PlayerStatsRow, provisional: boolean): LeaderboardPlayer => ({
+    id: row.user_id,
+    username: row.username,
+    wins: row.wins,
+    losses: row.losses,
+    draws: row.draws,
+    matches: row.matches,
+    goalsFor: row.goals_for,
+    rankPoints: row.rank_points,
+    winRate: row.matches > 0 ? Math.round((row.wins / row.matches) * 100) : 0,
+    provisional,
+    officialRank: null,
+  });
+
+  const sortFn = (a: LeaderboardPlayer, b: LeaderboardPlayer): number => {
+    if (rankBy === "win_rate") {
+      if (b.winRate !== a.winRate) return b.winRate - a.winRate;
       if (b.rankPoints !== a.rankPoints) return b.rankPoints - a.rankPoints;
-      if (b.wins !== a.wins) return b.wins - a.wins;
       if (b.matches !== a.matches) return b.matches - a.matches;
-      return b.goalsFor - a.goalsFor;
-    });
+      return b.wins - a.wins;
+    }
+    // "rating" (default)
+    if (b.rankPoints !== a.rankPoints) return b.rankPoints - a.rankPoints;
+    if (b.winRate !== a.winRate) return b.winRate - a.winRate;
+    if (b.matches !== a.matches) return b.matches - a.matches;
+    return b.goalsFor - a.goalsFor;
+  };
+
+  // Qualified players (20+ matches) appear first with official rank numbers.
+  // Provisional players (10–19 matches) appear below, clearly separated.
+  const qualified = rows
+    .filter(r => r.matches >= LEADERBOARD_QUALIFICATION_THRESHOLD)
+    .map(r => toPlayer(r, false))
+    .sort(sortFn);
+
+  const prov = rows
+    .filter(r => r.matches < LEADERBOARD_QUALIFICATION_THRESHOLD)
+    .map(r => toPlayer(r, true))
+    .sort(sortFn);
+
+  qualified.forEach((p, i) => { p.officialRank = i + 1; });
+
+  return [...qualified, ...prov];
 }
 
 function parsePage(value: string | undefined) {
@@ -181,7 +210,7 @@ function parseLimit(value: string | undefined) {
 }
 
 function buildLeaderboardHref(
-  options: { search?: string; page?: number; limit?: number } = {}
+  options: { search?: string; page?: number; limit?: number; rankBy?: RankBy } = {}
 ) {
   const page = options.page ?? 1;
   const limit = options.limit ?? 100;
@@ -190,6 +219,8 @@ function buildLeaderboardHref(
     limit: String(limit),
   });
   if (options.search) params.set("search", options.search);
+  // Only include rankBy when non-default to keep URLs clean
+  if (options.rankBy && options.rankBy !== "rating") params.set("rankBy", options.rankBy);
   return `/leaderboard?${params.toString()}`;
 }
 
@@ -282,9 +313,10 @@ export default async function LeaderboardPage({
     search?: string;
     page?: string;
     limit?: string;
+    rankBy?: string;
   }>;
 }) {
-  const { search: rawSearch, page: rawPage, limit: rawLimit } =
+  const { search: rawSearch, page: rawPage, limit: rawLimit, rankBy: rawRankBy } =
     await searchParams;
   const search = rawSearch?.trim() ?? "";
   const hasActiveSearch = search.length > 0;
@@ -292,28 +324,32 @@ export default async function LeaderboardPage({
   const limit = parseLimit(rawLimit);
   const from = (page - 1) * limit;
   const to = from + limit - 1;
+  const rankBy: RankBy = rawRankBy === "win_rate" ? "win_rate" : "rating";
 
   const statsSelect =
     "user_id, username, matches, wins, losses, draws, goals_for, rank_points";
+  // Fetch all players who have completed at least one placement match.
+  // Provisional players (10–19 matches) and qualified players (20+ matches)
+  // are both included; classification happens in buildLeaderboard().
   const RANKED_MATCH_FLOOR = UNRANKED_MATCHES_THRESHOLD;
 
   let statsQuery = supabase
     .from("player_stats")
     .select(statsSelect)
     .eq("game_id", "penalty444")
-    .gte("matches", RANKED_MATCH_FLOOR);
+    .gte("matches", RANKED_MATCH_FLOOR)
+    .order("rank_points", { ascending: false })
+    .order("wins", { ascending: false })
+    .order("matches", { ascending: false })
+    .order("goals_for", { ascending: false })
+    .limit(500); // fetch enough for in-memory sort across all rank-by modes
 
   if (hasActiveSearch) {
     statsQuery = statsQuery.ilike("username", `%${search}%`);
   }
 
   const [statsResult, placementCountResult] = await Promise.all([
-    statsQuery
-      .order("rank_points", { ascending: false })
-      .order("wins", { ascending: false })
-      .order("matches", { ascending: false })
-      .order("goals_for", { ascending: false })
-      .range(from, to),
+    statsQuery,
     supabase
       .from("player_stats")
       .select("user_id", { count: "exact", head: true })
@@ -326,22 +362,32 @@ export default async function LeaderboardPage({
   const error = statsResult.error;
   if (error) console.error("Failed to load leaderboard stats:", error.message);
 
-  const leaderboard = buildLeaderboard(
-    (statsResult.data ?? []) as PlayerStatsRow[]
+  const allPlayers = buildLeaderboard(
+    (statsResult.data ?? []) as PlayerStatsRow[],
+    rankBy
   );
-  const topPlayers = leaderboard.slice(0, 3);
+  const provisionalPlayerCount = allPlayers.filter(p => p.provisional).length;
+  // In-memory pagination applied after full sort
+  const leaderboard = allPlayers.slice(from, to + 1);
+  // Podium uses only officially qualified players (20+ matches)
+  const topPlayers = allPlayers.filter(p => !p.provisional).slice(0, 3);
 
-  const clearSearchHref = buildLeaderboardHref({ page, limit });
-  const previousPageHref = buildLeaderboardHref({ search, page: page - 1, limit });
-  const nextPageHref = buildLeaderboardHref({ search, page: page + 1, limit });
-  const showNextPage = leaderboard.length === limit;
+  const clearSearchHref = buildLeaderboardHref({ page, limit, rankBy });
+  const previousPageHref = buildLeaderboardHref({ search, page: page - 1, limit, rankBy });
+  const nextPageHref = buildLeaderboardHref({ search, page: page + 1, limit, rankBy });
+  const showNextPage = allPlayers.length > to + 1;
+
+  // Rank-by chip hrefs (always reset to page 1 on sort change)
+  const ratingHref = buildLeaderboardHref({ search, page: 1, limit, rankBy: "rating" });
+  const winRateHref = buildLeaderboardHref({ search, page: 1, limit, rankBy: "win_rate" });
 
   const showPodium =
     !error && topPlayers.length > 0 && page === 1 && !hasActiveSearch;
+  // Exclude podium players from the ranked list to avoid duplication
+  const podiumIds = new Set(topPlayers.map(p => p.id));
   const listPlayers = showPodium
-    ? leaderboard.slice(topPlayers.length)
+    ? leaderboard.filter(p => !podiumIds.has(p.id))
     : leaderboard;
-  const listRankOffset = showPodium ? topPlayers.length : from;
 
   return (
     <>
@@ -547,6 +593,77 @@ export default async function LeaderboardPage({
                   <div>
                     <p className="font-black uppercase leading-none" style={{ fontSize: "7px", color: "#52525b", letterSpacing: "0.15em" }}>PERIOD</p>
                     <p className="font-bold leading-tight" style={{ fontSize: "11px", color: "#71717a", marginTop: "2px" }}>Season</p>
+                  </div>
+                  <span
+                    className="ml-0.5 rounded px-1 font-black uppercase"
+                    style={{ fontSize: "6px", letterSpacing: "0.12em", background: "rgba(40,45,70,0.80)", color: "#52525b" }}
+                  >
+                    SOON
+                  </span>
+                </div>
+
+                {/* Divider */}
+                <div className="mx-0.5 h-8 w-px shrink-0" style={{ background: "rgba(55,65,100,0.45)" }} />
+
+                {/* RANK BY: Rating (active by default) */}
+                <Link
+                  href={ratingHref}
+                  className="flex select-none items-center gap-2 rounded-xl px-3 py-2 transition hover:opacity-80"
+                  style={{
+                    background: rankBy === "rating" ? "rgba(12,16,30,0.98)" : "rgba(8,10,18,0.80)",
+                    border: rankBy === "rating" ? "1px solid rgba(55,85,160,0.68)" : "1px solid rgba(45,50,75,0.40)",
+                    boxShadow: rankBy === "rating" ? "0 0 0 1px rgba(55,85,160,0.22), inset 0 1px 0 rgba(255,255,255,0.07), 0 0 16px rgba(55,85,160,0.12)" : "inset 0 1px 0 rgba(255,255,255,0.03)",
+                  }}
+                >
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0" style={{ color: rankBy === "rating" ? "rgba(99,140,255,0.90)" : "#52525b" }}>
+                    <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zm6-4a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zm6-3a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
+                  </svg>
+                  <div>
+                    <p className="font-black uppercase leading-none" style={{ fontSize: "7px", color: rankBy === "rating" ? "#71717a" : "#52525b", letterSpacing: "0.15em" }}>RANK BY</p>
+                    <p className="font-bold leading-tight" style={{ fontSize: "11px", color: rankBy === "rating" ? "#f1f5f9" : "#71717a", marginTop: "2px" }}>Rating</p>
+                  </div>
+                  {rankBy === "rating" && (
+                    <div className="ml-0.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "rgba(99,140,255,0.90)" }} />
+                  )}
+                </Link>
+
+                {/* RANK BY: Win Rate */}
+                <Link
+                  href={winRateHref}
+                  className="flex select-none items-center gap-2 rounded-xl px-3 py-2 transition hover:opacity-80"
+                  style={{
+                    background: rankBy === "win_rate" ? "rgba(12,16,30,0.98)" : "rgba(8,10,18,0.80)",
+                    border: rankBy === "win_rate" ? "1px solid rgba(55,85,160,0.68)" : "1px solid rgba(45,50,75,0.40)",
+                    boxShadow: rankBy === "win_rate" ? "0 0 0 1px rgba(55,85,160,0.22), inset 0 1px 0 rgba(255,255,255,0.07), 0 0 16px rgba(55,85,160,0.12)" : "inset 0 1px 0 rgba(255,255,255,0.03)",
+                  }}
+                >
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0" style={{ color: rankBy === "win_rate" ? "rgba(99,140,255,0.90)" : "#52525b" }}>
+                    <path fillRule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z" clipRule="evenodd" />
+                  </svg>
+                  <div>
+                    <p className="font-black uppercase leading-none" style={{ fontSize: "7px", color: rankBy === "win_rate" ? "#71717a" : "#52525b", letterSpacing: "0.15em" }}>RANK BY</p>
+                    <p className="font-bold leading-tight" style={{ fontSize: "11px", color: rankBy === "win_rate" ? "#f1f5f9" : "#71717a", marginTop: "2px" }}>Win Rate</p>
+                  </div>
+                  {rankBy === "win_rate" && (
+                    <div className="ml-0.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "rgba(99,140,255,0.90)" }} />
+                  )}
+                </Link>
+
+                {/* RANK BY: Tournament Wins (disabled — not yet available) */}
+                <div
+                  className="flex cursor-not-allowed select-none items-center gap-2 rounded-xl px-3 py-2"
+                  style={{
+                    background: "rgba(8,10,18,0.70)",
+                    border: "1px solid rgba(45,50,75,0.35)",
+                    opacity: 0.6,
+                  }}
+                >
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0" style={{ color: "#52525b" }}>
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                  <div>
+                    <p className="font-black uppercase leading-none" style={{ fontSize: "7px", color: "#52525b", letterSpacing: "0.15em" }}>RANK BY</p>
+                    <p className="font-bold leading-tight" style={{ fontSize: "11px", color: "#71717a", marginTop: "2px" }}>Tournament Wins</p>
                   </div>
                   <span
                     className="ml-0.5 rounded px-1 font-black uppercase"
@@ -819,6 +936,7 @@ export default async function LeaderboardPage({
               >
                 <input type="hidden" name="page" value="1" />
                 <input type="hidden" name="limit" value={limit} />
+                {rankBy !== "rating" && <input type="hidden" name="rankBy" value={rankBy} />}
                 <input
                   type="search"
                   name="search"
@@ -884,13 +1002,13 @@ export default async function LeaderboardPage({
                     </div>
                     <div
                       className="hidden w-16 shrink-0 text-right font-black uppercase sm:block"
-                      style={{ fontSize: "9px", letterSpacing: "0.22em", color: "#3f3f46" }}
+                      style={{ fontSize: "9px", letterSpacing: "0.22em", color: rankBy === "rating" ? "rgba(99,140,255,0.60)" : "#3f3f46" }}
                     >
                       POINTS
                     </div>
                     <div
                       className="hidden w-14 shrink-0 text-right font-black uppercase sm:block"
-                      style={{ fontSize: "9px", letterSpacing: "0.22em", color: "#3f3f46" }}
+                      style={{ fontSize: "9px", letterSpacing: "0.22em", color: rankBy === "win_rate" ? "rgba(99,140,255,0.60)" : "#3f3f46" }}
                     >
                       WIN%
                     </div>
@@ -929,8 +1047,8 @@ export default async function LeaderboardPage({
                     ) : (
                       <div className="space-y-3">
                         <p style={{ fontSize: "14px", color: "#71717a" }}>
-                          No ranked players yet. Complete{" "}
-                          {UNRANKED_MATCHES_THRESHOLD} placement matches to
+                          No officially ranked players yet. Complete{" "}
+                          {LEADERBOARD_QUALIFICATION_THRESHOLD} matches to
                           appear.
                         </p>
                         <Link
@@ -949,25 +1067,68 @@ export default async function LeaderboardPage({
                 ) : null}
 
                 {/* Player rows — hover via Tailwind (no JS handlers in server component) */}
-                {listPlayers.map((player, index) => {
-                  const rank = listRankOffset + index + 1;
+                {listPlayers.flatMap((player, index) => {
+                  const prevPlayer = listPlayers[index - 1];
+                  const isFirstProv = player.provisional && !prevPlayer?.provisional;
                   const tier = resolveTierForRow(player);
                   const av = tierRingStyle(tier);
 
-                  return (
+                  const rows = [];
+
+                  if (isFirstProv) {
+                    rows.push(
+                      <div
+                        key="provisional-separator"
+                        className="flex items-center gap-3 px-4 py-2"
+                        style={{
+                          borderBottom: "1px solid rgba(255,255,255,0.04)",
+                          background: "rgba(255,255,255,0.015)",
+                        }}
+                      >
+                        <div className="h-px flex-1" style={{ background: "rgba(255,200,50,0.18)" }} />
+                        <p
+                          className="shrink-0 font-black uppercase"
+                          style={{ fontSize: "8px", letterSpacing: "0.22em", color: "#52525b" }}
+                        >
+                          Provisional — {LEADERBOARD_QUALIFICATION_THRESHOLD} matches required for official ranking
+                        </p>
+                        <div className="h-px flex-1" style={{ background: "rgba(255,200,50,0.18)" }} />
+                      </div>
+                    );
+                  }
+
+                  rows.push(
                     <div
                       key={player.id}
                       className="flex items-center gap-2.5 px-4 py-2.5 transition-colors hover:bg-white/[0.025]"
                       style={{
                         borderBottom: "1px solid rgba(255,255,255,0.04)",
+                        opacity: player.provisional ? 0.72 : 1,
                       }}
                     >
                       {/* Rank */}
-                      <div
-                        className="w-8 shrink-0 font-black tabular-nums"
-                        style={{ fontSize: "17px", color: "#71717a" }}
-                      >
-                        {rank}
+                      <div className="w-8 shrink-0">
+                        {player.officialRank !== null ? (
+                          <span
+                            className="font-black tabular-nums"
+                            style={{ fontSize: "17px", color: "#71717a" }}
+                          >
+                            {player.officialRank}
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center rounded px-1 font-black uppercase"
+                            style={{
+                              fontSize: "6px",
+                              letterSpacing: "0.10em",
+                              background: "rgba(255,200,50,0.10)",
+                              border: "1px solid rgba(255,200,50,0.22)",
+                              color: "#a16207",
+                            }}
+                          >
+                            PROV
+                          </span>
+                        )}
                       </div>
 
                       {/* Avatar with tier ring */}
@@ -1031,7 +1192,7 @@ export default async function LeaderboardPage({
                       <div className="hidden w-16 shrink-0 text-right sm:block">
                         <p
                           className="font-black tabular-nums"
-                          style={{ fontSize: "13px", color: "#fde68a" }}
+                          style={{ fontSize: "13px", color: rankBy === "rating" ? "#fde68a" : "#52525b" }}
                         >
                           {player.rankPoints}
                         </p>
@@ -1041,7 +1202,7 @@ export default async function LeaderboardPage({
                       <div className="hidden w-14 shrink-0 text-right sm:block">
                         <p
                           className="font-bold tabular-nums"
-                          style={{ fontSize: "13px", color: "#a1a1aa" }}
+                          style={{ fontSize: "13px", color: rankBy === "win_rate" ? "#fde68a" : "#a1a1aa" }}
                         >
                           {player.winRate}%
                         </p>
@@ -1059,12 +1220,12 @@ export default async function LeaderboardPage({
                       <div className="w-12 shrink-0 text-right sm:hidden">
                         <p
                           className="font-black tabular-nums"
-                          style={{ fontSize: "13px", color: "#fde68a" }}
+                          style={{ fontSize: "13px", color: rankBy === "rating" ? "#fde68a" : "#52525b" }}
                         >
-                          {player.rankPoints}
+                          {rankBy === "win_rate" ? `${player.winRate}%` : String(player.rankPoints)}
                         </p>
                         <p style={{ fontSize: "10px", color: "#52525b" }}>
-                          {player.winRate}%
+                          {rankBy === "win_rate" ? `${player.rankPoints} pts` : `${player.winRate}%`}
                         </p>
                       </div>
 
@@ -1084,6 +1245,8 @@ export default async function LeaderboardPage({
                       ) : null}
                     </div>
                   );
+
+                  return rows;
                 })}
               </div>
 
@@ -1117,15 +1280,19 @@ export default async function LeaderboardPage({
                 ) : null}
               </div>
 
-              {/* Placement count note */}
-              {placementPlayerCount > 0 ? (
+              {/* Placement / provisional count note */}
+              {(placementPlayerCount > 0 || provisionalPlayerCount > 0) ? (
                 <p
                   className="text-center"
                   style={{ fontSize: "10px", color: "#3f3f46" }}
                 >
-                  {placementPlayerCount} player
-                  {placementPlayerCount === 1 ? "" : "s"} in placement —{" "}
-                  {UNRANKED_MATCHES_THRESHOLD} matches required to rank
+                  {placementPlayerCount > 0 && (
+                    <>{placementPlayerCount} player{placementPlayerCount === 1 ? "" : "s"} in placement ({UNRANKED_MATCHES_THRESHOLD} matches required)</>
+                  )}
+                  {placementPlayerCount > 0 && provisionalPlayerCount > 0 && " · "}
+                  {provisionalPlayerCount > 0 && (
+                    <>{provisionalPlayerCount} provisional ({LEADERBOARD_QUALIFICATION_THRESHOLD} matches for official ranking)</>
+                  )}
                 </p>
               ) : null}
             </div>

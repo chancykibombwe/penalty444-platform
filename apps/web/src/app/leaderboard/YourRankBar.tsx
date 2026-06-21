@@ -7,11 +7,19 @@ import {
   resolvePlayerTier,
   UNRANKED_MATCHES_THRESHOLD,
 } from "../../lib/player/ranks";
+import { LEADERBOARD_QUALIFICATION_THRESHOLD } from "./constants";
 
 type BarState =
   | { status: "loading" }
   | { status: "hidden" }
   | { status: "placement"; username: string; matchesPlayed: number }
+  | {
+      status: "provisional";
+      username: string;
+      matchesPlayed: number;
+      rankPoints: number;
+      winRate: number;
+    }
   | {
       status: "ranked";
       rank: number;
@@ -69,12 +77,24 @@ export default function YourRankBar() {
           return;
         }
 
-        // Count players ranked strictly above the current user by rank_points
+        // Players with 10–19 matches have a rating but are not yet officially ranked
+        if (stats.matches < LEADERBOARD_QUALIFICATION_THRESHOLD) {
+          setBar({
+            status: "provisional",
+            username: stats.username ?? "Player",
+            matchesPlayed: stats.matches,
+            rankPoints: stats.rank_points,
+            winRate: stats.matches > 0 ? Math.round((stats.wins / stats.matches) * 100) : 0,
+          });
+          return;
+        }
+
+        // Count qualified players ranked strictly above the current user
         const { count } = await supabase
           .from("player_stats")
           .select("user_id", { count: "exact", head: true })
           .eq("game_id", "penalty444")
-          .gte("matches", UNRANKED_MATCHES_THRESHOLD)
+          .gte("matches", LEADERBOARD_QUALIFICATION_THRESHOLD)
           .gt("rank_points", stats.rank_points);
 
         setBar({
@@ -176,6 +196,74 @@ export default function YourRankBar() {
                 style={{ fontSize: "12px", color: "#71717a" }}
               >
                 {bar.matchesPlayed}/{UNRANKED_MATCHES_THRESHOLD} played
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Provisional state (10–19 matches) ──────────────────────────────
+  if (bar.status === "provisional") {
+    return (
+      <div className={wrap}>
+        <div className="mx-auto max-w-[520px] md:max-w-[700px]">
+          <div
+            className="flex h-[62px] items-center justify-between gap-3 rounded-2xl px-4"
+            style={{
+              background: "rgba(6,8,18,0.98)",
+              border: "1px solid rgba(255,200,50,0.22)",
+              boxShadow:
+                "0 -4px 32px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,200,50,0.06)",
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[11px] font-black"
+                style={{
+                  background: "rgba(30,25,10,0.90)",
+                  border: "1px solid rgba(255,200,50,0.28)",
+                  color: "#a16207",
+                }}
+              >
+                {initials(bar.username)}
+              </div>
+              <div>
+                <p
+                  className="font-black uppercase"
+                  style={{
+                    fontSize: "8px",
+                    letterSpacing: "0.28em",
+                    color: "#52525b",
+                  }}
+                >
+                  YOUR RANK
+                </p>
+                <p
+                  className="font-bold"
+                  style={{ fontSize: "14px", color: "#d4d4d8" }}
+                >
+                  {bar.username}
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p
+                className="font-black uppercase"
+                style={{
+                  fontSize: "8px",
+                  letterSpacing: "0.22em",
+                  color: "#a16207",
+                }}
+              >
+                Provisional
+              </p>
+              <p
+                className="font-bold tabular-nums"
+                style={{ fontSize: "12px", color: "#71717a" }}
+              >
+                {bar.matchesPlayed} / {LEADERBOARD_QUALIFICATION_THRESHOLD} played
               </p>
             </div>
           </div>
