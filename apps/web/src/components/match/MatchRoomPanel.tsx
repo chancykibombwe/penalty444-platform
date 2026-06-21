@@ -3049,276 +3049,6 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         />
       </div>
 
-      {!matchEnded ? (
-        <section className="relative shrink-0 rounded-lg border border-zinc-800 bg-zinc-900/95 px-1 py-0.5 shadow-xl sm:rounded-2xl sm:p-3 md:rounded-[2rem] md:p-5">
-          {revealStage === "LOCKED" && !isRevealLocked ? (
-            <div
-              className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-black/50 backdrop-blur-[2px] sm:rounded-[2rem]"
-              aria-live="polite"
-            >
-              <div className="p444-pick-locked-pulse rounded-2xl border border-cyan-400/50 bg-cyan-950/40 px-4 py-3 text-center shadow-[0_0_32px_rgba(56,189,248,0.25)] sm:px-6 sm:py-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.34em] text-cyan-300">
-                  Pick locked
-                </p>
-                <p className="mt-1 text-base font-black text-white sm:text-lg">
-                  {disconnectCountdown !== null
-                    ? "Opponent disconnected"
-                    : "Waiting for opponent…"}
-                </p>
-              </div>
-            </div>
-          ) : null}
-
-          {/* Mobile-only compact pick status bar */}
-          <div className="mb-1 flex items-center justify-between sm:hidden">
-            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
-              {revealStage === "LOCKED" || hasSubmittedPick || myPick
-                ? "Pick locked in"
-                : "Choose your lane"}
-            </p>
-            {myRole && !isRevealLocked ? (
-              <span
-                className={`rounded-full border px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] ${
-                  myRole === "KICKER"
-                    ? "border-amber-400/60 bg-amber-500/10 text-amber-100"
-                    : "border-sky-400/60 bg-sky-500/10 text-sky-100"
-                }`}
-              >
-                {myRole}
-              </span>
-            ) : null}
-          </div>
-
-          {/* Header shown sm+ — more detail, role badge, waiting dots */}
-          <div className="hidden sm:flex sm:items-center sm:justify-between sm:gap-3">
-            <h2 className="text-base font-black sm:text-lg md:text-2xl">
-              {revealStage === "LOCKED"
-                ? "Pick locked"
-                : hasSubmittedPick || myPick
-                  ? "Pick locked in"
-                  : "Choose your lane"}
-            </h2>
-            <div className="flex items-center gap-2">
-              {(hasSubmittedPick || myPick) &&
-              !isRevealLocked &&
-              disconnectCountdown === null ? (
-                <span className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-200">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-300" aria-hidden />
-                  <span className="match-waiting-dots" aria-hidden>
-                    <span className="match-waiting-dot" />
-                    <span className="match-waiting-dot" />
-                    <span className="match-waiting-dot" />
-                  </span>
-                </span>
-              ) : null}
-              {myRole ? (
-                <span
-                  className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.14em] ${
-                    myRole === "KICKER"
-                      ? "border-amber-400/60 bg-amber-500/10 text-amber-100"
-                      : "border-sky-400/60 bg-sky-500/10 text-sky-100"
-                  }`}
-                >
-                  {myRole}
-                </span>
-              ) : null}
-              {opponentStatus && !isRevealLocked ? (
-                <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/45 bg-amber-500/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
-                  <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-amber-300" aria-hidden />
-                  Opp locked
-                </span>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="mt-0 grid grid-cols-3 gap-2 sm:mt-3 sm:gap-3 md:mt-5 md:gap-4">
-            {LANES.map((lane) => (
-              <button
-                key={lane}
-                onClick={() => pick(lane)}
-                disabled={!canPick}
-                aria-pressed={myPick === lane}
-                className={`group flex flex-col items-center justify-center h-14 gap-0.5 rounded-xl border px-2 sm:h-12 sm:gap-0.5 sm:rounded-2xl sm:px-3 md:h-14 md:px-4 ${getLaneButtonClass(
-                  lane,
-                  {
-                    canPick,
-                    myPick,
-                    isSuddenDeath,
-                    revealStage,
-                  }
-                )}`}
-              >
-                <span className="text-lg leading-none sm:text-xl md:text-3xl">
-                  {laneEmoji(lane)}
-                </span>
-                <span className="text-xs font-black leading-none sm:mt-0.5 sm:text-xs md:mt-1 md:text-base">
-                  {lane}{myPick === lane ? " ✓" : ""}
-                </span>
-                {myPick === lane ? (
-                  <span className="hidden sm:mt-1 sm:block sm:text-[10px] sm:font-black sm:uppercase sm:text-emerald-300">
-                    Locked
-                  </span>
-                ) : isRevealLocked ? (
-                  <span className="hidden sm:mt-1 sm:block sm:text-[10px] sm:font-bold sm:uppercase sm:text-zinc-500">
-                    Revealing
-                  </span>
-                ) : null}
-              </button>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section
-        className={`shrink-0 rounded-lg border p-1.5 shadow-2xl transition-all duration-300 sm:rounded-2xl sm:p-3 md:rounded-[2rem] md:p-5 ${resultStyle(
-          shownResult?.result
-        )} ${
-          revealStage === "REVEALED"
-            ? "match-result-reveal-done"
-            : revealStage === "REVEALING"
-              ? "match-result-reveal-active"
-              : ""
-        }`}
-        aria-live="polite"
-      >
-        <div className="flex flex-col gap-1 sm:gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="md:max-w-xl">
-            <p className="text-[8px] font-black uppercase tracking-[0.25em] text-white/60 sm:text-xs">
-              {shownResult?.round
-                ? `Round ${shownResult.round} · Result`
-                : "Current result"}
-            </p>
-
-            <h2
-              className={`inline-flex items-center gap-1 text-sm font-black transition-all duration-300 sm:mt-2 sm:gap-2 sm:text-3xl md:text-5xl ${resultHeadlineClass(
-                shownResult?.result,
-                revealStage
-              )}`}
-            >
-              {revealStage === "REVEALING" ? (
-                tensionCountdown !== null ? (
-                  <span
-                    key={tensionCountdown}
-                    className="p444-tension-digit tabular-nums text-white drop-shadow-[0_0_28px_rgba(56,189,248,0.45)]"
-                  >
-                    {tensionCountdown}
-                  </span>
-                ) : (
-                  <span className="text-xs uppercase tracking-[0.22em] text-cyan-200/90 sm:text-2xl md:text-3xl">
-                    Pick locked
-                  </span>
-                )
-              ) : (
-                <>
-                  {shownResult?.result ? (
-                    <span aria-hidden className="text-sm sm:text-2xl md:text-4xl">
-                      {resultEmoji(shownResult.result)}
-                    </span>
-                  ) : null}
-                  <span>{resultLabel(shownResult?.result)}</span>
-                </>
-              )}
-            </h2>
-
-            {revealStage !== "REVEALING" && shownResult?.result ? (
-              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-white/80 sm:mt-2 sm:text-sm md:text-base">
-                {resultSubheadline(shownResult.result)}
-              </p>
-            ) : null}
-
-            {revealStage !== "REVEALING" && resultFlavorMessage ? (
-              <p className="hidden text-[10px] font-medium italic text-white/65 sm:mt-2 sm:block sm:text-sm">
-                {resultFlavorMessage}
-              </p>
-            ) : null}
-
-            {shownResult?.statusMessage ? (
-              <p className="text-[9px] text-white/80 sm:mt-3 sm:text-sm">
-                {shownResult.statusMessage}
-              </p>
-            ) : null}
-
-            {revealStage === "REVEALED" && !matchEnded && shownResult?.result ? (
-              <p className="mt-1 inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/30 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.22em] text-white/85 sm:mt-4 sm:px-3 sm:py-1.5 sm:text-[11px]">
-                <span className="match-waiting-dots" aria-hidden>
-                  <span className="match-waiting-dot" />
-                  <span className="match-waiting-dot" />
-                  <span className="match-waiting-dot" />
-                </span>
-                Next round · Roles switching
-              </p>
-            ) : null}
-          </div>
-
-          <div className="grid grid-cols-2 gap-1 text-xs sm:gap-2 sm:text-xs md:gap-3">
-            <div
-              className={`min-w-0 rounded-md border bg-black/25 px-1.5 py-1 transition-all duration-300 sm:rounded-xl sm:p-2.5 ${
-                shownResult?.result === "GOAL"
-                  ? "border-emerald-300/40 shadow-[0_0_24px_rgba(52,211,153,0.18)]"
-                  : shownResult?.result === "SAVE"
-                    ? "border-sky-300/35 shadow-[0_0_24px_rgba(56,189,248,0.16)]"
-                    : shownResult?.result === "DRAW"
-                      ? "border-yellow-300/35 shadow-[0_0_22px_rgba(250,204,21,0.14)]"
-                      : "border-white/10"
-              } ${revealStage === "REVEALED" ? "scale-[1.04]" : ""}`}
-            >
-              <p className="truncate text-[8px] uppercase tracking-[0.18em] text-white/55 sm:text-xs">
-                {kickerResultLabel}
-                <span className="ml-1 text-white/40">· Kicker</span>
-              </p>
-              <p className="truncate text-xs font-black leading-tight sm:mt-1 sm:text-xl md:text-2xl">
-                {shownResult?.kickerPick
-                  ? `${laneEmoji(shownResult.kickerPick)} ${
-                      shownResult.kickerPick
-                    }`
-                  : "—"}
-              </p>
-            </div>
-
-            <div
-              className={`min-w-0 rounded-md border bg-black/25 px-1.5 py-1 transition-all duration-300 sm:rounded-xl sm:p-2.5 ${
-                shownResult?.result === "GOAL"
-                  ? "border-emerald-300/40 shadow-[0_0_24px_rgba(52,211,153,0.18)]"
-                  : shownResult?.result === "SAVE"
-                    ? "border-sky-300/35 shadow-[0_0_24px_rgba(56,189,248,0.16)]"
-                    : shownResult?.result === "DRAW"
-                      ? "border-yellow-300/35 shadow-[0_0_22px_rgba(250,204,21,0.14)]"
-                      : "border-white/10"
-              } ${revealStage === "REVEALED" ? "scale-[1.04]" : ""}`}
-            >
-              <p className="truncate text-[8px] uppercase tracking-[0.18em] text-white/55 sm:text-xs">
-                {keeperResultLabel}
-                <span className="ml-1 text-white/40">· Keeper</span>
-              </p>
-              <p className="truncate text-xs font-black leading-tight sm:mt-1 sm:text-xl md:text-2xl">
-                {shownResult?.keeperPick
-                  ? `${laneEmoji(shownResult.keeperPick)} ${
-                      shownResult.keeperPick
-                    }`
-                  : "—"}
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {!matchEnded ? (
-        <div className="hidden sm:grid sm:grid-cols-2 sm:gap-1.5 sm:shrink-0">
-          <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-2 py-1.5 flex flex-col justify-center">
-            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400">
-              Prize Pool
-            </p>
-            <p className="mt-0.5 text-[10px] text-zinc-500">Coming soon</p>
-          </section>
-          <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-2 py-1.5 flex flex-col justify-center">
-            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400">
-              Chat
-            </p>
-            <p className="mt-0.5 text-[10px] text-zinc-500">Coming soon</p>
-          </section>
-        </div>
-      ) : null}
-
       {matchEnded && matchEndOutcome ? (
         <section
           className={`shrink-0 rounded-2xl border p-3 shadow-2xl sm:rounded-2xl sm:p-3.5 md:rounded-[2rem] md:p-7 pb-[max(0.75rem,env(safe-area-inset-bottom,0.75rem))] ${
@@ -3584,6 +3314,279 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           </div>
         </section>
       ) : null}
+
+      {!matchEnded ? (
+        <section className="relative shrink-0 rounded-lg border border-zinc-800 bg-zinc-900/95 px-1 py-0.5 shadow-xl sm:rounded-2xl sm:p-3 md:rounded-[2rem] md:p-5">
+          {revealStage === "LOCKED" && !isRevealLocked ? (
+            <div
+              className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-black/50 backdrop-blur-[2px] sm:rounded-[2rem]"
+              aria-live="polite"
+            >
+              <div className="p444-pick-locked-pulse rounded-2xl border border-cyan-400/50 bg-cyan-950/40 px-4 py-3 text-center shadow-[0_0_32px_rgba(56,189,248,0.25)] sm:px-6 sm:py-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.34em] text-cyan-300">
+                  Pick locked
+                </p>
+                <p className="mt-1 text-base font-black text-white sm:text-lg">
+                  {disconnectCountdown !== null
+                    ? "Opponent disconnected"
+                    : "Waiting for opponent…"}
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Mobile-only compact pick status bar */}
+          <div className="mb-1 flex items-center justify-between sm:hidden">
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
+              {revealStage === "LOCKED" || hasSubmittedPick || myPick
+                ? "Pick locked in"
+                : "Choose your lane"}
+            </p>
+            {myRole && !isRevealLocked ? (
+              <span
+                className={`rounded-full border px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] ${
+                  myRole === "KICKER"
+                    ? "border-amber-400/60 bg-amber-500/10 text-amber-100"
+                    : "border-sky-400/60 bg-sky-500/10 text-sky-100"
+                }`}
+              >
+                {myRole}
+              </span>
+            ) : null}
+          </div>
+
+          {/* Header shown sm+ — more detail, role badge, waiting dots */}
+          <div className="hidden sm:flex sm:items-center sm:justify-between sm:gap-3">
+            <h2 className="text-base font-black sm:text-lg md:text-2xl">
+              {revealStage === "LOCKED"
+                ? "Pick locked"
+                : hasSubmittedPick || myPick
+                  ? "Pick locked in"
+                  : "Choose your lane"}
+            </h2>
+            <div className="flex items-center gap-2">
+              {(hasSubmittedPick || myPick) &&
+              !isRevealLocked &&
+              disconnectCountdown === null ? (
+                <span className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-200">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-300" aria-hidden />
+                  <span className="match-waiting-dots" aria-hidden>
+                    <span className="match-waiting-dot" />
+                    <span className="match-waiting-dot" />
+                    <span className="match-waiting-dot" />
+                  </span>
+                </span>
+              ) : null}
+              {myRole ? (
+                <span
+                  className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.14em] ${
+                    myRole === "KICKER"
+                      ? "border-amber-400/60 bg-amber-500/10 text-amber-100"
+                      : "border-sky-400/60 bg-sky-500/10 text-sky-100"
+                  }`}
+                >
+                  {myRole}
+                </span>
+              ) : null}
+              {opponentStatus && !isRevealLocked ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/45 bg-amber-500/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-200">
+                  <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-amber-300" aria-hidden />
+                  Opp locked
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-0 grid grid-cols-3 gap-2 sm:mt-3 sm:gap-3 md:mt-5 md:gap-4">
+            {LANES.map((lane) => (
+              <button
+                key={lane}
+                onClick={() => pick(lane)}
+                disabled={!canPick}
+                aria-pressed={myPick === lane}
+                className={`group flex flex-col items-center justify-center h-14 gap-0.5 rounded-xl border px-2 sm:h-12 sm:gap-0.5 sm:rounded-2xl sm:px-3 md:h-14 md:px-4 ${getLaneButtonClass(
+                  lane,
+                  {
+                    canPick,
+                    myPick,
+                    isSuddenDeath,
+                    revealStage,
+                  }
+                )}`}
+              >
+                <span className="text-lg leading-none sm:text-xl md:text-3xl">
+                  {laneEmoji(lane)}
+                </span>
+                <span className="text-xs font-black leading-none sm:mt-0.5 sm:text-xs md:mt-1 md:text-base">
+                  {lane}{myPick === lane ? " ✓" : ""}
+                </span>
+                {myPick === lane ? (
+                  <span className="hidden sm:mt-1 sm:block sm:text-[10px] sm:font-black sm:uppercase sm:text-emerald-300">
+                    Locked
+                  </span>
+                ) : isRevealLocked ? (
+                  <span className="hidden sm:mt-1 sm:block sm:text-[10px] sm:font-bold sm:uppercase sm:text-zinc-500">
+                    Revealing
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {!matchEnded ? (
+      <section
+        className={`shrink-0 rounded-lg border p-1.5 shadow-2xl transition-all duration-300 sm:rounded-2xl sm:p-3 md:rounded-[2rem] md:p-5 ${resultStyle(
+          shownResult?.result
+        )} ${
+          revealStage === "REVEALED"
+            ? "match-result-reveal-done"
+            : revealStage === "REVEALING"
+              ? "match-result-reveal-active"
+              : ""
+        }`}
+        aria-live="polite"
+      >
+        <div className="flex flex-col gap-1 sm:gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="md:max-w-xl">
+            <p className="text-[8px] font-black uppercase tracking-[0.25em] text-white/60 sm:text-xs">
+              {shownResult?.round
+                ? `Round ${shownResult.round} · Result`
+                : "Current result"}
+            </p>
+
+            <h2
+              className={`inline-flex items-center gap-1 text-sm font-black transition-all duration-300 sm:mt-2 sm:gap-2 sm:text-3xl md:text-5xl ${resultHeadlineClass(
+                shownResult?.result,
+                revealStage
+              )}`}
+            >
+              {revealStage === "REVEALING" ? (
+                tensionCountdown !== null ? (
+                  <span
+                    key={tensionCountdown}
+                    className="p444-tension-digit tabular-nums text-white drop-shadow-[0_0_28px_rgba(56,189,248,0.45)]"
+                  >
+                    {tensionCountdown}
+                  </span>
+                ) : (
+                  <span className="text-xs uppercase tracking-[0.22em] text-cyan-200/90 sm:text-2xl md:text-3xl">
+                    Pick locked
+                  </span>
+                )
+              ) : (
+                <>
+                  {shownResult?.result ? (
+                    <span aria-hidden className="text-sm sm:text-2xl md:text-4xl">
+                      {resultEmoji(shownResult.result)}
+                    </span>
+                  ) : null}
+                  <span>{resultLabel(shownResult?.result)}</span>
+                </>
+              )}
+            </h2>
+
+            {revealStage !== "REVEALING" && shownResult?.result ? (
+              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-white/80 sm:mt-2 sm:text-sm md:text-base">
+                {resultSubheadline(shownResult.result)}
+              </p>
+            ) : null}
+
+            {revealStage !== "REVEALING" && resultFlavorMessage ? (
+              <p className="hidden text-[10px] font-medium italic text-white/65 sm:mt-2 sm:block sm:text-sm">
+                {resultFlavorMessage}
+              </p>
+            ) : null}
+
+            {shownResult?.statusMessage ? (
+              <p className="text-[9px] text-white/80 sm:mt-3 sm:text-sm">
+                {shownResult.statusMessage}
+              </p>
+            ) : null}
+
+            {revealStage === "REVEALED" && !matchEnded && shownResult?.result ? (
+              <p className="mt-1 inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/30 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.22em] text-white/85 sm:mt-4 sm:px-3 sm:py-1.5 sm:text-[11px]">
+                <span className="match-waiting-dots" aria-hidden>
+                  <span className="match-waiting-dot" />
+                  <span className="match-waiting-dot" />
+                  <span className="match-waiting-dot" />
+                </span>
+                Next round · Roles switching
+              </p>
+            ) : null}
+          </div>
+
+          <div className="grid grid-cols-2 gap-1 text-xs sm:gap-2 sm:text-xs md:gap-3">
+            <div
+              className={`min-w-0 rounded-md border bg-black/25 px-1.5 py-1 transition-all duration-300 sm:rounded-xl sm:p-2.5 ${
+                shownResult?.result === "GOAL"
+                  ? "border-emerald-300/40 shadow-[0_0_24px_rgba(52,211,153,0.18)]"
+                  : shownResult?.result === "SAVE"
+                    ? "border-sky-300/35 shadow-[0_0_24px_rgba(56,189,248,0.16)]"
+                    : shownResult?.result === "DRAW"
+                      ? "border-yellow-300/35 shadow-[0_0_22px_rgba(250,204,21,0.14)]"
+                      : "border-white/10"
+              } ${revealStage === "REVEALED" ? "scale-[1.04]" : ""}`}
+            >
+              <p className="truncate text-[8px] uppercase tracking-[0.18em] text-white/55 sm:text-xs">
+                {kickerResultLabel}
+                <span className="ml-1 text-white/40">· Kicker</span>
+              </p>
+              <p className="truncate text-xs font-black leading-tight sm:mt-1 sm:text-xl md:text-2xl">
+                {shownResult?.kickerPick
+                  ? `${laneEmoji(shownResult.kickerPick)} ${
+                      shownResult.kickerPick
+                    }`
+                  : "—"}
+              </p>
+            </div>
+
+            <div
+              className={`min-w-0 rounded-md border bg-black/25 px-1.5 py-1 transition-all duration-300 sm:rounded-xl sm:p-2.5 ${
+                shownResult?.result === "GOAL"
+                  ? "border-emerald-300/40 shadow-[0_0_24px_rgba(52,211,153,0.18)]"
+                  : shownResult?.result === "SAVE"
+                    ? "border-sky-300/35 shadow-[0_0_24px_rgba(56,189,248,0.16)]"
+                    : shownResult?.result === "DRAW"
+                      ? "border-yellow-300/35 shadow-[0_0_22px_rgba(250,204,21,0.14)]"
+                      : "border-white/10"
+              } ${revealStage === "REVEALED" ? "scale-[1.04]" : ""}`}
+            >
+              <p className="truncate text-[8px] uppercase tracking-[0.18em] text-white/55 sm:text-xs">
+                {keeperResultLabel}
+                <span className="ml-1 text-white/40">· Keeper</span>
+              </p>
+              <p className="truncate text-xs font-black leading-tight sm:mt-1 sm:text-xl md:text-2xl">
+                {shownResult?.keeperPick
+                  ? `${laneEmoji(shownResult.keeperPick)} ${
+                      shownResult.keeperPick
+                    }`
+                  : "—"}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+      ) : null}
+
+      {!matchEnded ? (
+        <div className="hidden sm:grid sm:grid-cols-2 sm:gap-1.5 sm:shrink-0">
+          <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-2 py-1.5 flex flex-col justify-center">
+            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400">
+              Prize Pool
+            </p>
+            <p className="mt-0.5 text-[10px] text-zinc-500">Coming soon</p>
+          </section>
+          <section className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-2 py-1.5 flex flex-col justify-center">
+            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400">
+              Chat
+            </p>
+            <p className="mt-0.5 text-[10px] text-zinc-500">Coming soon</p>
+          </section>
+        </div>
+      ) : null}
+
       </div>
 
       {matchAborted ? (
