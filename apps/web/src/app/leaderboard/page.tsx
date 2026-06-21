@@ -357,7 +357,7 @@ export default async function LeaderboardPage({
         }}
       >
         {/* Re-add correct padding and center the panel */}
-        <div className="relative mx-auto max-w-[520px] px-4 pt-4 md:px-6 md:pt-6">
+        <div className="relative mx-auto max-w-[520px] px-4 pt-4 md:max-w-[700px] md:px-6 md:pt-6">
 
           {/* Ambient page glow behind the panel */}
           <div
@@ -464,106 +464,97 @@ export default async function LeaderboardPage({
                     COMING SOON
                   </p>
                 </div>
-                <div
-                  className="hidden rounded-lg px-2 py-1 sm:block"
-                  style={{
-                    background: "rgba(18,20,30,0.95)",
-                    border: "1px solid rgba(70,75,100,0.55)",
-                  }}
-                >
-                  <p
-                    className="whitespace-nowrap font-semibold"
-                    style={{ fontSize: "8px", color: "#52525b" }}
-                  >
-                    Season: Coming Soon
-                  </p>
-                </div>
               </div>
             </div>
 
             {/* ══ CONTENT ══════════════════════════════════════════════ */}
             <div className="space-y-3 p-3 sm:p-4">
 
-              {/* ── FILTER PILLS ─────────────────────────────────────── */}
-              <div className="grid grid-cols-3 gap-2">
-                {(
-                  [
-                    {
-                      label: "GLOBAL",
-                      active: true,
-                      icon: (
-                        <svg viewBox="0 0 20 20" fill="currentColor" className="h-[18px] w-[18px] shrink-0">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z" clipRule="evenodd" />
-                        </svg>
-                      ),
-                    },
-                    {
-                      label: "P444",
-                      active: true,
-                      icon: (
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-[18px] w-[18px] shrink-0">
-                          <circle cx="12" cy="12" r="10" />
-                          <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
-                          <path d="M2 12h20" />
-                        </svg>
-                      ),
-                    },
-                    {
-                      label: "ALL TIME",
-                      active: false,
-                      icon: (
-                        <svg viewBox="0 0 20 20" fill="currentColor" className="h-[18px] w-[18px] shrink-0">
-                          <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
-                        </svg>
-                      ),
-                    },
-                  ] as const
-                ).map(({ label, active, icon }) => (
-                  <div
-                    key={label}
-                    className="flex cursor-default select-none items-center gap-2 rounded-xl px-2.5 py-3"
-                    style={{
-                      background: active
-                        ? "rgba(12,16,30,0.98)"
-                        : "rgba(8,10,18,0.80)",
-                      border: active
-                        ? "1px solid rgba(55,85,160,0.68)"
-                        : "1px solid rgba(45,50,75,0.40)",
-                      boxShadow: active
-                        ? "0 0 0 1px rgba(55,85,160,0.22), inset 0 1px 0 rgba(255,255,255,0.07), 0 0 16px rgba(55,85,160,0.12)"
-                        : "inset 0 1px 0 rgba(255,255,255,0.03)",
-                      opacity: active ? 1 : 0.52,
-                    }}
-                  >
-                    <span
-                      style={{
-                        color: active ? "rgba(99,140,255,0.95)" : "#52525b",
-                      }}
-                    >
-                      {icon}
-                    </span>
-                    <span
-                      className="min-w-0 flex-1 truncate font-black uppercase"
-                      style={{
-                        fontSize: "10px",
-                        letterSpacing: "0.12em",
-                        color: active ? "#f1f5f9" : "#71717a",
-                      }}
-                    >
-                      {label}
-                    </span>
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="3"
-                      className="h-2.5 w-2.5 shrink-0"
-                      style={{ color: active ? "#6b7280" : "#3f3f46" }}
-                    >
-                      <path d="m6 9 6 6 6-6" />
-                    </svg>
+              {/* ── FILTER CHIPS ─────────────────────────────────────── */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Region chip */}
+                <div
+                  className="flex items-center gap-2 rounded-xl px-3 py-2"
+                  style={{
+                    background: "rgba(12,16,30,0.98)",
+                    border: "1px solid rgba(55,85,160,0.55)",
+                    boxShadow: "0 0 0 1px rgba(55,85,160,0.18), inset 0 1px 0 rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0" style={{ color: "rgba(99,140,255,0.90)" }}>
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z" clipRule="evenodd" />
+                  </svg>
+                  <div>
+                    <p className="font-black uppercase leading-none" style={{ fontSize: "7px", color: "#71717a", letterSpacing: "0.15em" }}>REGION</p>
+                    <p className="font-bold leading-tight" style={{ fontSize: "11px", color: "#f1f5f9", marginTop: "2px" }}>Global</p>
                   </div>
-                ))}
+                </div>
+
+                {/* Game chip */}
+                <div
+                  className="flex items-center gap-2 rounded-xl px-3 py-2"
+                  style={{
+                    background: "rgba(12,16,30,0.98)",
+                    border: "1px solid rgba(55,85,160,0.55)",
+                    boxShadow: "0 0 0 1px rgba(55,85,160,0.18), inset 0 1px 0 rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4 shrink-0" style={{ color: "rgba(99,140,255,0.90)" }}>
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+                    <path d="M2 12h20" />
+                  </svg>
+                  <div>
+                    <p className="font-black uppercase leading-none" style={{ fontSize: "7px", color: "#71717a", letterSpacing: "0.15em" }}>GAME</p>
+                    <p className="font-bold leading-tight" style={{ fontSize: "11px", color: "#f1f5f9", marginTop: "2px" }}>Penalty444</p>
+                  </div>
+                </div>
+
+                {/* Divider */}
+                <div className="mx-0.5 h-8 w-px shrink-0" style={{ background: "rgba(55,65,100,0.45)" }} />
+
+                {/* Period: All Time (active) */}
+                <div
+                  className="flex cursor-default select-none items-center gap-2 rounded-xl px-3 py-2"
+                  style={{
+                    background: "rgba(12,16,30,0.98)",
+                    border: "1px solid rgba(55,85,160,0.68)",
+                    boxShadow: "0 0 0 1px rgba(55,85,160,0.22), inset 0 1px 0 rgba(255,255,255,0.07), 0 0 16px rgba(55,85,160,0.12)",
+                  }}
+                >
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0" style={{ color: "rgba(99,140,255,0.90)" }}>
+                    <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
+                  </svg>
+                  <div>
+                    <p className="font-black uppercase leading-none" style={{ fontSize: "7px", color: "#71717a", letterSpacing: "0.15em" }}>PERIOD</p>
+                    <p className="font-bold leading-tight" style={{ fontSize: "11px", color: "#f1f5f9", marginTop: "2px" }}>All Time</p>
+                  </div>
+                  <div className="ml-0.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "rgba(99,140,255,0.90)" }} />
+                </div>
+
+                {/* Period: Season (disabled — not yet available) */}
+                <div
+                  className="flex cursor-not-allowed select-none items-center gap-2 rounded-xl px-3 py-2"
+                  style={{
+                    background: "rgba(8,10,18,0.70)",
+                    border: "1px solid rgba(45,50,75,0.35)",
+                    opacity: 0.6,
+                  }}
+                >
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0" style={{ color: "#52525b" }}>
+                    <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
+                  </svg>
+                  <div>
+                    <p className="font-black uppercase leading-none" style={{ fontSize: "7px", color: "#52525b", letterSpacing: "0.15em" }}>PERIOD</p>
+                    <p className="font-bold leading-tight" style={{ fontSize: "11px", color: "#71717a", marginTop: "2px" }}>Season</p>
+                  </div>
+                  <span
+                    className="ml-0.5 rounded px-1 font-black uppercase"
+                    style={{ fontSize: "6px", letterSpacing: "0.12em", background: "rgba(40,45,70,0.80)", color: "#52525b" }}
+                  >
+                    SOON
+                  </span>
+                </div>
               </div>
 
               {/* ── ERROR ────────────────────────────────────────────── */}
@@ -1140,8 +1131,8 @@ export default async function LeaderboardPage({
             </div>
           </section>
 
-          {/* Bottom spacer so content isn't hidden behind nav */}
-          <div className="h-4 md:h-6" />
+          {/* Bottom spacer — tall enough to clear the fixed YourRankBar on mobile */}
+          <div className="h-32 sm:h-24" />
         </div>
       </div>
 
