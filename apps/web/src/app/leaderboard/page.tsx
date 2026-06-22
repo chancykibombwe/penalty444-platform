@@ -1040,8 +1040,7 @@ export default async function LeaderboardPage({
                           More ranked players will appear here.
                         </p>
                         <p style={{ fontSize: "11px", color: "#3f3f46", marginTop: "4px" }}>
-                          Complete {UNRANKED_MATCHES_THRESHOLD} matches to
-                          claim your rank.
+                          {UNRANKED_MATCHES_THRESHOLD} matches exits placement · {LEADERBOARD_QUALIFICATION_THRESHOLD} matches for official ranking.
                         </p>
                       </div>
                     ) : (
