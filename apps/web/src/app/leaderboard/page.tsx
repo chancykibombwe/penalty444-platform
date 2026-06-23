@@ -5,8 +5,9 @@ import {
   UNRANKED_MATCHES_THRESHOLD,
   type RankTier,
 } from "../../lib/player/ranks";
-import { LEADERBOARD_QUALIFICATION_THRESHOLD } from "./constants";
+import { LEADERBOARD_QUALIFICATION_THRESHOLD, type RankBy } from "./constants";
 import YourRankBar from "./YourRankBar";
+import RankBySelect from "./RankBySelect";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
@@ -14,8 +15,6 @@ const supabase = createClient(
 );
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type RankBy = "rating" | "win_rate";
 
 type PlayerStatsRow = {
   user_id: string;
@@ -605,73 +604,12 @@ export default async function LeaderboardPage({
                 {/* Divider */}
                 <div className="mx-0.5 h-8 w-px shrink-0" style={{ background: "rgba(55,65,100,0.45)" }} />
 
-                {/* RANK BY: Rating (active by default) */}
-                <Link
-                  href={ratingHref}
-                  className="flex select-none items-center gap-2 rounded-xl px-3 py-2 transition hover:opacity-80"
-                  style={{
-                    background: rankBy === "rating" ? "rgba(12,16,30,0.98)" : "rgba(8,10,18,0.80)",
-                    border: rankBy === "rating" ? "1px solid rgba(55,85,160,0.68)" : "1px solid rgba(45,50,75,0.40)",
-                    boxShadow: rankBy === "rating" ? "0 0 0 1px rgba(55,85,160,0.22), inset 0 1px 0 rgba(255,255,255,0.07), 0 0 16px rgba(55,85,160,0.12)" : "inset 0 1px 0 rgba(255,255,255,0.03)",
-                  }}
-                >
-                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0" style={{ color: rankBy === "rating" ? "rgba(99,140,255,0.90)" : "#52525b" }}>
-                    <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zm6-4a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zm6-3a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
-                  </svg>
-                  <div>
-                    <p className="font-black uppercase leading-none" style={{ fontSize: "7px", color: rankBy === "rating" ? "#71717a" : "#52525b", letterSpacing: "0.15em" }}>RANK BY</p>
-                    <p className="font-bold leading-tight" style={{ fontSize: "11px", color: rankBy === "rating" ? "#f1f5f9" : "#71717a", marginTop: "2px" }}>Rating</p>
-                  </div>
-                  {rankBy === "rating" && (
-                    <div className="ml-0.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "rgba(99,140,255,0.90)" }} />
-                  )}
-                </Link>
-
-                {/* RANK BY: Win Rate */}
-                <Link
-                  href={winRateHref}
-                  className="flex select-none items-center gap-2 rounded-xl px-3 py-2 transition hover:opacity-80"
-                  style={{
-                    background: rankBy === "win_rate" ? "rgba(12,16,30,0.98)" : "rgba(8,10,18,0.80)",
-                    border: rankBy === "win_rate" ? "1px solid rgba(55,85,160,0.68)" : "1px solid rgba(45,50,75,0.40)",
-                    boxShadow: rankBy === "win_rate" ? "0 0 0 1px rgba(55,85,160,0.22), inset 0 1px 0 rgba(255,255,255,0.07), 0 0 16px rgba(55,85,160,0.12)" : "inset 0 1px 0 rgba(255,255,255,0.03)",
-                  }}
-                >
-                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0" style={{ color: rankBy === "win_rate" ? "rgba(99,140,255,0.90)" : "#52525b" }}>
-                    <path fillRule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z" clipRule="evenodd" />
-                  </svg>
-                  <div>
-                    <p className="font-black uppercase leading-none" style={{ fontSize: "7px", color: rankBy === "win_rate" ? "#71717a" : "#52525b", letterSpacing: "0.15em" }}>RANK BY</p>
-                    <p className="font-bold leading-tight" style={{ fontSize: "11px", color: rankBy === "win_rate" ? "#f1f5f9" : "#71717a", marginTop: "2px" }}>Win Rate</p>
-                  </div>
-                  {rankBy === "win_rate" && (
-                    <div className="ml-0.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "rgba(99,140,255,0.90)" }} />
-                  )}
-                </Link>
-
-                {/* RANK BY: Tournament Wins (disabled — not yet available) */}
-                <div
-                  className="flex cursor-not-allowed select-none items-center gap-2 rounded-xl px-3 py-2"
-                  style={{
-                    background: "rgba(8,10,18,0.70)",
-                    border: "1px solid rgba(45,50,75,0.35)",
-                    opacity: 0.6,
-                  }}
-                >
-                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0" style={{ color: "#52525b" }}>
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                  <div>
-                    <p className="font-black uppercase leading-none" style={{ fontSize: "7px", color: "#52525b", letterSpacing: "0.15em" }}>RANK BY</p>
-                    <p className="font-bold leading-tight" style={{ fontSize: "11px", color: "#71717a", marginTop: "2px" }}>Tournament Wins</p>
-                  </div>
-                  <span
-                    className="ml-0.5 rounded px-1 font-black uppercase"
-                    style={{ fontSize: "6px", letterSpacing: "0.12em", background: "rgba(40,45,70,0.80)", color: "#52525b" }}
-                  >
-                    SOON
-                  </span>
-                </div>
+                {/* RANK BY — single dropdown chip */}
+                <RankBySelect
+                  value={rankBy}
+                  ratingHref={ratingHref}
+                  winRateHref={winRateHref}
+                />
               </div>
 
               {/* ── ERROR ────────────────────────────────────────────── */}
