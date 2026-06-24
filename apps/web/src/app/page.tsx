@@ -38,8 +38,8 @@ const NEWS_ITEMS = [
   {
     id: "beta-launch",
     tag: "Beta Update",
-    title: "Public Free Play Beta is Live",
-    body: "Penalty444 is now open to everyone. No entry fees, no real money — pure skill-based competition.",
+    title: "Free Play Beta is Live",
+    body: "Penalty444 is available in free-play beta. No entry fees, no real money — pure skill-based competition.",
     date: "Jun 2026",
   },
   {

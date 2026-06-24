@@ -17,7 +17,7 @@ const SECTIONS = [
       },
       {
         q: "How does scoring work?",
-        a: "Players alternate between kicker and keeper each round. Score 3 rounds first to win.",
+        a: "Players alternate between kicker and keeper. The kicker scores if the keeper chooses a different lane; the keeper saves if both choose the same lane. If normal rounds end tied, the match goes to sudden death.",
       },
       {
         q: "What is the rating system?",
