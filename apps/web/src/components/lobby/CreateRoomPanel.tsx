@@ -28,7 +28,12 @@ export default function CreateRoomPanel({
   const [cancelling, setCancelling] = useState(false);
   const [hostUsername, setHostUsername] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [canShare, setCanShare] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    setCanShare(typeof navigator !== "undefined" && "share" in navigator);
+  }, []);
 
   // Listen for server confirmation that the private room was cancelled.
   // ActiveMatchRecovery already handles room:created → saveActiveMatch, so we
@@ -199,7 +204,7 @@ export default function CreateRoomPanel({
   }
 
   function shareRoomCode() {
-    if (!waitingRoom) return;
+    if (!waitingRoom || typeof navigator === "undefined" || !("share" in navigator)) return;
     void navigator.share({
       title: "Join my Penalty444 room",
       text: `Room code: ${waitingRoom.roomCode} — join me on 444 Arena!`,
@@ -248,7 +253,7 @@ export default function CreateRoomPanel({
             >
               {copied ? "Copied!" : "Copy Code"}
             </button>
-            {typeof navigator !== "undefined" && "share" in navigator ? (
+            {canShare ? (
               <button
                 type="button"
                 onClick={shareRoomCode}
