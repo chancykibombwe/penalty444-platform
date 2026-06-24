@@ -83,7 +83,7 @@ export default function RankedMatchmakingPanel() {
           saveActiveMatch(code, identity.playerId);
         }
       });
-      setStatus("Opponent found. Entering arena…");
+      setStatus("Opponent found. Preparing match…");
       router.push(`/match/${code}`);
     }
 
@@ -259,12 +259,11 @@ export default function RankedMatchmakingPanel() {
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 animate-pulse rounded-full bg-[#3B9EFF]" />
                 <p className="text-sm font-black text-[#9AD2FF]">
-                  Searching for a ranked opponent…
+                  Searching for opponent…
                 </p>
               </div>
               <p className="mt-1 text-xs text-[#9AD2FF]/70">
-                Stay on this page. You will enter the arena automatically when a
-                match is found.
+                Stay on this page. When an opponent is found, the match starts automatically.
               </p>
             </div>
           ) : null}
