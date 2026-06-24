@@ -8,6 +8,7 @@ import RankedMatchmakingPanel from "../../components/lobby/RankedMatchmakingPane
 import CreateRoomPanel from "../../components/lobby/CreateRoomPanel";
 import JoinRoomPanel from "../../components/lobby/JoinRoomPanel";
 import LobbyChatPanel from "../../components/lobby/LobbyChatPanel";
+import LobbyStatusStrip from "../../components/lobby/LobbyStatusStrip";
 import { LobbyConnectionProvider } from "../../lib/socket/LobbyConnectionProvider";
 import EmptyState from "../../components/ui/EmptyState";
 
@@ -55,6 +56,8 @@ function LobbyPageContent() {
                 challenge.
               </p>
             </div>
+
+            <LobbyStatusStrip />
 
             {/* Challenge context banner */}
             {hasChallengeContext ? (

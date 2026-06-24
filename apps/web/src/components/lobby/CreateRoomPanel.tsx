@@ -26,6 +26,8 @@ export default function CreateRoomPanel({
   const [status, setStatus] = useState<string | null>(null);
   const [waitingRoom, setWaitingRoom] = useState<WaitingRoom | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [hostUsername, setHostUsername] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const router = useRouter();
 
   // Listen for server confirmation that the private room was cancelled.
@@ -73,6 +75,7 @@ export default function CreateRoomPanel({
       return;
     }
 
+    setHostUsername(identity.username ?? null);
     const selectedRounds = rounds;
 
     const onCreated = (payload: { roomCode: string }) => {
@@ -189,13 +192,25 @@ export default function CreateRoomPanel({
 
   function copyRoomCode() {
     if (!waitingRoom) return;
-    void navigator.clipboard.writeText(waitingRoom.roomCode);
+    void navigator.clipboard.writeText(waitingRoom.roomCode).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  function shareRoomCode() {
+    if (!waitingRoom) return;
+    void navigator.share({
+      title: "Join my Penalty444 room",
+      text: `Room code: ${waitingRoom.roomCode} — join me on 444 Arena!`,
+    });
   }
 
   // ── Waiting state — room created, host stays in lobby ──────────────────
   if (waitingRoom) {
     return (
       <div className="col-span-2 space-y-2 overflow-hidden rounded-2xl border border-[#8B5CF6]/30 bg-[#0D1420] p-2 shadow-[0_0_28px_rgba(139,92,246,0.16)] sm:space-y-3 sm:p-3.5">
+        {/* Header */}
         <div>
           <div className="flex items-center gap-2 sm:block">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[#8B5CF6]/15 ring-1 ring-[#8B5CF6]/30 sm:mb-1.5">
@@ -212,10 +227,11 @@ export default function CreateRoomPanel({
             <h2 className="text-base font-black text-white sm:mt-0.5">Room Created</h2>
           </div>
           <p className="hidden text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:block">
-            Private Room
+            Private Room · Waiting for opponent
           </p>
         </div>
 
+        {/* Room code */}
         <div className="rounded-xl border border-[#8B5CF6]/25 bg-[#8B5CF6]/10 px-3 py-3">
           <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#C4B5FD]/70">
             Room Code
@@ -227,29 +243,87 @@ export default function CreateRoomPanel({
             <button
               type="button"
               onClick={copyRoomCode}
-              className="rounded-lg border border-zinc-700 px-2 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 transition hover:border-[#8B5CF6]/40 hover:text-zinc-200"
+              className="rounded-lg border border-zinc-700 px-2 py-1 text-[10px] font-black uppercase tracking-[0.2em] transition hover:border-[#8B5CF6]/40"
+              style={{ color: copied ? "#86efac" : undefined }}
             >
-              Copy
+              {copied ? "Copied!" : "Copy Code"}
             </button>
+            {typeof navigator !== "undefined" && "share" in navigator ? (
+              <button
+                type="button"
+                onClick={shareRoomCode}
+                className="rounded-lg border border-zinc-700 px-2 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 transition hover:border-[#8B5CF6]/40 hover:text-zinc-200"
+              >
+                Share
+              </button>
+            ) : null}
           </div>
-          <p className="mt-2 text-xs text-zinc-500">
-            {waitingRoom.rounds} rounds · Free
+          <p className="mt-2 text-[11px] text-zinc-500">
+            {waitingRoom.rounds} rounds · Free Play Beta
           </p>
         </div>
 
+        {/* Player slots */}
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-500">
+            Players
+          </p>
+          {/* Host slot */}
+          <div
+            className="flex items-center justify-between gap-2 rounded-xl px-3 py-2"
+            style={{
+              background: "rgba(139,92,246,0.08)",
+              border: "1px solid rgba(139,92,246,0.20)",
+            }}
+          >
+            <div className="min-w-0">
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#C4B5FD]/55">
+                Player 1 · Host
+              </p>
+              <p className="mt-0.5 truncate text-[12px] font-bold text-white">
+                {hostUsername ?? "You"}
+              </p>
+            </div>
+            <span className="flex shrink-0 items-center gap-1.5 text-[10px] font-bold text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
+              Joined
+            </span>
+          </div>
+          {/* Guest slot */}
+          <div
+            className="flex items-center justify-between gap-2 rounded-xl px-3 py-2"
+            style={{
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.07)",
+            }}
+          >
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600">
+                Player 2 · Guest
+              </p>
+              <p className="mt-0.5 text-[12px] text-zinc-500">
+                Waiting for opponent…
+              </p>
+            </div>
+            <span className="flex shrink-0 items-center gap-1.5 text-[10px] text-zinc-600">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-600" aria-hidden />
+              Waiting
+            </span>
+          </div>
+        </div>
+
+        {/* Waiting indicator */}
         <div className="flex items-center gap-2">
           <span
             className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#8B5CF6]"
             aria-hidden
           />
-          <p className="text-sm text-zinc-400">Waiting for opponent to join…</p>
+          <p className="text-[12px] text-zinc-400">
+            Waiting for opponent to join… Share your room code above.
+          </p>
         </div>
 
-        <p className="text-xs text-zinc-500">
-          Share the room code above. You&apos;ll get a notification when your
-          opponent joins.
-        </p>
-
+        {/* Actions */}
         <div className="flex gap-2">
           <GradientButton
             variant="purple"
@@ -269,7 +343,7 @@ export default function CreateRoomPanel({
         </div>
 
         {status ? (
-          <p className="text-sm text-amber-200/90" role="status" aria-live="polite">
+          <p className="text-[12px] text-amber-200/90" role="status" aria-live="polite">
             {status}
           </p>
         ) : null}
