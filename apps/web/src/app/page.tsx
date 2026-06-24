@@ -34,6 +34,37 @@ import {
   type ActiveTournament,
 } from "../lib/tournament/activeTournament";
 
+const NEWS_ITEMS = [
+  {
+    id: "beta-launch",
+    tag: "Beta Update",
+    title: "Public Free Play Beta is Live",
+    body: "Penalty444 is now open to everyone. No entry fees, no real money — pure skill-based competition.",
+    date: "Jun 2026",
+  },
+  {
+    id: "tournaments-testing",
+    tag: "Feature",
+    title: "Tournament Testing Underway",
+    body: "Free-entry single-elimination brackets are being tested. Join one from the Tournaments page.",
+    date: "Jun 2026",
+  },
+  {
+    id: "wallet-coming",
+    tag: "Coming Soon",
+    title: "Wallet & Prizes — Future Feature",
+    body: "Prize pools and wallet functionality are planned for a future release. Not available in beta.",
+    date: "Upcoming",
+  },
+  {
+    id: "help-center",
+    tag: "Support",
+    title: "Help Center Now Available",
+    body: "Find answers to common questions, report issues, and learn the fair play rules in our Help Center.",
+    date: "Jun 2026",
+  },
+] as const;
+
 const HOW_IT_WORKS = [
   {
     step: "01",
@@ -111,6 +142,7 @@ export default function HomePage() {
   const [activeTournament, setActiveTournament] =
     useState<ActiveTournament | null>(null);
   const [playerStats, setPlayerStats] = useState<CompetitiveStats | null>(null);
+  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
 
   function refreshActiveMatch() {
     setActiveMatch(getActiveMatch());
@@ -320,30 +352,99 @@ export default function HomePage() {
       </section>
 
       <section aria-label="How the beta works">
-        <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setHowItWorksOpen((v) => !v)}
+          className="flex w-full items-center gap-2 text-left"
+          aria-expanded={howItWorksOpen}
+        >
           <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-500 sm:text-[10px] sm:tracking-[0.28em]">
             How It Works
           </p>
           <span className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-cyan-300/80">
             Free Play Beta
           </span>
-        </div>
-        <ol className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {HOW_IT_WORKS.map((item) => (
-            <li
-              key={item.step}
-              className="rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2.5"
+          <svg
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className="ml-auto h-3 w-3 shrink-0 text-zinc-500 transition-transform"
+            style={{ transform: howItWorksOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+          >
+            <path
+              fillRule="evenodd"
+              d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </button>
+        {howItWorksOpen && (
+          <ol className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {HOW_IT_WORKS.map((item) => (
+              <li
+                key={item.step}
+                className="rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2.5"
+              >
+                <span className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-600">
+                  {item.step}
+                </span>
+                <p className="mt-1 text-sm font-black text-white">{item.label}</p>
+                <p className="mt-0.5 text-[11px] leading-snug text-zinc-400">
+                  {item.detail}
+                </p>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+
+      <section aria-label="Need Help?">
+        <div
+          className="rounded-2xl px-4 py-4"
+          style={{
+            background: "rgba(10,14,26,0.95)",
+            border: "1px solid rgba(55,85,160,0.35)",
+          }}
+        >
+          <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-500 sm:text-[10px] sm:tracking-[0.28em]">
+            Support
+          </p>
+          <p className="mt-1 text-sm font-black text-white">Need Help?</p>
+          <p className="mt-0.5 text-[11px] leading-snug text-zinc-400">
+            Browse the Help Center, report a bug, or reach out directly.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link
+              href="/support"
+              className="rounded-lg px-3 py-1.5 text-[11px] font-bold text-white"
+              style={{
+                background: "rgba(55,85,160,0.28)",
+                border: "1px solid rgba(55,85,160,0.50)",
+              }}
             >
-              <span className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-600">
-                {item.step}
-              </span>
-              <p className="mt-1 text-sm font-black text-white">{item.label}</p>
-              <p className="mt-0.5 text-[11px] leading-snug text-zinc-400">
-                {item.detail}
-              </p>
-            </li>
-          ))}
-        </ol>
+              View Help Center
+            </Link>
+            <Link
+              href="/support#report"
+              className="rounded-lg px-3 py-1.5 text-[11px] font-bold text-zinc-300"
+              style={{
+                background: "rgba(255,255,255,0.05)",
+                border: "1px solid rgba(255,255,255,0.10)",
+              }}
+            >
+              Report a Problem
+            </Link>
+            <Link
+              href="/support#contact"
+              className="rounded-lg px-3 py-1.5 text-[11px] font-bold text-zinc-300"
+              style={{
+                background: "rgba(255,255,255,0.05)",
+                border: "1px solid rgba(255,255,255,0.10)",
+              }}
+            >
+              Contact Support
+            </Link>
+          </div>
+        </div>
       </section>
 
       <section aria-label="Games on 444 Arena">
@@ -385,6 +486,52 @@ export default function HomePage() {
       <PlayerMomentsStrip />
 
       <GlobalActivityFeed seeMoreHref="/tournaments" />
+
+      <section aria-label="News and Announcements">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-500 sm:text-[10px] sm:tracking-[0.28em]">
+            News &amp; Announcements
+          </p>
+          <Link
+            href="/news"
+            className="text-[11px] font-bold uppercase tracking-wider text-cyan-300/85 hover:text-cyan-200"
+          >
+            See all →
+          </Link>
+        </div>
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {NEWS_ITEMS.slice(0, 4).map((item) => (
+            <div
+              key={item.id}
+              className="rounded-xl px-3 py-2.5"
+              style={{
+                background: "rgba(10,14,26,0.90)",
+                border: "1px solid rgba(255,255,255,0.07)",
+              }}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className="rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.18em]"
+                  style={{
+                    background: "rgba(55,85,160,0.20)",
+                    border: "1px solid rgba(55,85,160,0.35)",
+                    color: "rgba(148,163,255,0.90)",
+                  }}
+                >
+                  {item.tag}
+                </span>
+                <span className="text-[9px] text-zinc-600">{item.date}</span>
+              </div>
+              <p className="mt-1.5 text-[12px] font-black leading-snug text-white">
+                {item.title}
+              </p>
+              <p className="mt-0.5 text-[11px] leading-snug text-zinc-400">
+                {item.body}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <footer className="rounded-2xl border border-[#1B2433] bg-[#0D1420]/60 px-4 py-3 text-center text-[11px] text-zinc-500 sm:px-5">
         444 Arena · Competitive multiplayer · Skill over luck
