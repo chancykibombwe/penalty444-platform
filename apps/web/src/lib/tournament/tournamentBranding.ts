@@ -148,9 +148,9 @@ export function getTournamentStateBadge(
       };
     case "registration":
       return {
-        label: "Open for Registration",
-        className: "border-emerald-500/45 bg-emerald-950/35 text-emerald-100",
-        pulse: false,
+        label: "Open · Free Entry",
+        className: "border-emerald-500/45 bg-emerald-950/35 text-emerald-100 shadow-[0_0_14px_rgba(52,211,153,0.16)]",
+        pulse: true,
       };
     default:
       return {

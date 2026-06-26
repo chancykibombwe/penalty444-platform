@@ -176,8 +176,12 @@ export default function CreateTournamentPanel({
           Host a Tournament
         </h2>
         <p className="mt-2 text-zinc-400">
-          Create a scheduled knockout event. Free entry, single elimination —
-          your bracket goes live the moment you start it.
+          Create a free knockout tournament. Single elimination — your bracket
+          goes live the moment you start it.
+        </p>
+        <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-950/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-200">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
+          Free Entry · No cash prizes in beta
         </p>
       </div>
 
@@ -190,7 +194,7 @@ export default function CreateTournamentPanel({
             onChange={(event) => setName(event.target.value)}
             maxLength={80}
             placeholder="Friday Night Cup"
-            className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-amber-500/60"
+            className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none [color-scheme:dark] transition-colors focus:border-amber-500/60 focus-visible:ring-2 focus-visible:ring-amber-500/40 disabled:opacity-50"
             disabled={creating}
           />
         </label>
@@ -200,7 +204,7 @@ export default function CreateTournamentPanel({
           <select
             value={maxPlayers}
             onChange={(event) => setMaxPlayers(Number(event.target.value))}
-            className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-amber-500/60"
+            className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none [color-scheme:dark] transition-colors focus:border-amber-500/60 focus-visible:ring-2 focus-visible:ring-amber-500/40 disabled:opacity-50"
             disabled={creating}
           >
             {MAX_PLAYER_OPTIONS.map((value) => (
@@ -223,18 +227,18 @@ export default function CreateTournamentPanel({
             onChange={(event) =>
               setRoundsPerMatch(Math.max(1, Number(event.target.value) || 3))
             }
-            className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-amber-500/60"
+            className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none [color-scheme:dark] transition-colors focus:border-amber-500/60 focus-visible:ring-2 focus-visible:ring-amber-500/40 disabled:opacity-50"
             disabled={creating}
           />
         </label>
 
         <label className="block md:col-span-2">
-          <span className="text-sm font-semibold text-zinc-300">Starts at</span>
+          <span className="text-sm font-semibold text-zinc-300">Scheduled start</span>
           <input
             type="datetime-local"
             value={startsAt}
             onChange={(event) => setStartsAt(event.target.value)}
-            className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none focus:border-amber-500/60"
+            className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-white outline-none [color-scheme:dark] transition-colors focus:border-amber-500/60 focus-visible:ring-2 focus-visible:ring-amber-500/40 disabled:opacity-50"
             disabled={creating}
           />
           <div className="mt-2 flex flex-wrap gap-2">
@@ -248,18 +252,21 @@ export default function CreateTournamentPanel({
             </button>
           </div>
           <span className="mt-1 block text-xs text-zinc-500">
-            Optional. Stored as UTC ISO; picker uses your local timezone.
+            Optional. Uses your local time zone. Leave blank to start manually.
           </span>
         </label>
 
-        <div className="md:col-span-2">
+        <div className="space-y-2 md:col-span-2">
           <button
             type="submit"
             disabled={creating}
-            className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-5 py-3.5 font-bold text-zinc-950 shadow-lg shadow-amber-900/40 disabled:opacity-50"
+            className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-5 py-3.5 font-bold text-zinc-950 shadow-lg shadow-amber-900/40 transition-all hover:from-amber-400 hover:to-orange-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:opacity-50"
           >
-            {creating ? "Creating…" : "Create Tournament"}
+            {creating ? "Creating…" : "Host Free Tournament"}
           </button>
+          <p className="text-[11px] text-zinc-500">
+            Free Entry · No deposits · No cash prizes
+          </p>
         </div>
       </form>
 

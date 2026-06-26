@@ -329,36 +329,36 @@ function getEmptyCopy(filter: TournamentListFilter): EmptyCopy {
     case "live":
       return {
         tone: "live",
-        eyebrow: "Live arena",
-        headline: "No live events right now — upcoming battles are loading.",
-        subtext: "Check Upcoming or host one — the arena never sleeps for long.",
+        eyebrow: "Live events",
+        headline: "No tournaments in progress",
+        subtext: "Check Upcoming or host one below.",
       };
     case "upcoming":
       return {
         tone: "upcoming",
-        eyebrow: "Lobby",
-        headline: "Preparing the next arena…",
-        subtext: "Waiting for challengers — be the first to host or join.",
+        eyebrow: "Open registration",
+        headline: "No open tournaments right now",
+        subtext: "Host a free tournament below to get started.",
       };
     case "completed":
       return {
         tone: "completed",
-        eyebrow: "Hall of champions",
-        headline: "First champion incoming.",
-        subtext: "Finish a bracket and the trophy lands here.",
+        eyebrow: "Past events",
+        headline: "No completed tournaments yet",
+        subtext: "Finish a bracket and it will appear here.",
       };
     case "my":
       return {
         tone: "mine",
         eyebrow: "Your roster",
-        headline: "Join your first tournament.",
-        subtext: "Pick one from Upcoming or Live — your roster fills as you compete.",
+        headline: "You haven't joined a tournament yet",
+        subtext: "Browse Upcoming or host one below to get started.",
       };
     default:
       return {
         tone: "neutral",
         eyebrow: "Events",
-        headline: "Preparing the next arena…",
+        headline: "No tournaments found",
         subtext: "",
       };
   }
@@ -869,8 +869,8 @@ export default function TournamentListPanel({
         <TournamentEmptyState
           tone="neutral"
           eyebrow="Loading"
-          headline="Preparing the next arena…"
-          subtext="Fetching live events."
+          headline="Loading tournaments…"
+          subtext="Checking for live and upcoming events."
         />
       ) : filteredTournaments.length === 0 ? (
         <TournamentEmptyState
@@ -964,6 +964,11 @@ export default function TournamentListPanel({
                       <span className="inline-flex items-center rounded-md border border-zinc-700 bg-zinc-900/70 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-zinc-300">
                         {tier.capacityLabel}
                       </span>
+                      {normalizeTournamentStatus(tournament.status) === "registration" ? (
+                        <span className="inline-flex items-center rounded-md border border-emerald-500/40 bg-emerald-950/30 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-emerald-200">
+                          Free Entry
+                        </span>
+                      ) : null}
                       {isHost ? (
                         <span className="inline-flex items-center rounded-md border border-amber-500/50 bg-amber-950/40 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-200">
                           Host: You
