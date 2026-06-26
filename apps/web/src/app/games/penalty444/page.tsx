@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import LoggedOutCta from "../../../components/auth/LoggedOutCta";
 
 export const metadata: Metadata = {
   title: "How to Play Penalty444 — 444 ARENA",
@@ -43,6 +44,9 @@ export default function Penalty444GamePage() {
           Back Home
         </Link>
       </div>
+
+      {/* Auth guidance for logged-out visitors (hidden once signed in). */}
+      <LoggedOutCta variant="card" />
 
       {/* How it works */}
       <section className="space-y-4">

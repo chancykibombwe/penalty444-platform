@@ -8,6 +8,7 @@ import GameCard, {
 } from "../components/home/GameCard";
 import HeroBanner from "../components/home/HeroBanner";
 import HomeShared from "../components/home/HomeShared";
+import LoggedOutCta from "../components/auth/LoggedOutCta";
 import HomeTournamentPreview from "../components/home/HomeTournamentPreview";
 import PlayerStatsStrip from "../components/home/PlayerStatsStrip";
 import FeaturedLiveMatches from "../components/live/FeaturedLiveMatches";
@@ -305,6 +306,10 @@ export default function HomePage() {
 
       {/* ── 1. HERO ── */}
       <HeroBanner primaryHref="/lobby" secondaryHref="/tournaments" />
+
+      {/* Auth entry points for logged-out visitors (renders nothing once
+          signed in, so the logged-in home stays uncluttered). */}
+      <LoggedOutCta variant="hero" className="-mt-2" />
 
       {/* ── 2. CONTINUE PLAYING (conditional) ── */}
       {continueCards.length > 0 ? (
