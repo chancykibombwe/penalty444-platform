@@ -8,6 +8,7 @@ import PromotionToast from "../../components/player/PromotionToast";
 import RecentForm from "../../components/player/RecentForm";
 import TrophiesPreview from "../../components/player/TrophiesPreview";
 import WalletPanel from "../../components/account/WalletPanel";
+import BetaFeedbackPanel from "../../components/feedback/BetaFeedbackPanel";
 import RivalCard from "../../components/social/RivalCard";
 import { ViewProfileButton } from "../../components/social/SocialActions";
 import { pushNotification } from "../../components/live/NotificationBell";
@@ -530,6 +531,8 @@ export default function AccountPage() {
               description="Password, sessions, and two-factor authentication."
             />
           </div>
+
+          <BetaFeedbackPanel />
 
           <div className="pt-1">
             <button
