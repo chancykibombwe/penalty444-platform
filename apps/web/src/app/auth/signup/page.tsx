@@ -61,7 +61,7 @@ export default function SignupPage() {
     <section className="mx-auto max-w-md rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
       <h1 className="text-2xl font-bold text-white">Sign Up</h1>
       <p className="mt-2 text-sm text-zinc-400">
-        Create your Penalty444 account.
+        Create a free account to play Penalty444 and save your stats.
       </p>
 
       <form onSubmit={handleSignup} className="mt-6 space-y-4">

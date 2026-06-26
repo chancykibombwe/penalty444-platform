@@ -72,7 +72,7 @@ export default function LoginPage() {
     <section className="mx-auto max-w-md rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
       <h1 className="text-2xl font-bold text-white">Login</h1>
       <p className="mt-2 text-sm text-zinc-400">
-        Login to access live multiplayer.
+        Log in or create a free account to play Penalty444.
       </p>
 
       <form onSubmit={handleLogin} className="mt-6 space-y-4">

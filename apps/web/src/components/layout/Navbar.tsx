@@ -112,6 +112,10 @@ export default function Navbar() {
   const pathname = usePathname();
   const [activeRoomCode, setActiveRoomCode] = useState<string | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
+  // Tracks whether the first session check has resolved. Logged-out auth
+  // buttons only render once this is true, so signed-in users never see a
+  // flash of "Log In / Create Account".
+  const [authChecked, setAuthChecked] = useState(false);
   const [accountLabel, setAccountLabel] = useState("Account");
 
   async function refreshAuthState() {
@@ -122,10 +126,12 @@ export default function Navbar() {
     if (!session) {
       setLoggedIn(false);
       setAccountLabel("Account");
+      setAuthChecked(true);
       return;
     }
 
     setLoggedIn(true);
+    setAuthChecked(true);
 
     const userId = session.user.id;
 
@@ -247,6 +253,22 @@ export default function Navbar() {
           {/* Right-side actions on desktop. Always shows Resume Match if active. */}
           <div className="hidden items-center gap-2 md:flex">
             <WalletPill />
+            {authChecked && !loggedIn ? (
+              <>
+                <Link
+                  href="/auth/login"
+                  className="inline-flex items-center rounded-xl border border-zinc-700 px-3 py-2 text-sm font-bold text-zinc-200 transition-colors hover:border-zinc-500 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+                >
+                  Log In
+                </Link>
+                <Link
+                  href="/auth/signup"
+                  className="inline-flex items-center rounded-xl bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] px-3 py-2 text-sm font-black text-white shadow-[0_0_18px_rgba(59,158,255,0.3)] transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/75 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+                >
+                  Create Account
+                </Link>
+              </>
+            ) : null}
             {activeRoomCode ? (
               <Link
                 href={`/match/${activeRoomCode}`}
@@ -262,9 +284,29 @@ export default function Navbar() {
             <NotificationBell />
           </div>
 
-          {/* Mobile-only compact controls: Wallet pill, Resume Match (if any) + bell */}
+          {/* Mobile-only compact controls. For confirmed logged-out users we
+              show compact Log in / Sign up entry points; the Wallet pill stays
+              for signed-in users and during the session check. Swapping (rather
+              than stacking) keeps the bar from overflowing on small screens. */}
           <div className="flex items-center gap-2 md:hidden">
-            <WalletPill />
+            {authChecked && !loggedIn ? (
+              <>
+                <Link
+                  href="/auth/login"
+                  className="inline-flex items-center rounded-lg px-2 py-1.5 text-[11px] font-bold text-zinc-300 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70"
+                >
+                  Log in
+                </Link>
+                <Link
+                  href="/auth/signup"
+                  className="inline-flex items-center rounded-lg bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] px-2.5 py-1.5 text-[11px] font-black text-white shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/75"
+                >
+                  Sign up
+                </Link>
+              </>
+            ) : (
+              <WalletPill />
+            )}
             {activeRoomCode ? (
               <Link
                 href={`/match/${activeRoomCode}`}
