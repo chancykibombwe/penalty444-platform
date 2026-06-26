@@ -130,7 +130,7 @@ export default function PublicMatchOffersPanel() {
       setCreating(false);
 
       if (!payload.offer?.roomCode) {
-        setStatus("Offer created, but room code was missing.");
+        setStatus("Challenge created, but room code was missing.");
         return;
       }
 
@@ -140,7 +140,7 @@ export default function PublicMatchOffersPanel() {
           saveActiveMatch(createdRoomCode, identity.playerId);
         }
       });
-      setStatus("Public match offer created. Waiting for opponent...");
+      setStatus("Challenge open. Waiting for an opponent…");
       router.push(`/match/${payload.offer.roomCode}`);
     }
 
@@ -191,7 +191,7 @@ export default function PublicMatchOffersPanel() {
       setCancellingOfferId(null);
       setCreating(false);
       clearActiveMatch();
-      setStatus("Public offer cancelled.");
+      setStatus("Challenge cancelled.");
       requestLatestOffers();
     }
 
@@ -261,7 +261,7 @@ export default function PublicMatchOffersPanel() {
     }
 
     setCreating(true);
-    setStatus("Creating public match offer...");
+    setStatus("Opening challenge…");
 
     // Resolve identity BEFORE arming the timeout / attaching ack
     // listeners. Doing it the other way around opens a race where the
@@ -332,7 +332,7 @@ export default function PublicMatchOffersPanel() {
     }
 
     setJoiningOfferId(offerId);
-    setStatus("Joining public match...");
+    setStatus("Joining match…");
 
     // See createOffer for the rationale: identity → listeners → timer.
     let identity: Awaited<ReturnType<typeof getCurrentPlayerIdentity>>;
@@ -393,7 +393,7 @@ export default function PublicMatchOffersPanel() {
     }
 
     setCancellingOfferId(offerId);
-    setStatus("Cancelling public offer...");
+    setStatus("Cancelling challenge…");
 
     // See createOffer for the rationale: identity → listeners → timer.
     let identity: Awaited<ReturnType<typeof getCurrentPlayerIdentity>>;
@@ -480,7 +480,7 @@ export default function PublicMatchOffersPanel() {
     }
 
     socket.emit("publicOffers:request");
-    setStatus("Refreshing public offers...");
+    setStatus("Refreshing…");
   }
 
   return (
@@ -495,186 +495,163 @@ export default function PublicMatchOffersPanel() {
         </h2>
 
         <p className="mt-1 hidden text-sm text-zinc-400 sm:block">
-          Create a visible room or join another player’s open match.
-        </p>
-
-        <p className="mt-1 text-xs text-zinc-500 sm:mt-2">
-          Realtime:{" "}
-          <span className={connected ? "text-emerald-400" : "text-red-400"}>
-            {connected ? "Connected" : "Disconnected"}
-          </span>
+          Create an open challenge or join one to play a free match.
         </p>
       </div>
 
-      <details className="group overflow-hidden rounded-2xl border border-zinc-800/60 bg-zinc-900/40">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-bold text-zinc-300 [&::-webkit-details-marker]:hidden">
-          <span>
-            Create or browse open challenges
-            {offers.length > 0 ? (
-              <span className="ml-2 rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-black text-violet-300">
-                {offers.length}
-              </span>
-            ) : null}
-          </span>
-          <span className="text-zinc-500 transition-transform group-open:rotate-180" aria-hidden>
-            ▾
-          </span>
-        </summary>
-
-        <div className="space-y-2 border-t border-zinc-800/60 p-2 sm:p-3">
-          <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3">
-            <div className="hidden sm:block">
-              <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
-                Stake
-              </label>
-              <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-1.5">
-                <span className="text-sm font-black text-emerald-300">Free</span>
-                <span className="text-xs text-zinc-600">— Paid stakes coming soon.</span>
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
-                Rounds
-              </label>
-
-              <select
-                value={rounds}
-                onChange={(event) => setRounds(Number(event.target.value))}
-                disabled={creating || Boolean(cancellingOfferId)}
-                className="w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-3 py-1.5 text-sm text-white outline-none transition-colors focus:border-zinc-500 disabled:opacity-50"
-              >
-                <option value={3}>3 rounds</option>
-                <option value={5}>5 rounds</option>
-              </select>
-            </div>
-
-            <div className="flex items-end">
-              <GradientButton
-                variant="primary"
-                onClick={createOffer}
-                disabled={creating || !connected || Boolean(cancellingOfferId)}
-                className="w-full !min-h-[36px] !px-3 !py-1.5 !text-xs"
-              >
-                {creating ? "Creating..." : "Create Public Offer"}
-              </GradientButton>
+      <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3">
+          <div className="hidden sm:block">
+            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
+              Stake
+            </label>
+            <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-1.5">
+              <span className="text-sm font-black text-emerald-300">Free</span>
+              <span className="text-xs text-zinc-600">· Paid stakes coming soon</span>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 border-t border-zinc-800/80 pt-2">
-            <button
-              type="button"
-              onClick={clearSavedMatch}
-              className="text-[10px] font-semibold text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline"
-            >
-              Clear saved match
-            </button>
+          <div>
+            <label className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">
+              Rounds
+            </label>
 
-            <button
-              type="button"
-              onClick={refreshLobby}
-              className="text-[10px] font-semibold text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline"
+            <select
+              value={rounds}
+              onChange={(event) => setRounds(Number(event.target.value))}
+              disabled={creating || Boolean(cancellingOfferId)}
+              className="w-full rounded-xl border border-zinc-700/80 bg-zinc-950 px-3 py-1.5 text-sm text-white outline-none transition-colors focus:border-zinc-500 disabled:opacity-50"
             >
-              Refresh lobby
-            </button>
+              <option value={3}>3 rounds</option>
+              <option value={5}>5 rounds</option>
+            </select>
           </div>
 
-          {status ? (
-            <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-400">
-              {status}
-            </div>
-          ) : null}
+          <div className="flex items-end">
+            <GradientButton
+              variant="primary"
+              onClick={createOffer}
+              disabled={creating || !connected || Boolean(cancellingOfferId)}
+              className="w-full !min-h-[36px] !px-3 !py-1.5 !text-xs"
+            >
+              {creating ? "Opening…" : "Open Challenge"}
+            </GradientButton>
+          </div>
+        </div>
 
-          <div className="space-y-1.5">
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
-              Open Offers
-            </p>
+        <div className="flex flex-wrap items-center gap-3 border-t border-zinc-800/80 pt-2">
+          <button
+            type="button"
+            onClick={clearSavedMatch}
+            className="text-[10px] font-semibold text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline"
+          >
+            Clear saved match
+          </button>
 
-            {offers.length === 0 ? (
-              <EmptyState
-                icon="⚔"
-                title="No public rooms right now"
-                subtitle="Live rooms appear here"
-                compact
-              />
-            ) : (
-              offers.map((offer) => {
-                const isHostWaitingOffer =
-                  myPlayerId !== null && offer.hostPlayerId === myPlayerId;
+          <button
+            type="button"
+            onClick={refreshLobby}
+            className="text-[10px] font-semibold text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline"
+          >
+            Refresh lobby
+          </button>
+        </div>
 
-                return (
-                  <div
-                    key={offer.offerId}
-                    className={`flex flex-col gap-2 rounded-2xl border border-l-2 py-2 pl-4 pr-3 sm:flex-row sm:items-center sm:justify-between ${
-                      isHostWaitingOffer
-                        ? "border-cyan-500/30 border-l-cyan-400/60 bg-cyan-950/15 shadow-[0_0_24px_rgba(34,211,238,0.06)]"
-                        : "border-zinc-800/60 border-l-violet-500/40 bg-zinc-900/40"
-                    }`}
-                  >
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-black text-white">
-                          {offer.hostUsername}
-                        </p>
-                        {isHostWaitingOffer ? (
-                          <span className="rounded-full border border-cyan-400/40 bg-cyan-950/40 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">
-                            Your offer
-                          </span>
-                        ) : null}
-                      </div>
+        {status ? (
+          <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-400">
+            {status}
+          </div>
+        ) : null}
 
-                      <p className="mt-1 text-xs text-zinc-400">
-                        Stake: {offer.stakeLabel} · Rounds: {offer.rounds}
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
+            Open Challenges
+          </p>
+
+          {offers.length === 0 ? (
+            <EmptyState
+              icon="⚔"
+              title="No open challenges"
+              subtitle="Create one above to wait for an opponent"
+              compact
+            />
+          ) : (
+            offers.map((offer) => {
+              const isHostWaitingOffer =
+                myPlayerId !== null && offer.hostPlayerId === myPlayerId;
+
+              return (
+                <div
+                  key={offer.offerId}
+                  className={`flex flex-col gap-2 rounded-2xl border border-l-2 py-2 pl-4 pr-3 sm:flex-row sm:items-center sm:justify-between ${
+                    isHostWaitingOffer
+                      ? "border-cyan-500/30 border-l-cyan-400/60 bg-cyan-950/15 shadow-[0_0_24px_rgba(34,211,238,0.06)]"
+                      : "border-zinc-800/60 border-l-violet-500/40 bg-zinc-900/40"
+                  }`}
+                >
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-black text-white">
+                        {offer.hostUsername}
                       </p>
-
-                      <p className="mt-1 text-[11px] font-mono text-zinc-600">
-                        {offer.roomCode}
-                      </p>
-
                       {isHostWaitingOffer ? (
-                        <p className="mt-2 text-xs text-cyan-200/80">
-                          Waiting for an opponent. Cancel anytime before someone
-                          joins.
-                        </p>
+                        <span className="rounded-full border border-cyan-400/40 bg-cyan-950/40 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">
+                          Your challenge
+                        </span>
                       ) : null}
                     </div>
 
+                    <p className="mt-1 text-xs text-zinc-400">
+                      Stake: {offer.stakeLabel} · Rounds: {offer.rounds}
+                    </p>
+
+                    <p className="mt-1 text-[11px] font-mono text-zinc-600">
+                      {offer.roomCode}
+                    </p>
+
                     {isHostWaitingOffer ? (
-                      <button
-                        type="button"
-                        onClick={() => cancelOffer(offer.offerId)}
-                        disabled={
-                          cancellingOfferId === offer.offerId || !connected
-                        }
-                        className="rounded-xl border border-red-500/40 bg-red-950/30 px-4 py-2.5 text-sm font-semibold text-red-100 hover:border-red-400/60 hover:bg-red-950/50 disabled:opacity-50"
-                      >
-                        {cancellingOfferId === offer.offerId
-                          ? "Cancelling..."
-                          : "Cancel Offer"}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => joinOffer(offer.offerId)}
-                        disabled={
-                          joiningOfferId === offer.offerId ||
-                          Boolean(cancellingOfferId) ||
-                          !connected
-                        }
-                        className="rounded-xl border border-zinc-700/80 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:border-zinc-500 disabled:opacity-50"
-                      >
-                        {joiningOfferId === offer.offerId
-                          ? "Joining..."
-                          : "Join Offer"}
-                      </button>
-                    )}
+                      <p className="mt-2 text-xs text-cyan-200/80">
+                        Waiting for an opponent. Cancel anytime before someone
+                        joins.
+                      </p>
+                    ) : null}
                   </div>
-                );
-              })
-            )}
-          </div>
+
+                  {isHostWaitingOffer ? (
+                    <button
+                      type="button"
+                      onClick={() => cancelOffer(offer.offerId)}
+                      disabled={
+                        cancellingOfferId === offer.offerId || !connected
+                      }
+                      className="rounded-xl border border-red-500/40 bg-red-950/30 px-4 py-2.5 text-sm font-semibold text-red-100 hover:border-red-400/60 hover:bg-red-950/50 disabled:opacity-50"
+                    >
+                      {cancellingOfferId === offer.offerId
+                        ? "Cancelling…"
+                        : "Cancel"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => joinOffer(offer.offerId)}
+                      disabled={
+                        joiningOfferId === offer.offerId ||
+                        Boolean(cancellingOfferId) ||
+                        !connected
+                      }
+                      className="rounded-xl border border-zinc-700/80 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:border-zinc-500 disabled:opacity-50"
+                    >
+                      {joiningOfferId === offer.offerId
+                        ? "Joining…"
+                        : "Join Challenge"}
+                    </button>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
-      </details>
+      </div>
     </section>
   );
 }

@@ -64,7 +64,7 @@ export default function RankedMatchmakingPanel() {
       setEnqueueing(false);
       setCancelling(false);
       setInQueue(true);
-      setStatus("Searching for a ranked opponent…");
+      setStatus("Looking for an opponent…");
     }
 
     function onRankedMatched(payload: { roomCode?: string }) {
@@ -209,16 +209,12 @@ export default function RankedMatchmakingPanel() {
               </div>
 
               <p className="hidden text-[10px] font-black uppercase tracking-[0.3em] text-[#3B9EFF]/70 sm:mt-1.5 sm:block">
-                Ranked Arena
-              </p>
-
-              <p className="hidden text-sm font-semibold text-[#9AD2FF]/70 sm:block">
-                Ranked Matchmaking
+                Free Play · Beta
               </p>
 
               <p className="hidden text-xs text-zinc-400 sm:mt-2 sm:block sm:text-sm">
-                Free Match · 3 rounds. You&apos;ll be paired with the next
-                available player.
+                Free · 3 rounds. You&apos;ll be paired with the next available
+                player.
               </p>
               <p className="mt-1 hidden text-xs text-zinc-500 sm:block">
                 Results count toward your global stats and rank.
@@ -239,7 +235,7 @@ export default function RankedMatchmakingPanel() {
               className="shrink-0 !min-h-[40px] !py-2"
             >
               <span className="sm:hidden">{enqueueing && !inQueue ? "Joining…" : "Find Match"}</span>
-              <span className="hidden sm:inline">{enqueueing && !inQueue ? "Joining…" : "Find Ranked Match"}</span>
+              <span className="hidden sm:inline">{enqueueing && !inQueue ? "Joining…" : "Find Free Match"}</span>
             </GradientButton>
           </div>
 

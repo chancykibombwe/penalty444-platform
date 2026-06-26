@@ -7,7 +7,6 @@ import PublicMatchOffersPanel from "../../components/lobby/PublicMatchOffersPane
 import RankedMatchmakingPanel from "../../components/lobby/RankedMatchmakingPanel";
 import CreateRoomPanel from "../../components/lobby/CreateRoomPanel";
 import JoinRoomPanel from "../../components/lobby/JoinRoomPanel";
-import LobbyChatPanel from "../../components/lobby/LobbyChatPanel";
 import LobbyStatusStrip from "../../components/lobby/LobbyStatusStrip";
 import { LobbyConnectionProvider } from "../../lib/socket/LobbyConnectionProvider";
 import EmptyState from "../../components/ui/EmptyState";
@@ -49,10 +48,10 @@ function LobbyPageContent() {
                 444 ARENA · Penalty444
               </p>
               <h1 className="mt-0.5 text-lg font-black tracking-tight text-white sm:text-2xl md:text-4xl">
-                Match Hub
+                Lobby
               </h1>
               <p className="mt-0.5 hidden text-xs text-zinc-400 sm:block sm:text-sm">
-                Find a ranked opponent, create a private room, or join an open
+                Find an opponent, create a private room, or join an open
                 challenge.
               </p>
             </div>
@@ -99,13 +98,6 @@ function LobbyPageContent() {
                   </div>
                 </div>
 
-                {/* Lobby chat — important, positioned between Private Rooms and Play Again */}
-                <div>
-                  <p className="mb-1.5 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 sm:mb-2">
-                    Lobby Chat
-                  </p>
-                  <LobbyChatPanel />
-                </div>
               </div>
 
               {/* Sidebar (stacks below main column on mobile) */}
@@ -146,9 +138,9 @@ function LobbyPageShell() {
             444 ARENA · Penalty444
           </p>
           <h1 className="mt-1 text-xl font-black tracking-tight text-white sm:text-2xl md:text-4xl">
-            Match Hub
+            Lobby
           </h1>
-          <p className="mt-1 text-xs text-zinc-400 sm:text-sm">Loading match hub…</p>
+          <p className="mt-1 text-xs text-zinc-400 sm:text-sm">Loading lobby…</p>
         </div>
       </div>
     </div>
