@@ -73,7 +73,7 @@ export default function HeroBanner({
             </Link>
             <div className="flex items-center gap-4 sm:ml-1">
               <Link
-                href="/games/penalty444"
+                href="/how-to-play"
                 className="text-xs font-bold text-zinc-400 transition-colors hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/60"
               >
                 How to Play →

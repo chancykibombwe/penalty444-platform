@@ -332,7 +332,7 @@ export default function HomePage() {
         <div className="mb-2 flex items-center justify-between gap-2">
           <SectionLabel>Live Game</SectionLabel>
           <Link
-            href="/games/penalty444"
+            href="/how-to-play"
             className="text-[11px] font-bold uppercase tracking-wider text-cyan-300/80 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/60"
           >
             How to Play →
@@ -376,7 +376,7 @@ export default function HomePage() {
               ▶ Enter Lobby
             </Link>
             <Link
-              href="/games/penalty444"
+              href="/how-to-play"
               className="inline-flex min-h-[40px] items-center gap-2 rounded-2xl border border-zinc-700 bg-transparent px-4 py-1.5 text-sm font-black uppercase tracking-wide text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
             >
               How to Play
