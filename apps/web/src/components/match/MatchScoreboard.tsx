@@ -40,7 +40,15 @@ export default function MatchScoreboard({
 
   return (
     <section
-      className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950/95 px-2 py-1.5 shadow-xl sm:gap-4 sm:rounded-3xl sm:px-5 sm:py-4 md:rounded-[2rem] md:px-7 md:py-5"
+      className={`flex items-center justify-between gap-3 rounded-lg border bg-zinc-950/95 px-2 py-1.5 shadow-xl sm:gap-4 sm:rounded-3xl sm:px-5 sm:py-4 md:rounded-[2rem] md:px-7 md:py-5 ${
+        isSuddenDeath
+          ? "border-yellow-500/40 shadow-[0_0_20px_rgba(234,179,8,0.08)]"
+          : isFinal
+            ? "border-yellow-400/30 shadow-[0_0_20px_rgba(234,179,8,0.06)]"
+            : goldTrim
+              ? "border-amber-500/25"
+              : "border-zinc-800"
+      }`}
       aria-label="Match score"
     >
       <PlayerSide
@@ -55,7 +63,8 @@ export default function MatchScoreboard({
         align="left"
       />
 
-      <div className="flex shrink-0 flex-col items-center px-0.5 sm:px-2">
+      <div className="flex shrink-0 flex-col items-center gap-0.5 px-0.5 sm:px-2">
+        <div className={`hidden h-4 w-px sm:block ${isSuddenDeath ? "bg-yellow-500/30" : "bg-zinc-800"}`} />
         <span
           className={`text-[9px] font-black uppercase tracking-[0.2em] sm:text-xs ${
             isSuddenDeath ? "text-yellow-300/80" : "text-zinc-600"
@@ -63,6 +72,7 @@ export default function MatchScoreboard({
         >
           vs
         </span>
+        <div className={`hidden h-4 w-px sm:block ${isSuddenDeath ? "bg-yellow-500/30" : "bg-zinc-800"}`} />
       </div>
 
       <PlayerSide
