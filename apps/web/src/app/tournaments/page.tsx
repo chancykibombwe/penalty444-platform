@@ -42,14 +42,14 @@ async function runDevTournamentScheduleSync(): Promise<void> {
 
 const COMING_SOON_FEATURES = [
   {
-    icon: "💰",
-    label: "Paid Prize Pools",
-    detail: "Entry-fee tournaments with cash prizes",
+    icon: "🏆",
+    label: "Advanced Rewards",
+    detail: "Future event formats — disabled during Free Play Beta",
   },
   {
-    icon: "🏆",
+    icon: "⭐",
     label: "Sponsored Events",
-    detail: "Brand-backed arenas with guaranteed pools",
+    detail: "Brand-backed arenas — future feature",
   },
   {
     icon: "📅",
@@ -57,9 +57,9 @@ const COMING_SOON_FEATURES = [
     detail: "Recurring leagues with standings",
   },
   {
-    icon: "💳",
-    label: "Real-Money Entry",
-    detail: "Requires wallet launch",
+    icon: "🔒",
+    label: "Wallet Features",
+    detail: "Requires future wallet launch — not available in beta",
   },
 ];
 
@@ -245,7 +245,7 @@ export default function TournamentsPage() {
               Tournaments
             </h1>
             <p style={{ fontSize: "13px", color: "#71717a", marginTop: "3px" }}>
-              Free-entry beta tournaments. Paid prizes coming later.
+              Free-entry beta tournaments. More formats coming later.
             </p>
 
             {/* ── Beta policy pills ── */}
@@ -428,8 +428,8 @@ function BetaRulesCard() {
           lineHeight: "1.4",
         }}
       >
-        Create or join free tournaments during beta. Prize pools and paid entry
-        are disabled until wallet launch.
+        Create or join free tournaments during beta. Advanced formats and wallet
+        features are not available yet.
       </p>
     </div>
   );
