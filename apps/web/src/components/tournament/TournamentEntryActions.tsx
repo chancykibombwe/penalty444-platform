@@ -380,14 +380,19 @@ export default function TournamentEntryActions({
     );
   } else {
     participantContent = (
-      <button
-        type="button"
-        onClick={handleJoin}
-        disabled={!canJoin || busy}
-        className="rounded-xl border border-amber-500/50 bg-amber-950/30 px-4 py-2 text-sm font-bold text-amber-100 hover:border-amber-400/70 disabled:opacity-50"
-      >
-        {busy ? "Joining…" : "Join Tournament"}
-      </button>
+      <div className="space-y-1.5">
+        <button
+          type="button"
+          onClick={handleJoin}
+          disabled={!canJoin || busy}
+          className="inline-flex items-center rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 px-4 py-2.5 text-sm font-black text-white shadow-[0_0_20px_rgba(16,185,129,0.28)] transition-all hover:from-emerald-400 hover:to-teal-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:opacity-50"
+        >
+          {busy ? "Joining…" : "Join Free Tournament"}
+        </button>
+        <p className="text-[10px] font-semibold text-emerald-400/70">
+          Free Entry · No paid stakes in beta
+        </p>
+      </div>
     );
   }
 
