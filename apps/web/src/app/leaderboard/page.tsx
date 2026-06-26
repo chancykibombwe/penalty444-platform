@@ -515,6 +515,14 @@ export default async function LeaderboardPage({
             {/* ══ CONTENT ══════════════════════════════════════════════ */}
             <div className="space-y-3 p-3 sm:p-4">
 
+              {/* Free Play Beta eyebrow */}
+              <p
+                className="text-center font-semibold uppercase"
+                style={{ fontSize: "9px", letterSpacing: "0.18em", color: "rgba(52,211,153,0.55)" }}
+              >
+                Free Play Beta · No cash prizes · Stats for beta testing
+              </p>
+
               {/* ── FILTER CHIPS ─────────────────────────────────────── */}
               <div className="flex flex-wrap items-center gap-2">
                 {/* Region chip */}
@@ -880,7 +888,8 @@ export default async function LeaderboardPage({
                   name="search"
                   defaultValue={search}
                   placeholder="Search player…"
-                  className="min-w-0 flex-1 rounded-lg px-3 py-1.5 text-[13px] text-white placeholder:text-zinc-700 focus:outline-none"
+                  aria-label="Search players"
+                  className="min-w-0 flex-1 rounded-lg px-3 py-1.5 text-[13px] text-white placeholder:text-zinc-700 focus:outline-none focus-visible:ring-1 focus-visible:ring-blue-500/50"
                   style={{
                     background: "rgba(10,12,22,0.95)",
                     border: "1px solid rgba(255,255,255,0.07)",
@@ -888,7 +897,7 @@ export default async function LeaderboardPage({
                 />
                 <button
                   type="submit"
-                  className="shrink-0 rounded-lg px-3 py-1.5 text-[13px] font-semibold text-white transition hover:opacity-80"
+                  className="shrink-0 rounded-lg px-3 py-1.5 text-[13px] font-semibold text-white transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500/50"
                   style={{
                     background: "rgba(18,24,42,0.95)",
                     border: "1px solid rgba(60,80,140,0.55)",
@@ -1027,7 +1036,7 @@ export default async function LeaderboardPage({
                           className="shrink-0 font-black uppercase"
                           style={{ fontSize: "8px", letterSpacing: "0.22em", color: "#52525b" }}
                         >
-                          Provisional — {LEADERBOARD_QUALIFICATION_THRESHOLD} matches required for official ranking
+                          Provisional — needs {LEADERBOARD_QUALIFICATION_THRESHOLD} matches · not yet in official ranking
                         </p>
                         <div className="h-px flex-1" style={{ background: "rgba(255,200,50,0.18)" }} />
                       </div>
@@ -1054,9 +1063,9 @@ export default async function LeaderboardPage({
                           </span>
                         ) : (
                           <span
-                            className="inline-flex items-center rounded px-1 font-black uppercase"
+                            className="inline-flex items-center rounded px-1.5 py-0.5 font-black uppercase"
                             style={{
-                              fontSize: "6px",
+                              fontSize: "9px",
                               letterSpacing: "0.10em",
                               background: "rgba(255,200,50,0.10)",
                               border: "1px solid rgba(255,200,50,0.22)",
@@ -1170,7 +1179,7 @@ export default async function LeaderboardPage({
                       {hasActiveSearch && hasValidUserId(player.id) ? (
                         <Link
                           href={buildChallengeHref(player.id, player.username)}
-                          className="shrink-0 rounded-lg px-2 py-0.5 text-xs font-semibold transition hover:opacity-80"
+                          className="shrink-0 rounded-lg px-2 py-0.5 text-xs font-semibold transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50"
                           style={{
                             background: "rgba(8,40,50,0.90)",
                             border: "1px solid rgba(34,211,238,0.38)",
