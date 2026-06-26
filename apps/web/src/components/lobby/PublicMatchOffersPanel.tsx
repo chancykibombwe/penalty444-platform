@@ -507,7 +507,7 @@ export default function PublicMatchOffersPanel() {
             </label>
             <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-1.5">
               <span className="text-sm font-black text-emerald-300">Free</span>
-              <span className="text-xs text-zinc-600">· Paid stakes coming soon</span>
+              <span className="text-xs text-zinc-600">· Free Play only</span>
             </div>
           </div>
 

@@ -92,7 +92,7 @@ export default function RankedMatchmakingPanel() {
       setEnqueueing(false);
       setCancelling(false);
       setInQueue(false);
-      setStatus(payload?.message || "Could not update the ranked queue. Please try again.");
+      setStatus(payload?.message || "Could not update the match queue. Please try again.");
     }
 
     function onRankedCancelled() {
@@ -130,7 +130,7 @@ export default function RankedMatchmakingPanel() {
     }
 
     setEnqueueing(true);
-    setStatus("Joining ranked queue…");
+    setStatus("Joining match queue…");
 
     try {
       const identity = await getCurrentPlayerIdentity();
