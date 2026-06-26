@@ -3,9 +3,9 @@
 import Link from "next/link";
 
 type HeroBannerProps = {
-  /** Primary CTA route. Defaults to `/lobby` ("Play now"). */
+  /** Primary CTA route. Defaults to `/lobby`. */
   primaryHref?: string;
-  /** Secondary CTA route. Defaults to `/tournaments`. */
+  /** Secondary text-link route. Defaults to `/tournaments`. */
   secondaryHref?: string;
 };
 
@@ -15,22 +15,23 @@ export default function HeroBanner({
 }: HeroBannerProps) {
   return (
     <section
-      className="relative overflow-hidden rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black px-3.5 py-2.5 shadow-2xl sm:px-5 sm:py-3.5"
+      className="relative overflow-hidden rounded-3xl border border-[#1B2433] bg-gradient-to-br from-[#0A0E14] via-[#0A0E14] to-black px-3.5 py-4 shadow-2xl sm:px-6 sm:py-5"
       aria-label="444 Arena hero"
     >
-      {/* Background layers */}
+      {/* Background glow orbs */}
       <div
         aria-hidden
-        className="home-hero-glow pointer-events-none absolute -top-32 -left-24 h-72 w-72 rounded-full bg-cyan-500/30 blur-3xl"
+        className="home-hero-glow pointer-events-none absolute -top-32 -left-24 h-72 w-72 rounded-full bg-cyan-500/25 blur-3xl"
       />
       <div
         aria-hidden
-        className="home-hero-glow pointer-events-none absolute -bottom-40 -right-16 h-80 w-80 rounded-full bg-amber-500/20 blur-3xl"
+        className="home-hero-glow pointer-events-none absolute -bottom-40 -right-16 h-80 w-80 rounded-full bg-amber-500/15 blur-3xl"
         style={{ animationDelay: "2s" }}
       />
+      {/* Grid overlay */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-[0.07]"
+        className="pointer-events-none absolute inset-0 opacity-[0.05]"
         style={{
           backgroundImage:
             "linear-gradient(rgba(34,211,238,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(34,211,238,0.6) 1px, transparent 1px)",
@@ -40,6 +41,7 @@ export default function HeroBanner({
 
       <div className="relative flex items-center justify-between gap-6">
         <div className="max-w-2xl">
+          {/* Platform badge */}
           <p className="inline-flex items-center gap-2 rounded-full border border-cyan-400/45 bg-cyan-500/10 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.28em] text-cyan-100 sm:text-[10px] sm:tracking-[0.32em]">
             <span
               className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.9)]"
@@ -48,45 +50,59 @@ export default function HeroBanner({
             444 Arena · Free Play Beta
           </p>
 
-          <h1 className="mt-1 text-base font-black uppercase leading-tight tracking-tight sm:text-xl md:text-2xl">
-            <span className="text-white">Skill Wins</span>{" "}
+          {/* Main headline */}
+          <h1 className="mt-1.5 text-2xl font-black uppercase leading-tight tracking-tight sm:text-3xl md:text-4xl">
             <span className="bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] bg-clip-text text-transparent">
-              Every Time
+              Penalty444
             </span>
           </h1>
-
-          <p className="mt-0.5 hidden max-w-md text-xs leading-relaxed text-zinc-300 sm:block sm:text-sm">
-            Free to play — no entry fees, no cash prizes.
+          <p className="mt-0.5 text-sm font-bold text-zinc-300 sm:text-base">
+            The skill-based penalty shootout.
+          </p>
+          <p className="mt-0.5 text-[11px] text-zinc-500 sm:text-xs">
+            Free to play · No real money · No cash prizes
           </p>
 
-          <div className="mt-2 flex items-center gap-2">
+          {/* Primary CTA + secondary text links */}
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
             <Link
               href={primaryHref}
-              className="inline-flex min-h-[36px] flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] px-4 py-1 text-xs font-black uppercase tracking-wide text-white shadow-[0_0_28px_rgba(59,158,255,0.4)] transition-transform hover:scale-[1.02] sm:flex-none sm:px-6 sm:py-1.5 sm:text-sm"
+              className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] px-5 py-1.5 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_28px_rgba(59,158,255,0.4)] transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/75 focus-visible:ring-offset-2 focus-visible:ring-offset-black sm:w-auto"
             >
               ▶ Play Free
             </Link>
-            <Link
-              href={secondaryHref}
-              className="inline-flex min-h-[36px] flex-1 items-center justify-center gap-2 rounded-2xl border border-[#E0A000]/55 bg-transparent px-4 py-1 text-xs font-black uppercase tracking-wide text-[#E0A000] transition-transform hover:scale-[1.02] hover:bg-[#E0A000]/10 sm:flex-none sm:px-5 sm:py-1.5 sm:text-sm"
-            >
-              🏆 Tournaments
-            </Link>
+            <div className="flex items-center gap-4 sm:ml-1">
+              <Link
+                href="/games/penalty444"
+                className="text-xs font-bold text-zinc-400 transition-colors hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/60"
+              >
+                How to Play →
+              </Link>
+              <Link
+                href={secondaryHref}
+                className="text-xs font-bold text-[#E0A000]/70 transition-colors hover:text-[#E0A000] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-500/60"
+              >
+                Tournaments →
+              </Link>
+            </div>
           </div>
+
+          {/* Beta safety notice */}
+          <p className="mt-3 hidden text-[10px] text-zinc-600 sm:block">
+            444 ARENA is a free-play beta · No deposits · No withdrawals · No paid matches
+          </p>
         </div>
 
-        {/* Decorative arena graphic — desktop only, fills the empty
-            right-hand space so the hero no longer feels bare on
-            laptop widths. */}
+        {/* Decorative arena graphic — desktop only */}
         <div
           aria-hidden
-          className="relative hidden h-24 w-24 shrink-0 items-center justify-center lg:flex"
+          className="relative hidden h-28 w-28 shrink-0 items-center justify-center lg:flex"
         >
           <div className="absolute inset-0 rounded-full border border-cyan-400/15" />
           <div className="absolute inset-4 rounded-full border border-cyan-400/10" />
           <div className="absolute inset-8 rounded-full border border-amber-400/10" />
-          <div className="absolute inset-0 rounded-full bg-cyan-500/10 blur-2xl" />
-          <span className="relative text-4xl">⚽</span>
+          <div className="absolute inset-0 rounded-full bg-cyan-500/8 blur-2xl" />
+          <span className="relative text-5xl">⚽</span>
         </div>
       </div>
     </section>

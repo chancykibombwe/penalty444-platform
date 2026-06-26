@@ -10,7 +10,6 @@ import HeroBanner from "../components/home/HeroBanner";
 import HomeShared from "../components/home/HomeShared";
 import HomeTournamentPreview from "../components/home/HomeTournamentPreview";
 import PlayerStatsStrip from "../components/home/PlayerStatsStrip";
-import QuickActionCard from "../components/home/QuickActionCard";
 import FeaturedLiveMatches from "../components/live/FeaturedLiveMatches";
 import GlobalActivityFeed from "../components/live/GlobalActivityFeed";
 import LiveMatchPreview from "../components/live/LiveMatchPreview";
@@ -98,16 +97,7 @@ const HOW_IT_WORKS = [
   },
 ] as const;
 
-const ARENA_GAMES: GameCardData[] = [
-  {
-    id: "penalty444",
-    title: "Penalty444",
-    subtitle: "Football · Skill",
-    status: "live",
-    featured: true,
-    href: "/games/penalty444",
-    icon: "⚽",
-  },
+const COMING_SOON_GAMES: GameCardData[] = [
   {
     id: "chess444",
     title: "Chess444",
@@ -137,6 +127,14 @@ const ARENA_GAMES: GameCardData[] = [
   },
 ];
 
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[9px] font-black uppercase tracking-[0.28em] text-zinc-500 sm:text-[10px] sm:tracking-[0.32em]">
+      {children}
+    </p>
+  );
+}
+
 export default function HomePage() {
   const [activeMatch, setActiveMatch] = useState<ActiveMatch | null>(null);
   const [activeTournament, setActiveTournament] =
@@ -162,8 +160,6 @@ export default function HomePage() {
         return;
       }
 
-      // Best-effort home stats lookup. Failure is silent so the home page
-      // never blocks on a missing row — the strip renders Unranked safely.
       try {
         const [statsResult, matchesResult, tournamentWinsResult] =
           await Promise.all([
@@ -304,11 +300,13 @@ export default function HomePage() {
   }, [activeMatch, activeTournament]);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-3 pb-2">
+    <div className="mx-auto max-w-6xl space-y-5 pb-2">
       <HomeShared />
 
+      {/* ── 1. HERO ── */}
       <HeroBanner primaryHref="/lobby" secondaryHref="/tournaments" />
 
+      {/* ── 2. CONTINUE PLAYING (conditional) ── */}
       {continueCards.length > 0 ? (
         <section
           className="grid gap-3 sm:grid-cols-2"
@@ -329,38 +327,92 @@ export default function HomePage() {
         </section>
       ) : null}
 
-      <section
-        className="grid grid-cols-2 gap-2 sm:gap-4"
-        aria-label="Quick actions"
-      >
-        <QuickActionCard
-          title="Enter Lobby"
-          subtitle="Find an open game or create a private room"
-          href="/lobby"
-          cta="Play Free"
-          icon="⚡"
-          tone="cyan"
-        />
-        <QuickActionCard
-          title="How to Play"
-          subtitle="Rules, tips, and beta overview"
-          href="/how-to-play"
-          cta="Learn"
-          icon="📖"
-          tone="amber"
-        />
+      {/* ── 3. LIVE GAME: PENALTY444 ── */}
+      <section aria-label="Penalty444 — Live game">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <SectionLabel>Live Game</SectionLabel>
+          <Link
+            href="/games/penalty444"
+            className="text-[11px] font-bold uppercase tracking-wider text-cyan-300/80 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/60"
+          >
+            How to Play →
+          </Link>
+        </div>
+
+        <div className="relative overflow-hidden rounded-3xl border border-[#3B9EFF]/40 bg-gradient-to-br from-[#0A0E14] via-[#0C1220] to-black p-4 shadow-2xl shadow-[#3B9EFF]/10 sm:p-5">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -top-16 -right-16 h-48 w-48 rounded-full bg-[#3B9EFF]/10 blur-3xl"
+          />
+          <div className="relative flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-[#3B9EFF]/55 bg-[#3B9EFF]/15 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-[#9AD2FF]">
+                  <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[#3B9EFF] shadow-[0_0_8px_rgba(59,158,255,0.8)]" aria-hidden />
+                  Free Play · Live
+                </span>
+                <span className="rounded-full border border-zinc-700/60 bg-zinc-900/60 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-zinc-400">
+                  1v1
+                </span>
+              </div>
+              <h2 className="mt-2 text-2xl font-black uppercase tracking-tight text-white sm:text-3xl">
+                Penalty444
+              </h2>
+              <p className="mt-0.5 text-sm text-zinc-400">
+                Skill-based 1v1 penalty shootout
+              </p>
+              <p className="mt-1 text-[11px] text-zinc-600">
+                Football · Left · Centre · Right · Sudden Death rules
+              </p>
+            </div>
+            <span className="hidden text-6xl sm:block" aria-hidden>⚽</span>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Link
+              href="/lobby"
+              className="inline-flex min-h-[40px] items-center gap-2 rounded-2xl bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] px-5 py-1.5 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_24px_rgba(59,158,255,0.35)] transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/75 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+            >
+              ▶ Enter Lobby
+            </Link>
+            <Link
+              href="/games/penalty444"
+              className="inline-flex min-h-[40px] items-center gap-2 rounded-2xl border border-zinc-700 bg-transparent px-4 py-1.5 text-sm font-black uppercase tracking-wide text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+            >
+              How to Play
+            </Link>
+          </div>
+        </div>
       </section>
 
+      {/* ── 4. FUTURE GAMES — COMING SOON ── */}
+      <section aria-label="More games — Coming Soon">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <SectionLabel>More Games</SectionLabel>
+          <span className="rounded-full border border-zinc-700/50 bg-zinc-900/60 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
+            Coming Soon
+          </span>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          {COMING_SOON_GAMES.map((game) => (
+            <GameCard key={game.id} game={game} />
+          ))}
+        </div>
+      </section>
+
+      {/* ── 5. PLAYER STATS ── */}
+      <PlayerStatsStrip stats={playerStats} />
+
+      {/* ── 6. HOW IT WORKS (collapsible) ── */}
       <section aria-label="How the beta works">
         <button
           type="button"
           onClick={() => setHowItWorksOpen((v) => !v)}
-          className="flex w-full items-center gap-2 text-left"
+          className="flex w-full items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/60"
           aria-expanded={howItWorksOpen}
         >
-          <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-500 sm:text-[10px] sm:tracking-[0.28em]">
-            How It Works
-          </p>
+          <SectionLabel>How It Works</SectionLabel>
           <span className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-cyan-300/80">
             Free Play Beta
           </span>
@@ -369,6 +421,7 @@ export default function HomePage() {
             fill="currentColor"
             className="ml-auto h-3 w-3 shrink-0 text-zinc-500 transition-transform"
             style={{ transform: howItWorksOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+            aria-hidden
           >
             <path
               fillRule="evenodd"
@@ -397,127 +450,40 @@ export default function HomePage() {
         )}
       </section>
 
-      <section aria-label="Need Help?">
-        <div
-          className="rounded-2xl px-4 py-4"
-          style={{
-            background: "rgba(10,14,26,0.95)",
-            border: "1px solid rgba(55,85,160,0.35)",
-          }}
-        >
-          <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-500 sm:text-[10px] sm:tracking-[0.28em]">
-            Support
-          </p>
-          <p className="mt-1 text-sm font-black text-white">Need Help?</p>
-          <p className="mt-0.5 text-[11px] leading-snug text-zinc-400">
-            Browse the Help Center, report a bug, or reach out directly.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Link
-              href="/support"
-              className="rounded-lg px-3 py-1.5 text-[11px] font-bold text-white"
-              style={{
-                background: "rgba(55,85,160,0.28)",
-                border: "1px solid rgba(55,85,160,0.50)",
-              }}
-            >
-              View Help Center
-            </Link>
-            <Link
-              href="/support#report"
-              className="rounded-lg px-3 py-1.5 text-[11px] font-bold text-zinc-300"
-              style={{
-                background: "rgba(255,255,255,0.05)",
-                border: "1px solid rgba(255,255,255,0.10)",
-              }}
-            >
-              Report a Problem
-            </Link>
-            <Link
-              href="/support#contact"
-              className="rounded-lg px-3 py-1.5 text-[11px] font-bold text-zinc-300"
-              style={{
-                background: "rgba(255,255,255,0.05)",
-                border: "1px solid rgba(255,255,255,0.10)",
-              }}
-            >
-              Contact Support
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      <section aria-label="Games on 444 Arena">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-500 sm:text-[10px] sm:tracking-[0.28em]">
-            Games
-          </p>
-          <Link
-            href="/lobby"
-            className="text-[11px] font-bold uppercase tracking-wider text-cyan-300/85 hover:text-cyan-200"
-          >
-            Browse all →
-          </Link>
-        </div>
-
-        <p className="mt-1 hidden text-xs text-zinc-400 sm:block">
-          Free Play — no real money, no entry fees.
-        </p>
-
-        <div className="home-game-scroll relative mt-2 -mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1.5 sm:gap-4">
-          {ARENA_GAMES.map((game) => (
-            <GameCard key={game.id} game={game} />
-          ))}
-        </div>
-      </section>
-
-      <PlayerStatsStrip stats={playerStats} />
-
+      {/* ── 7. TOURNAMENTS ── */}
       <HomeTournamentPreview />
 
+      {/* ── 8. ARENA ACTIVITY ── */}
       <PlatformLiveStatus />
-
       <FeaturedLiveMatches />
-
       <LiveMatchPreview />
 
+      {/* ── 9. TOP COMPETITORS ── */}
       <FeaturedPlayers />
-
       <PlayerMomentsStrip />
 
+      {/* ── 10. PLATFORM ACTIVITY ── */}
       <GlobalActivityFeed seeMoreHref="/tournaments" />
 
+      {/* ── 11. NEWS & ANNOUNCEMENTS ── */}
       <section aria-label="News and Announcements">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-[9px] font-black uppercase tracking-[0.24em] text-zinc-500 sm:text-[10px] sm:tracking-[0.28em]">
-            News &amp; Announcements
-          </p>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <SectionLabel>News &amp; Announcements</SectionLabel>
           <Link
             href="/news"
-            className="text-[11px] font-bold uppercase tracking-wider text-cyan-300/85 hover:text-cyan-200"
+            className="text-[11px] font-bold uppercase tracking-wider text-cyan-300/80 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/60"
           >
             See all →
           </Link>
         </div>
-        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {NEWS_ITEMS.slice(0, 4).map((item) => (
             <div
               key={item.id}
-              className="rounded-xl px-3 py-2.5"
-              style={{
-                background: "rgba(10,14,26,0.90)",
-                border: "1px solid rgba(255,255,255,0.07)",
-              }}
+              className="rounded-xl border border-zinc-800/60 bg-zinc-950/80 px-3 py-2.5"
             >
               <div className="flex items-center justify-between gap-2">
-                <span
-                  className="rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.18em]"
-                  style={{
-                    background: "rgba(55,85,160,0.20)",
-                    border: "1px solid rgba(55,85,160,0.35)",
-                    color: "rgba(148,163,255,0.90)",
-                  }}
-                >
+                <span className="rounded-full border border-[#37558A]/55 bg-[#37558A]/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-[#94A3FF]/90">
                   {item.tag}
                 </span>
                 <span className="text-[9px] text-zinc-600">{item.date}</span>
@@ -533,8 +499,40 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ── 12. NEED HELP / SUPPORT ── */}
+      <section aria-label="Need Help?">
+        <div className="rounded-2xl border border-[#37558A]/30 bg-[#0A0E1A]/95 px-4 py-4">
+          <SectionLabel>Support</SectionLabel>
+          <p className="mt-1 text-sm font-black text-white">Need Help?</p>
+          <p className="mt-0.5 text-[11px] leading-snug text-zinc-400">
+            Browse the Help Center, report a bug, or reach out directly.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link
+              href="/support"
+              className="rounded-lg border border-[#37558A]/50 bg-[#37558A]/25 px-3 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-[#37558A]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/60 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+            >
+              View Help Center
+            </Link>
+            <Link
+              href="/support#report"
+              className="rounded-lg border border-zinc-700/60 bg-zinc-900/60 px-3 py-1.5 text-[11px] font-bold text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500/60 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+            >
+              Report a Problem
+            </Link>
+            <Link
+              href="/support#contact"
+              className="rounded-lg border border-zinc-700/60 bg-zinc-900/60 px-3 py-1.5 text-[11px] font-bold text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500/60 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+            >
+              Contact Support
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FOOTER ── */}
       <footer className="rounded-2xl border border-[#1B2433] bg-[#0D1420]/60 px-4 py-3 text-center text-[11px] text-zinc-500 sm:px-5">
-        444 Arena · Competitive multiplayer · Skill over luck
+        444 Arena · Free Play Beta · No real money · No cash prizes
       </footer>
     </div>
   );
