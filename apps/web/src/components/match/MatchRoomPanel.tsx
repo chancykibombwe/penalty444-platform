@@ -1817,7 +1817,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       matchAbortedRef.current = true;
       setLeaveMatchBusy(false);
       setMatchAborted(true);
-      setMatchAbortedMessage("No penalty applied. Stakes refunded.");
+      setMatchAbortedMessage("No penalty applied.");
       setRedirectingAfterAbort(false);
 
       if (disconnectCountdownRef.current !== null) {
@@ -3617,7 +3617,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         <div className="hidden sm:flex sm:shrink-0 sm:items-center sm:justify-center sm:gap-3 sm:rounded-xl sm:border sm:border-zinc-800/40 sm:bg-zinc-950/50 sm:px-4 sm:py-2">
           <span className="text-[9px] font-black uppercase tracking-[0.28em] text-zinc-700">Free Play Beta</span>
           <span className="text-zinc-800" aria-hidden>·</span>
-          <span className="text-[9px] text-zinc-600">Prize Pool &amp; Live Chat — Coming Soon</span>
+          <span className="text-[9px] text-zinc-600">Free Play only · More features coming later</span>
         </div>
       ) : null}
 
@@ -3642,7 +3642,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               className="mt-2 text-xs leading-relaxed text-zinc-300 sm:mt-3 sm:text-sm"
             >
               {matchAbortedMessage ??
-                "No penalty applied. Stakes refunded."}
+                "No penalty applied."}
             </p>
             {redirectingAfterAbort ? (
               <p className="mt-3 text-xs font-semibold uppercase tracking-wider text-zinc-500 sm:mt-4">
