@@ -169,7 +169,7 @@ export default function AccountPage() {
   const [stats, setStats] = useState<PlayerStatsRow | null>(null);
   const [globalRank, setGlobalRank] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("Loading account...");
+  const [message, setMessage] = useState("Loading your profile…");
   const [loggingOut, setLoggingOut] = useState(false);
   const [recentMatches, setRecentMatches] = useState<MatchResultRow[]>([]);
   const [matchHistoryNotice, setMatchHistoryNotice] = useState("");
@@ -192,7 +192,7 @@ export default function AccountPage() {
 
     async function loadAccount() {
       setLoading(true);
-      setMessage("Loading account...");
+      setMessage("Loading your profile…");
 
       const {
         data: { session },
@@ -368,6 +368,13 @@ export default function AccountPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 pb-24 sm:pb-6">
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.25em] text-emerald-400/70">
+          444 Arena · Free Play Beta
+        </p>
+        <h1 className="text-2xl font-black text-white">My Account</h1>
+      </div>
+
       <PromotionToast event={promotionEvent} />
 
       {activeSeason ? (
@@ -398,6 +405,10 @@ export default function AccountPage() {
 
       {!loading ? (
         <>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-400/50">
+            Free Play Beta · Stats are for beta testing only · No real-money prizes
+          </p>
+
           <CompetitiveProfileCard
             username={displayName}
             stats={competitiveStats}
