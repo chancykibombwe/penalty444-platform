@@ -36,10 +36,10 @@ export default function RootLayout({
         <Navbar />
 
         {/* Free Play Beta notice strip */}
-        <div className="border-b border-[#1B2433] bg-[#080C12] py-1 text-center text-[10px] font-black uppercase tracking-[0.22em] text-zinc-500">
+        <div className="border-b border-[#1B2433] bg-[#080C12] py-1 text-center text-[10px] font-black uppercase tracking-[0.22em] text-zinc-400">
           <Link
             href="/games/penalty444"
-            className="hover:text-zinc-300"
+            className="hover:text-zinc-200"
           >
             Free Play Beta
           </Link>
@@ -49,11 +49,11 @@ export default function RootLayout({
         <main className="p-4 pb-28 md:p-6 md:pb-6">{children}</main>
 
         {/* Persistent beta feedback footer */}
-        <footer className="border-t border-[#1B2433] bg-[#080C12] px-4 py-3 text-center text-[11px] text-zinc-500 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:pb-3">
+        <footer className="border-t border-[#1B2433] bg-[#080C12] px-4 py-3 text-center text-[11px] text-zinc-400 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:pb-3">
           444 ARENA · Free Play Beta ·{" "}
           <a
             href={feedbackHref}
-            className="underline hover:text-zinc-300"
+            className="underline hover:text-zinc-200"
           >
             Report a bug
           </a>

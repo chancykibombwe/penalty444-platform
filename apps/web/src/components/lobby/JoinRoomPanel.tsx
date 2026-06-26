@@ -37,10 +37,18 @@ export default function JoinRoomPanel() {
 
       <div className="flex gap-2">
         <input
+          id="room-code-input"
+          aria-label="Room code"
           value={roomCode}
           onChange={(event) => setRoomCode(event.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") joinRoom(); }}
           placeholder="Room code"
-          className="w-full min-w-0 flex-1 rounded-xl border border-zinc-700/80 bg-zinc-950 px-3.5 py-2 font-mono text-sm uppercase tracking-widest text-white outline-none placeholder:text-zinc-600 placeholder:normal-case placeholder:tracking-normal focus:border-[#22C55E]/60 focus:ring-2 focus:ring-[#22C55E]/10"
+          maxLength={8}
+          autoCapitalize="characters"
+          autoCorrect="off"
+          autoComplete="off"
+          spellCheck={false}
+          className="w-full min-w-0 flex-1 rounded-xl border border-zinc-700/80 bg-zinc-950 px-3.5 py-2 font-mono text-sm uppercase tracking-widest text-white outline-none placeholder:text-zinc-600 placeholder:normal-case placeholder:tracking-normal focus:border-[#22C55E]/60 focus:ring-2 focus:ring-[#22C55E]/10 focus-visible:ring-[#22C55E]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-zinc-950"
         />
 
         <OutlineButton tone="positive" onClick={joinRoom} className="shrink-0 !min-h-[40px] !px-3 !py-2">

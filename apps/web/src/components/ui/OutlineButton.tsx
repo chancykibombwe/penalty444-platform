@@ -13,7 +13,7 @@ const TONE_CLASS: Record<OutlineButtonTone, string> = {
 };
 
 const BASE_CLASS =
-  "inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border bg-transparent px-6 py-3 text-[15px] font-black uppercase tracking-wide transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent";
+  "inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border bg-transparent px-6 py-3 text-[15px] font-black uppercase tracking-wide transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black";
 
 type CommonProps = {
   tone?: OutlineButtonTone;

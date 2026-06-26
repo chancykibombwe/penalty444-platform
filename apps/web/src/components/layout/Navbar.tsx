@@ -225,13 +225,13 @@ export default function Navbar() {
                   key={item.id}
                   href={href}
                   aria-current={active ? "page" : undefined}
-                  className={`relative inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold tracking-wide transition-colors ${
+                  className={`relative inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black ${
                     active
                       ? item.competitive
                         ? "bg-[#E0A000]/15 text-[#FBD38D] shadow-[0_0_18px_rgba(224,160,0,0.25)] ring-1 ring-[#E0A000]/40"
                         : "bg-[#3B9EFF]/15 text-[#9AD2FF] shadow-[0_0_18px_rgba(59,158,255,0.22)] ring-1 ring-[#3B9EFF]/40"
                       : item.competitive
-                        ? "text-[#E0A000]/80 hover:bg-[#E0A000]/10 hover:text-[#FBD38D]"
+                        ? "text-[#E0A000]/50 hover:bg-[#E0A000]/8 hover:text-[#E0A000]/80"
                         : "text-[#9AA4B2] hover:bg-white/5 hover:text-white"
                   }`}
                 >
@@ -324,7 +324,7 @@ export default function Navbar() {
                 <Link
                   href={href}
                   aria-current={active ? "page" : undefined}
-                  className="relative flex min-h-[44px] flex-col items-center justify-center gap-0.5 py-1.5 text-[9px] font-bold transition-colors"
+                  className="relative flex min-h-[44px] flex-col items-center justify-center gap-0.5 py-1.5 text-[9px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-inset"
                   style={{ color: active ? accent : "#5A6472" }}
                 >
                   <item.Icon className="h-4 w-4" aria-hidden />
