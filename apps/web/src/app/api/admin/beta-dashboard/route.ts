@@ -92,6 +92,19 @@ export type AdminSafetyStatus = {
   economyMode: string;
 };
 
+export type AdminAuditRow = {
+  id: string;
+  createdAt: string;
+  /** Resolved display name of the acting admin; never an email or raw id. */
+  adminUsername: string;
+  action: string;
+  targetTable: string;
+  /** Short prefix of the target row id for reference only. */
+  targetIdShort: string;
+  oldStatus: string | null;
+  newStatus: string | null;
+};
+
 export type AdminBetaDashboardResponse = {
   feedbackSummary: BetaFeedbackSummary;
   recentFeedback: AdminFeedbackRow[];
@@ -99,6 +112,7 @@ export type AdminBetaDashboardResponse = {
   recentMatches: AdminMatchRow[];
   chatSummary: AdminChatSummary;
   recentChat: AdminChatRow[];
+  recentAuditLog: AdminAuditRow[];
   safety: AdminSafetyStatus;
   generatedAt: string;
 };
@@ -172,6 +186,7 @@ export async function GET(req: NextRequest) {
     chatFlagged,
     chatHidden,
     recentChatResult,
+    recentAuditResult,
   ] = await Promise.all([
     headCount("beta_feedback"),
     headCount("beta_feedback").eq("status", "open"),
@@ -207,6 +222,14 @@ export async function GET(req: NextRequest) {
       .select("id, created_at, user_id, message, status")
       .order("created_at", { ascending: false })
       .limit(20),
+    // Admin audit log — latest moderation/triage actions (service role only).
+    admin
+      .from("admin_audit_log")
+      .select(
+        "id, created_at, admin_user_id, action, target_table, target_id, old_status, new_status"
+      )
+      .order("created_at", { ascending: false })
+      .limit(20),
   ]);
 
   // 6. Resolve usernames for feedback + chat rows in one batched profiles read.
@@ -227,12 +250,24 @@ export async function GET(req: NextRequest) {
     message: string;
     status: string;
   }[];
+  const auditRows = (recentAuditResult.data ?? []) as {
+    id: string;
+    created_at: string;
+    admin_user_id: string | null;
+    action: string;
+    target_table: string;
+    target_id: string;
+    old_status: string | null;
+    new_status: string | null;
+  }[];
 
   const userIds = Array.from(
     new Set(
-      [...feedbackRows, ...chatRows]
-        .map((r) => r.user_id)
-        .filter((id): id is string => typeof id === "string" && id.length > 0)
+      [
+        ...feedbackRows.map((r) => r.user_id),
+        ...chatRows.map((r) => r.user_id),
+        ...auditRows.map((r) => r.admin_user_id),
+      ].filter((id): id is string => typeof id === "string" && id.length > 0)
     )
   );
 
@@ -314,6 +349,16 @@ export async function GET(req: NextRequest) {
       username: resolveName(c.user_id),
       messagePreview: preview(c.message),
       status: c.status,
+    })),
+    recentAuditLog: auditRows.map((a) => ({
+      id: a.id,
+      createdAt: a.created_at,
+      adminUsername: resolveName(a.admin_user_id),
+      action: a.action,
+      targetTable: a.target_table,
+      targetIdShort: a.target_id.slice(0, 8),
+      oldStatus: a.old_status,
+      newStatus: a.new_status,
     })),
     safety: {
       freePlayOnly: true,

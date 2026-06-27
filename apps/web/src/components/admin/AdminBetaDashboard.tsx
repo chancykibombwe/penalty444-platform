@@ -19,6 +19,7 @@ import type {
   AdminChatRow,
   AdminChatSummary,
   AdminMatchRow,
+  AdminAuditRow,
   BetaFeedbackSummary,
 } from "../../app/api/admin/beta-dashboard/route";
 
@@ -341,6 +342,61 @@ function ChatRow({
   );
 }
 
+function auditActionLabel(action: string): string {
+  switch (action) {
+    case "feedback_status_update":
+      return "feedback status";
+    case "chat_status_update":
+      return "chat status";
+    default:
+      return action.replace(/_/g, " ");
+  }
+}
+
+function auditTargetLabel(targetTable: string): string {
+  switch (targetTable) {
+    case "beta_feedback":
+      return "Feedback";
+    case "lobby_chat_messages":
+      return "Chat";
+    default:
+      return targetTable;
+  }
+}
+
+function AuditRow({ row }: { row: AdminAuditRow }) {
+  return (
+    <li className="border-t border-[#1B2433] px-4 py-2.5 first:border-t-0">
+      <div className="flex items-start justify-between gap-2">
+        <p className="min-w-0 break-words text-[13px] text-zinc-200">
+          <span className="font-bold text-cyan-200">{row.adminUsername}</span>{" "}
+          changed {auditActionLabel(row.action)}:{" "}
+          <span className="font-semibold text-zinc-300">
+            {row.oldStatus ?? "—"}
+          </span>{" "}
+          <span className="text-zinc-500" aria-hidden>
+            →
+          </span>{" "}
+          <span className="font-semibold text-white">
+            {row.newStatus ?? "—"}
+          </span>
+        </p>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <span className="rounded border border-zinc-700/70 bg-black/40 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400">
+            {auditTargetLabel(row.targetTable)}
+          </span>
+          <span className="text-[10px] text-zinc-600">
+            {formatDateTime(row.createdAt)}
+          </span>
+        </div>
+      </div>
+      <p className="mt-0.5 text-[10px] text-zinc-600">
+        target #{row.targetIdShort}
+      </p>
+    </li>
+  );
+}
+
 function MatchRow({ row }: { row: AdminMatchRow }) {
   return (
     <li className="flex items-center gap-3 border-t border-[#1B2433] px-4 py-2.5 first:border-t-0">
@@ -579,6 +635,24 @@ export default function AdminBetaDashboard({
         ) : (
           <p className="px-4 py-8 text-center text-sm text-zinc-500">
             No matches recorded yet.
+          </p>
+        )}
+      </SectionCard>
+
+      {/* Recent admin audit log */}
+      <SectionCard
+        title="Recent Admin Audit Log"
+        subtitle={`Latest ${data.recentAuditLog.length} admin actions`}
+      >
+        {data.recentAuditLog.length > 0 ? (
+          <ul>
+            {data.recentAuditLog.map((row) => (
+              <AuditRow key={row.id} row={row} />
+            ))}
+          </ul>
+        ) : (
+          <p className="px-4 py-8 text-center text-sm text-zinc-500">
+            No admin actions recorded yet.
           </p>
         )}
       </SectionCard>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "../../../../../lib/supabase/admin";
+import { recordAdminAuditLog } from "../../../../../lib/admin/auditLog";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -31,6 +32,7 @@ export type UpdateFeedbackStatusResponse = {
   ok: true;
   id: string;
   status: FeedbackStatus;
+  auditLogged: boolean;
 };
 
 export async function PATCH(req: NextRequest) {
@@ -99,7 +101,36 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "invalid_status" }, { status: 400 });
   }
 
-  // 6. Update ONLY beta_feedback.status (service role bypasses RLS safely on
+  // 6. Fetch the current row (status + safe context) to record the old status
+  //    and short-circuit no-op updates.
+  const { data: current, error: fetchError } = await admin
+    .from("beta_feedback")
+    .select("id, status, category, route, room_code")
+    .eq("id", feedbackId)
+    .maybeSingle();
+
+  if (fetchError) {
+    return NextResponse.json({ error: "update_failed" }, { status: 500 });
+  }
+  if (!current) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+
+  const oldStatus = current.status as string;
+
+  // No-op: requested status equals current — succeed without a duplicate
+  // audit-log entry or write.
+  if (oldStatus === status) {
+    const noop: UpdateFeedbackStatusResponse = {
+      ok: true,
+      id: feedbackId,
+      status,
+      auditLogged: false,
+    };
+    return NextResponse.json(noop);
+  }
+
+  // 7. Update ONLY beta_feedback.status (service role bypasses RLS safely on
   //    the server). No other column is touched.
   const { data, error } = await admin
     .from("beta_feedback")
@@ -117,10 +148,28 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
+  // 8. Record the audit-log entry (server-side, service role). Safe metadata
+  //    only — no message body, email, or secrets. A failed audit write does
+  //    not fail the status update; it is surfaced via auditLogged.
+  const auditLogged = await recordAdminAuditLog(admin, {
+    adminUserId: user.id,
+    action: "feedback_status_update",
+    targetTable: "beta_feedback",
+    targetId: feedbackId,
+    oldStatus,
+    newStatus: status,
+    metadata: {
+      category: current.category ?? null,
+      route: current.route ?? null,
+      roomCode: current.room_code ?? null,
+    },
+  });
+
   const response: UpdateFeedbackStatusResponse = {
     ok: true,
     id: feedbackId,
     status,
+    auditLogged,
   };
 
   return NextResponse.json(response);
