@@ -16,7 +16,7 @@ import type {
   AdminMatchRow,
 } from "../../app/api/admin/beta-dashboard/route";
 
-const CATEGORY_LABEL = new Map(
+const CATEGORY_LABEL: Map<string, string> = new Map(
   FEEDBACK_CATEGORIES.map((c) => [c.value, c.label])
 );
 
