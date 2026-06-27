@@ -10,7 +10,7 @@
  * before any update.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase/client";
 import { FEEDBACK_CATEGORIES } from "../../lib/feedback/betaFeedback";
 import type {
@@ -540,7 +540,12 @@ export default function AdminBetaDashboard({
 }: {
   data: AdminBetaDashboardResponse;
 }) {
-  const { matchSummary, safety } = data;
+  // Full dashboard payload in local state so manual / auto refresh can replace
+  // it without a browser reload. Sections derive from dashboardData; the
+  // matches / audit / safety / generatedAt all read from here.
+  const [dashboardData, setDashboardData] =
+    useState<AdminBetaDashboardResponse>(data);
+  const { matchSummary, safety } = dashboardData;
 
   // Feedback rows + summary are local state so a successful triage update
   // reflects immediately without a full refetch.
@@ -557,6 +562,17 @@ export default function AdminBetaDashboard({
     data.chatSummary
   );
 
+  // Refresh / live-update state.
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<string>(
+    data.generatedAt
+  );
+  // Guard against overlapping refreshes (e.g. auto + manual) without making the
+  // refresh callback depend on the `refreshing` state value.
+  const refreshingRef = useRef(false);
+
   // ── Client-side filter state (display only — never mutates data) ──────────
   const [feedbackStatusFilter, setFeedbackStatusFilter] = useState("all");
   const [feedbackCategoryFilter, setFeedbackCategoryFilter] = useState("all");
@@ -565,6 +581,67 @@ export default function AdminBetaDashboard({
   const [chatSearch, setChatSearch] = useState("");
   const [auditActionFilter, setAuditActionFilter] = useState("all");
   const [auditSearch, setAuditSearch] = useState("");
+
+  // Re-fetch the dashboard via the existing admin-gated route. Replaces the
+  // data without a browser reload; filter selections are React state and are
+  // left untouched, so they persist across refreshes. Fails closed.
+  async function refreshDashboard(): Promise<boolean> {
+    if (refreshingRef.current) return false; // no overlapping refreshes
+    refreshingRef.current = true;
+    setRefreshing(true);
+    setRefreshError(null);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        setRefreshError("Could not refresh dashboard.");
+        return false;
+      }
+
+      const res = await fetch("/api/admin/beta-dashboard", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        setRefreshError("Could not refresh dashboard.");
+        return false;
+      }
+
+      const json = (await res.json()) as AdminBetaDashboardResponse;
+      setDashboardData(json);
+      setFeedback(json.recentFeedback);
+      setFeedbackSummary(json.feedbackSummary);
+      setChat(json.recentChat);
+      setChatSummary(json.chatSummary);
+      setLastRefreshedAt(json.generatedAt);
+      return true;
+    } catch {
+      setRefreshError("Could not refresh dashboard.");
+      return false;
+    } finally {
+      refreshingRef.current = false;
+      setRefreshing(false);
+    }
+  }
+
+  // Auto-refresh: poll every 30s while enabled and the tab is visible. No
+  // Socket.IO / SSE / realtime subscriptions. Cleared on toggle-off / unmount.
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      if (refreshingRef.current) return;
+      void refreshDashboard();
+    }, 30_000);
+
+    return () => window.clearInterval(intervalId);
+    // refreshDashboard only reads refs/setters (stable); safe to omit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRefresh]);
 
   const filteredFeedback = feedback.filter((row) => {
     if (feedbackStatusFilter !== "all" && row.status !== feedbackStatusFilter)
@@ -592,7 +669,7 @@ export default function AdminBetaDashboard({
     return includesText(row.messagePreview, q) || includesText(row.username, q);
   });
 
-  const filteredAuditLog = data.recentAuditLog.filter((row) => {
+  const filteredAuditLog = dashboardData.recentAuditLog.filter((row) => {
     if (auditActionFilter !== "all" && row.action !== auditActionFilter)
       return false;
     const q = auditSearch.trim();
@@ -691,8 +768,47 @@ export default function AdminBetaDashboard({
         </p>
         <p className="mt-1 text-xs text-zinc-600">
           Monitoring only. No player funds, prizes, or real-money features are
-          active. · Generated {formatDateTime(data.generatedAt)}
+          active. · Generated {formatDateTime(dashboardData.generatedAt)}
         </p>
+      </div>
+
+      {/* Refresh / live-update controls */}
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#1B2433] bg-[#0D1420] px-4 py-2.5">
+        <button
+          type="button"
+          onClick={() => void refreshDashboard()}
+          disabled={refreshing}
+          className="rounded-lg border border-[#3B9EFF]/45 bg-[#3B9EFF]/10 px-3 py-1.5 text-xs font-bold text-[#9AD2FF] transition-colors hover:border-[#3B9EFF]/70 hover:bg-[#3B9EFF]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black disabled:opacity-50"
+        >
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setAutoRefresh((v) => !v)}
+          aria-pressed={autoRefresh}
+          className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black ${
+            autoRefresh
+              ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-200"
+              : "border-zinc-700 bg-black/40 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+          }`}
+        >
+          Auto-refresh: {autoRefresh ? "ON" : "OFF"}
+        </button>
+
+        <span className="text-[11px] text-zinc-500">
+          Last updated: {formatDateTime(lastRefreshedAt)}
+        </span>
+
+        {autoRefresh ? (
+          <span className="text-[11px] text-zinc-600">· every 30s</span>
+        ) : null}
+
+        {refreshError ? (
+          <span className="text-[11px] text-red-300/80" role="alert">
+            {refreshError}
+          </span>
+        ) : null}
       </div>
 
       {/* Activity counts */}
@@ -807,11 +923,11 @@ export default function AdminBetaDashboard({
       {/* Recent matches */}
       <SectionCard
         title="Recent Matches"
-        subtitle={`Latest ${data.recentMatches.length}`}
+        subtitle={`Latest ${dashboardData.recentMatches.length}`}
       >
-        {data.recentMatches.length > 0 ? (
+        {dashboardData.recentMatches.length > 0 ? (
           <ul>
-            {data.recentMatches.map((row, i) => (
+            {dashboardData.recentMatches.map((row, i) => (
               <MatchRow key={`${row.roomCode}-${i}`} row={row} />
             ))}
           </ul>
@@ -825,7 +941,7 @@ export default function AdminBetaDashboard({
       {/* Recent admin audit log */}
       <SectionCard
         title="Recent Admin Audit Log"
-        subtitle={`Showing ${filteredAuditLog.length} of ${data.recentAuditLog.length} admin actions`}
+        subtitle={`Showing ${filteredAuditLog.length} of ${dashboardData.recentAuditLog.length} admin actions`}
         filters={
           <div className="flex flex-wrap items-center gap-2">
             <FilterSelect
@@ -842,7 +958,7 @@ export default function AdminBetaDashboard({
           </div>
         }
       >
-        {data.recentAuditLog.length === 0 ? (
+        {dashboardData.recentAuditLog.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-zinc-500">
             No admin actions recorded yet.
           </p>
