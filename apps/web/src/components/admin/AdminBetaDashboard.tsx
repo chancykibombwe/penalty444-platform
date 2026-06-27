@@ -1,0 +1,330 @@
+"use client";
+
+/**
+ * Admin Beta Monitoring dashboard (read-only, v1).
+ *
+ * Renders the data returned by /api/admin/beta-dashboard. No mutations, no
+ * moderation actions. The server route already enforced admin authorization
+ * before any data was returned.
+ */
+
+import { FEEDBACK_CATEGORIES } from "../../lib/feedback/betaFeedback";
+import type {
+  AdminBetaDashboardResponse,
+  AdminFeedbackRow,
+  AdminChatRow,
+  AdminMatchRow,
+} from "../../app/api/admin/beta-dashboard/route";
+
+const CATEGORY_LABEL: Map<string, string> = new Map(
+  FEEDBACK_CATEGORIES.map((c) => [c.value, c.label])
+);
+
+function categoryLabel(key: string): string {
+  return CATEGORY_LABEL.get(key) ?? key.replace(/_/g, " ");
+}
+
+function statusTone(status: string): string {
+  switch (status) {
+    case "open":
+    case "visible":
+      return "border-emerald-500/40 bg-emerald-950/40 text-emerald-200";
+    case "triaged":
+      return "border-blue-500/40 bg-blue-950/40 text-blue-200";
+    case "resolved":
+      return "border-zinc-500/40 bg-zinc-900/60 text-zinc-300";
+    case "wont_fix":
+      return "border-red-500/40 bg-red-950/40 text-red-200";
+    case "hidden":
+    case "flagged":
+      return "border-amber-500/40 bg-amber-950/40 text-amber-200";
+    default:
+      return "border-zinc-700 bg-zinc-900/60 text-zinc-300";
+  }
+}
+
+function formatDateTime(iso: string | null): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function matchTypeLabel(type: string | null): string {
+  switch ((type ?? "").toLowerCase()) {
+    case "public":
+      return "Public";
+    case "private":
+      return "Private";
+    case "ranked":
+      return "Ranked";
+    case "tournament":
+      return "Tournament";
+    default:
+      return "Match";
+  }
+}
+
+function StatCard({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="rounded-xl border border-[#1B2433] bg-[#0D1420] px-3 py-3">
+      <p className="text-2xl font-black tabular-nums text-white">{value}</p>
+      <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+        {label}
+      </p>
+    </div>
+  );
+}
+
+function SectionCard({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-[#1B2433] bg-[#0D1420] shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+      <div className="border-b border-[#1B2433] px-4 py-3">
+        <h2 className="text-sm font-black uppercase tracking-widest text-white">
+          {title}
+        </h2>
+        {subtitle ? (
+          <p className="mt-0.5 text-[11px] text-zinc-500">{subtitle}</p>
+        ) : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center rounded border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${statusTone(status)}`}
+    >
+      {status.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+function FeedbackRow({ row }: { row: AdminFeedbackRow }) {
+  return (
+    <li className="border-t border-[#1B2433] px-4 py-3 first:border-t-0">
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate text-xs font-bold text-cyan-200">
+          {categoryLabel(row.category)}
+        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <StatusBadge status={row.status} />
+          <span className="text-[10px] text-zinc-600">
+            {formatDateTime(row.createdAt)}
+          </span>
+        </div>
+      </div>
+      <p className="mt-1 break-words text-sm text-zinc-200">
+        {row.messagePreview}
+      </p>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-zinc-600">
+        <span>by {row.username}</span>
+        {row.route ? <span>route: {row.route}</span> : null}
+        {row.roomCode ? <span>room: {row.roomCode}</span> : null}
+      </div>
+    </li>
+  );
+}
+
+function ChatRow({ row }: { row: AdminChatRow }) {
+  return (
+    <li className="border-t border-[#1B2433] px-4 py-2.5 first:border-t-0">
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate text-xs font-bold text-zinc-300">
+          {row.username}
+        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <StatusBadge status={row.status} />
+          <span className="text-[10px] text-zinc-600">
+            {formatDateTime(row.createdAt)}
+          </span>
+        </div>
+      </div>
+      <p className="mt-0.5 break-words text-[13px] text-zinc-200">
+        {row.messagePreview}
+      </p>
+    </li>
+  );
+}
+
+function MatchRow({ row }: { row: AdminMatchRow }) {
+  return (
+    <li className="flex items-center gap-3 border-t border-[#1B2433] px-4 py-2.5 first:border-t-0">
+      <span className="shrink-0 rounded border border-zinc-700/70 bg-black/40 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400">
+        {matchTypeLabel(row.matchType)}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm text-white">
+          <span className="font-semibold">{row.playerOneUsername}</span>
+          <span className="text-zinc-500"> vs </span>
+          <span className="font-semibold">{row.playerTwoUsername}</span>
+        </p>
+        <p className="text-[10px] text-zinc-600">
+          {formatDateTime(row.createdAt)} · room {row.roomCode}
+        </p>
+      </div>
+      <div className="shrink-0 text-right">
+        <p className="text-sm font-black tabular-nums text-zinc-200">
+          {row.playerOneScore}–{row.playerTwoScore}
+        </p>
+        <p className="text-[10px] text-zinc-500">
+          {row.isDraw ? "Draw" : row.winnerUsername ?? "—"}
+        </p>
+      </div>
+    </li>
+  );
+}
+
+function SafetyRow({ label, value, ok }: { label: string; value: string; ok: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-t border-[#1B2433] px-4 py-2.5 first:border-t-0">
+      <span className="text-xs text-zinc-400">{label}</span>
+      <span
+        className={`inline-flex items-center gap-1.5 text-xs font-bold ${
+          ok ? "text-emerald-300" : "text-zinc-300"
+        }`}
+      >
+        <span
+          className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-emerald-400" : "bg-zinc-500"}`}
+          aria-hidden
+        />
+        {value}
+      </span>
+    </div>
+  );
+}
+
+export default function AdminBetaDashboard({
+  data,
+}: {
+  data: AdminBetaDashboardResponse;
+}) {
+  const { feedbackSummary, matchSummary, chatSummary, safety } = data;
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-4 px-4 py-6 pb-24">
+      {/* Header */}
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.25em] text-emerald-400/70">
+          444 Arena · Free Play Beta
+        </p>
+        <h1 className="text-2xl font-black text-white">Admin Beta Monitoring</h1>
+        <p className="mt-0.5 text-sm text-zinc-400">
+          Read-only beta operations dashboard.
+        </p>
+        <p className="mt-1 text-xs text-zinc-600">
+          Monitoring only. No player funds, prizes, or real-money features are
+          active. · Generated {formatDateTime(data.generatedAt)}
+        </p>
+      </div>
+
+      {/* Activity counts */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <StatCard label="Total matches" value={matchSummary.total} />
+        <StatCard label="Last 24h" value={matchSummary.last24h} />
+        <StatCard label="Public" value={matchSummary.publicMatches} />
+        <StatCard label="Private" value={matchSummary.privateMatches} />
+        <StatCard label="Tournament" value={matchSummary.tournamentMatches} />
+        <StatCard label="Chat messages" value={chatSummary.total} />
+      </div>
+
+      {/* Feedback summary counts */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <StatCard label="Feedback total" value={feedbackSummary.total} />
+        <StatCard label="Open" value={feedbackSummary.open} />
+        <StatCard label="Triaged" value={feedbackSummary.triaged} />
+        <StatCard label="Resolved" value={feedbackSummary.resolved} />
+        <StatCard label="Won't fix" value={feedbackSummary.wontFix} />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Recent feedback */}
+        <SectionCard
+          title="Recent Beta Feedback"
+          subtitle={`Latest ${data.recentFeedback.length}`}
+        >
+          {data.recentFeedback.length > 0 ? (
+            <ul>
+              {data.recentFeedback.map((row) => (
+                <FeedbackRow key={row.id} row={row} />
+              ))}
+            </ul>
+          ) : (
+            <p className="px-4 py-8 text-center text-sm text-zinc-500">
+              No feedback submitted yet.
+            </p>
+          )}
+        </SectionCard>
+
+        {/* Recent chat */}
+        <SectionCard
+          title="Recent Lobby Chat"
+          subtitle={`Latest ${data.recentChat.length} visible`}
+        >
+          {data.recentChat.length > 0 ? (
+            <ul>
+              {data.recentChat.map((row) => (
+                <ChatRow key={row.id} row={row} />
+              ))}
+            </ul>
+          ) : (
+            <p className="px-4 py-8 text-center text-sm text-zinc-500">
+              No chat messages yet.
+            </p>
+          )}
+        </SectionCard>
+      </div>
+
+      {/* Recent matches */}
+      <SectionCard
+        title="Recent Matches"
+        subtitle={`Latest ${data.recentMatches.length}`}
+      >
+        {data.recentMatches.length > 0 ? (
+          <ul>
+            {data.recentMatches.map((row, i) => (
+              <MatchRow key={`${row.roomCode}-${i}`} row={row} />
+            ))}
+          </ul>
+        ) : (
+          <p className="px-4 py-8 text-center text-sm text-zinc-500">
+            No matches recorded yet.
+          </p>
+        )}
+      </SectionCard>
+
+      {/* Safety status */}
+      <SectionCard
+        title="Safety Status"
+        subtitle="Beta policy — read-only labels"
+      >
+        <SafetyRow label="Free Play only" value="ON" ok={safety.freePlayOnly} />
+        <SafetyRow label="Wallet" value={safety.walletStatus} ok={false} />
+        <SafetyRow label="Real money" value="OFF" ok={false} />
+        <SafetyRow label="Deposits" value="OFF" ok={false} />
+        <SafetyRow label="Withdrawals" value="OFF" ok={false} />
+        <SafetyRow label="Cash prizes" value="OFF" ok={false} />
+        <SafetyRow
+          label="Economy mode (server flag)"
+          value={safety.economyMode}
+          ok={safety.economyMode === "off" || safety.economyMode === "not_set"}
+        />
+      </SectionCard>
+    </div>
+  );
+}
