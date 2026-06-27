@@ -1,19 +1,24 @@
 "use client";
 
 /**
- * Admin Beta Monitoring dashboard (read-only, v1).
+ * Admin Beta Monitoring dashboard (v1).
  *
- * Renders the data returned by /api/admin/beta-dashboard. No mutations, no
- * moderation actions. The server route already enforced admin authorization
- * before any data was returned.
+ * Renders the data returned by /api/admin/beta-dashboard. The only mutation
+ * available is feedback STATUS triage (open/triaged/resolved/wont_fix) via the
+ * admin-gated PATCH /api/admin/beta-feedback/status route — no delete, no edit,
+ * no chat/match moderation. The server route enforces admin authorization
+ * before any update.
  */
 
+import { useState } from "react";
+import { supabase } from "../../lib/supabase/client";
 import { FEEDBACK_CATEGORIES } from "../../lib/feedback/betaFeedback";
 import type {
   AdminBetaDashboardResponse,
   AdminFeedbackRow,
   AdminChatRow,
   AdminMatchRow,
+  BetaFeedbackSummary,
 } from "../../app/api/admin/beta-dashboard/route";
 
 const CATEGORY_LABEL: Map<string, string> = new Map(
@@ -22,6 +27,45 @@ const CATEGORY_LABEL: Map<string, string> = new Map(
 
 function categoryLabel(key: string): string {
   return CATEGORY_LABEL.get(key) ?? key.replace(/_/g, " ");
+}
+
+// Triage statuses — must match the beta_feedback_status_valid CHECK and the
+// PATCH /api/admin/beta-feedback/status route.
+const FEEDBACK_STATUSES = [
+  { value: "open", label: "Open" },
+  { value: "triaged", label: "Triaged" },
+  { value: "resolved", label: "Resolved" },
+  { value: "wont_fix", label: "Won't fix" },
+] as const;
+type FeedbackStatusValue = (typeof FEEDBACK_STATUSES)[number]["value"];
+
+function summaryKey(status: string): keyof BetaFeedbackSummary | null {
+  switch (status) {
+    case "open":
+      return "open";
+    case "triaged":
+      return "triaged";
+    case "resolved":
+      return "resolved";
+    case "wont_fix":
+      return "wontFix";
+    default:
+      return null;
+  }
+}
+
+/** Move one feedback row's count from oldStatus → newStatus (total unchanged). */
+function adjustSummary(
+  summary: BetaFeedbackSummary,
+  oldStatus: string,
+  newStatus: string
+): BetaFeedbackSummary {
+  const next = { ...summary };
+  const oldKey = summaryKey(oldStatus);
+  const newKey = summaryKey(newStatus);
+  if (oldKey) next[oldKey] = Math.max(0, next[oldKey] - 1);
+  if (newKey) next[newKey] = next[newKey] + 1;
+  return next;
 }
 
 function statusTone(status: string): string {
@@ -115,7 +159,25 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function FeedbackRow({ row }: { row: AdminFeedbackRow }) {
+function FeedbackRow({
+  row,
+  onUpdateStatus,
+}: {
+  row: AdminFeedbackRow;
+  onUpdateStatus: (id: string, status: FeedbackStatusValue) => Promise<boolean>;
+}) {
+  const [updating, setUpdating] = useState(false);
+  const [error, setError] = useState(false);
+
+  async function setStatus(status: FeedbackStatusValue) {
+    if (updating || status === row.status) return;
+    setUpdating(true);
+    setError(false);
+    const ok = await onUpdateStatus(row.id, status);
+    if (!ok) setError(true);
+    setUpdating(false);
+  }
+
   return (
     <li className="border-t border-[#1B2433] px-4 py-3 first:border-t-0">
       <div className="flex items-center justify-between gap-2">
@@ -136,6 +198,37 @@ function FeedbackRow({ row }: { row: AdminFeedbackRow }) {
         <span>by {row.username}</span>
         {row.route ? <span>route: {row.route}</span> : null}
         {row.roomCode ? <span>room: {row.roomCode}</span> : null}
+      </div>
+
+      {/* Triage actions — status only. No delete / edit. */}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        {FEEDBACK_STATUSES.map((s) => {
+          const active = row.status === s.value;
+          return (
+            <button
+              key={s.value}
+              type="button"
+              onClick={() => void setStatus(s.value)}
+              disabled={updating || active}
+              aria-pressed={active}
+              className={`rounded border px-2 py-0.5 text-[10px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black ${
+                active
+                  ? "border-[#3B9EFF]/55 bg-[#3B9EFF]/15 text-[#9AD2FF]"
+                  : "border-zinc-700 bg-black/40 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+              } disabled:opacity-50`}
+            >
+              {s.label}
+            </button>
+          );
+        })}
+        {updating ? (
+          <span className="text-[10px] text-zinc-500">Updating…</span>
+        ) : null}
+        {error ? (
+          <span className="text-[10px] text-red-300/80" role="alert">
+            Could not update feedback status.
+          </span>
+        ) : null}
       </div>
     </li>
   );
@@ -214,7 +307,52 @@ export default function AdminBetaDashboard({
 }: {
   data: AdminBetaDashboardResponse;
 }) {
-  const { feedbackSummary, matchSummary, chatSummary, safety } = data;
+  const { matchSummary, chatSummary, safety } = data;
+
+  // Feedback rows + summary are local state so a successful triage update
+  // reflects immediately without a full refetch.
+  const [feedback, setFeedback] = useState<AdminFeedbackRow[]>(
+    data.recentFeedback
+  );
+  const [feedbackSummary, setFeedbackSummary] = useState<BetaFeedbackSummary>(
+    data.feedbackSummary
+  );
+
+  async function handleUpdateStatus(
+    id: string,
+    status: FeedbackStatusValue
+  ): Promise<boolean> {
+    const previous = feedback.find((row) => row.id === id);
+    if (!previous || previous.status === status) return true;
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) return false;
+
+      const res = await fetch("/api/admin/beta-feedback/status", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ feedbackId: id, status }),
+      });
+
+      if (!res.ok) return false;
+
+      setFeedback((prev) =>
+        prev.map((row) => (row.id === id ? { ...row, status } : row))
+      );
+      setFeedbackSummary((prev) =>
+        adjustSummary(prev, previous.status, status)
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 px-4 py-6 pb-24">
@@ -225,7 +363,7 @@ export default function AdminBetaDashboard({
         </p>
         <h1 className="text-2xl font-black text-white">Admin Beta Monitoring</h1>
         <p className="mt-0.5 text-sm text-zinc-400">
-          Read-only beta operations dashboard.
+          Beta operations dashboard with admin-only feedback triage.
         </p>
         <p className="mt-1 text-xs text-zinc-600">
           Monitoring only. No player funds, prizes, or real-money features are
@@ -256,12 +394,16 @@ export default function AdminBetaDashboard({
         {/* Recent feedback */}
         <SectionCard
           title="Recent Beta Feedback"
-          subtitle={`Latest ${data.recentFeedback.length}`}
+          subtitle={`Latest ${feedback.length}`}
         >
-          {data.recentFeedback.length > 0 ? (
+          {feedback.length > 0 ? (
             <ul>
-              {data.recentFeedback.map((row) => (
-                <FeedbackRow key={row.id} row={row} />
+              {feedback.map((row) => (
+                <FeedbackRow
+                  key={row.id}
+                  row={row}
+                  onUpdateStatus={handleUpdateStatus}
+                />
               ))}
             </ul>
           ) : (
