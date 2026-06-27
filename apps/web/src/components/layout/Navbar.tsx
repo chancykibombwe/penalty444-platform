@@ -5,7 +5,9 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactElement, type SVGProps } from "react";
 import NotificationBell from "../live/NotificationBell";
 import WalletPill from "../ui/WalletPill";
+import AdminNavLink from "../admin/AdminNavLink";
 import { getActiveMatch } from "../../lib/match/activeMatch";
+import { useIsAdmin } from "../../lib/admin/useIsAdmin";
 import { supabase } from "../../lib/supabase/client";
 
 type NavIconProps = SVGProps<SVGSVGElement>;
@@ -117,6 +119,9 @@ export default function Navbar() {
   // flash of "Log In / Create Account".
   const [authChecked, setAuthChecked] = useState(false);
   const [accountLabel, setAccountLabel] = useState("Account");
+  // Secure server-checked admin flag (null while checking). Convenience only —
+  // admin routes enforce their own server-side authorization.
+  const isAdmin = useIsAdmin();
 
   async function refreshAuthState() {
     const {
@@ -281,6 +286,7 @@ export default function Navbar() {
                 Resume Match
               </Link>
             ) : null}
+            {isAdmin ? <AdminNavLink variant="desktop" /> : null}
             <NotificationBell />
           </div>
 
@@ -320,6 +326,7 @@ export default function Navbar() {
                 Resume
               </Link>
             ) : null}
+            {isAdmin ? <AdminNavLink variant="mobile" /> : null}
             <NotificationBell />
           </div>
         </div>
