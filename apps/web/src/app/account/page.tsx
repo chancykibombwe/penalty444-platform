@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import AchievementGrid from "../../components/player/AchievementGrid";
@@ -423,11 +424,12 @@ export default function AccountPage() {
               <h2 className="text-sm font-black uppercase tracking-widest text-white">
                 Recent Matches
               </h2>
-              {displayedMatches.length > 0 ? (
-                <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-zinc-500">
-                  Last {displayedMatches.length}
-                </span>
-              ) : null}
+              <Link
+                href="/matches"
+                className="shrink-0 rounded-lg border border-[#1B2433] bg-black/40 px-2.5 py-1 text-[11px] font-bold text-zinc-300 transition-colors hover:border-zinc-600 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+              >
+                View Match History →
+              </Link>
             </div>
             {matchHistoryNotice ? (
               <p className="border-b border-[#1B2433] px-4 py-3 text-xs text-zinc-500">
