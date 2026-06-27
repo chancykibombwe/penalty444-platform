@@ -79,6 +79,30 @@ const CHAT_STATUSES = [
 ] as const;
 type ChatStatusValue = (typeof CHAT_STATUSES)[number]["value"];
 
+// ── Filter option lists (display only) ────────────────────────────────────
+const ALL_OPTION = { value: "all", label: "All" };
+
+const FEEDBACK_STATUS_OPTIONS = [
+  ALL_OPTION,
+  ...FEEDBACK_STATUSES.map((s) => ({ value: s.value, label: s.label })),
+];
+
+const FEEDBACK_CATEGORY_OPTIONS = [
+  ALL_OPTION,
+  ...FEEDBACK_CATEGORIES.map((c) => ({ value: c.value, label: c.label })),
+];
+
+const CHAT_STATUS_OPTIONS = [
+  ALL_OPTION,
+  ...CHAT_STATUSES.map((s) => ({ value: s.value, label: s.label })),
+];
+
+const AUDIT_ACTION_OPTIONS = [
+  ALL_OPTION,
+  { value: "feedback_status_update", label: "Feedback status updates" },
+  { value: "chat_status_update", label: "Chat status updates" },
+];
+
 function chatSummaryKey(status: string): keyof AdminChatSummary | null {
   switch (status) {
     case "visible":
@@ -166,10 +190,13 @@ function StatCard({ label, value }: { label: string; value: number | string }) {
 function SectionCard({
   title,
   subtitle,
+  filters,
   children,
 }: {
   title: string;
   subtitle?: string;
+  /** Optional compact filter row rendered below the subtitle. */
+  filters?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -181,9 +208,73 @@ function SectionCard({
         {subtitle ? (
           <p className="mt-0.5 text-[11px] text-zinc-500">{subtitle}</p>
         ) : null}
+        {filters ? <div className="mt-2">{filters}</div> : null}
       </div>
       {children}
     </section>
+  );
+}
+
+// ─── Filter helpers / primitives (client-side only) ──────────────────────────
+
+/** Case-insensitive substring match; null/undefined never matches a non-empty query. */
+function includesText(value: string | null | undefined, query: string): boolean {
+  return (value ?? "").toLowerCase().includes(query.trim().toLowerCase());
+}
+
+const FILTER_SELECT_CLASS =
+  "rounded-lg border border-zinc-800 bg-black/45 px-2 py-1 text-[11px] text-zinc-200 [color-scheme:dark] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black";
+
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <label className="inline-flex items-center gap-1.5">
+      <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={FILTER_SELECT_CLASS}
+        aria-label={label}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function FilterSearch({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <input
+      type="search"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      aria-label={placeholder}
+      className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-black/45 px-2.5 py-1 text-[12px] text-white placeholder:text-zinc-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+    />
   );
 }
 
@@ -466,6 +557,54 @@ export default function AdminBetaDashboard({
     data.chatSummary
   );
 
+  // ── Client-side filter state (display only — never mutates data) ──────────
+  const [feedbackStatusFilter, setFeedbackStatusFilter] = useState("all");
+  const [feedbackCategoryFilter, setFeedbackCategoryFilter] = useState("all");
+  const [feedbackSearch, setFeedbackSearch] = useState("");
+  const [chatStatusFilter, setChatStatusFilter] = useState("all");
+  const [chatSearch, setChatSearch] = useState("");
+  const [auditActionFilter, setAuditActionFilter] = useState("all");
+  const [auditSearch, setAuditSearch] = useState("");
+
+  const filteredFeedback = feedback.filter((row) => {
+    if (feedbackStatusFilter !== "all" && row.status !== feedbackStatusFilter)
+      return false;
+    if (
+      feedbackCategoryFilter !== "all" &&
+      row.category !== feedbackCategoryFilter
+    )
+      return false;
+    const q = feedbackSearch.trim();
+    if (q.length === 0) return true;
+    return (
+      includesText(row.messagePreview, q) ||
+      includesText(row.username, q) ||
+      includesText(row.route, q) ||
+      includesText(row.roomCode, q)
+    );
+  });
+
+  const filteredChat = chat.filter((row) => {
+    if (chatStatusFilter !== "all" && row.status !== chatStatusFilter)
+      return false;
+    const q = chatSearch.trim();
+    if (q.length === 0) return true;
+    return includesText(row.messagePreview, q) || includesText(row.username, q);
+  });
+
+  const filteredAuditLog = data.recentAuditLog.filter((row) => {
+    if (auditActionFilter !== "all" && row.action !== auditActionFilter)
+      return false;
+    const q = auditSearch.trim();
+    if (q.length === 0) return true;
+    return (
+      includesText(row.adminUsername, q) ||
+      includesText(row.targetIdShort, q) ||
+      includesText(row.oldStatus, q) ||
+      includesText(row.newStatus, q)
+    );
+  });
+
   async function handleUpdateStatus(
     id: string,
     status: FeedbackStatusValue
@@ -579,11 +718,36 @@ export default function AdminBetaDashboard({
         {/* Recent feedback */}
         <SectionCard
           title="Recent Beta Feedback"
-          subtitle={`Latest ${feedback.length}`}
+          subtitle={`Showing ${filteredFeedback.length} of ${feedback.length}`}
+          filters={
+            <div className="flex flex-wrap items-center gap-2">
+              <FilterSelect
+                label="Status"
+                value={feedbackStatusFilter}
+                onChange={setFeedbackStatusFilter}
+                options={FEEDBACK_STATUS_OPTIONS}
+              />
+              <FilterSelect
+                label="Category"
+                value={feedbackCategoryFilter}
+                onChange={setFeedbackCategoryFilter}
+                options={FEEDBACK_CATEGORY_OPTIONS}
+              />
+              <FilterSearch
+                value={feedbackSearch}
+                onChange={setFeedbackSearch}
+                placeholder="Search message, user, route, room…"
+              />
+            </div>
+          }
         >
-          {feedback.length > 0 ? (
+          {feedback.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-zinc-500">
+              No feedback submitted yet.
+            </p>
+          ) : filteredFeedback.length > 0 ? (
             <ul>
-              {feedback.map((row) => (
+              {filteredFeedback.map((row) => (
                 <FeedbackRow
                   key={row.id}
                   row={row}
@@ -593,7 +757,7 @@ export default function AdminBetaDashboard({
             </ul>
           ) : (
             <p className="px-4 py-8 text-center text-sm text-zinc-500">
-              No feedback submitted yet.
+              No records match these filters.
             </p>
           )}
         </SectionCard>
@@ -601,11 +765,30 @@ export default function AdminBetaDashboard({
         {/* Recent chat */}
         <SectionCard
           title="Recent Lobby Chat"
-          subtitle={`Latest ${chat.length} · ${chatSummary.flagged} flagged · ${chatSummary.hidden} hidden`}
+          subtitle={`Showing ${filteredChat.length} of ${chat.length} · ${chatSummary.flagged} flagged · ${chatSummary.hidden} hidden`}
+          filters={
+            <div className="flex flex-wrap items-center gap-2">
+              <FilterSelect
+                label="Status"
+                value={chatStatusFilter}
+                onChange={setChatStatusFilter}
+                options={CHAT_STATUS_OPTIONS}
+              />
+              <FilterSearch
+                value={chatSearch}
+                onChange={setChatSearch}
+                placeholder="Search message or user…"
+              />
+            </div>
+          }
         >
-          {chat.length > 0 ? (
+          {chat.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-zinc-500">
+              No chat messages yet.
+            </p>
+          ) : filteredChat.length > 0 ? (
             <ul>
-              {chat.map((row) => (
+              {filteredChat.map((row) => (
                 <ChatRow
                   key={row.id}
                   row={row}
@@ -615,7 +798,7 @@ export default function AdminBetaDashboard({
             </ul>
           ) : (
             <p className="px-4 py-8 text-center text-sm text-zinc-500">
-              No chat messages yet.
+              No records match these filters.
             </p>
           )}
         </SectionCard>
@@ -642,17 +825,36 @@ export default function AdminBetaDashboard({
       {/* Recent admin audit log */}
       <SectionCard
         title="Recent Admin Audit Log"
-        subtitle={`Latest ${data.recentAuditLog.length} admin actions`}
+        subtitle={`Showing ${filteredAuditLog.length} of ${data.recentAuditLog.length} admin actions`}
+        filters={
+          <div className="flex flex-wrap items-center gap-2">
+            <FilterSelect
+              label="Action"
+              value={auditActionFilter}
+              onChange={setAuditActionFilter}
+              options={AUDIT_ACTION_OPTIONS}
+            />
+            <FilterSearch
+              value={auditSearch}
+              onChange={setAuditSearch}
+              placeholder="Search admin, target, status…"
+            />
+          </div>
+        }
       >
-        {data.recentAuditLog.length > 0 ? (
+        {data.recentAuditLog.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-zinc-500">
+            No admin actions recorded yet.
+          </p>
+        ) : filteredAuditLog.length > 0 ? (
           <ul>
-            {data.recentAuditLog.map((row) => (
+            {filteredAuditLog.map((row) => (
               <AuditRow key={row.id} row={row} />
             ))}
           </ul>
         ) : (
           <p className="px-4 py-8 text-center text-sm text-zinc-500">
-            No admin actions recorded yet.
+            No records match these filters.
           </p>
         )}
       </SectionCard>
