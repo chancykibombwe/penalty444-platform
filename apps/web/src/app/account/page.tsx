@@ -10,6 +10,7 @@ import RecentForm from "../../components/player/RecentForm";
 import TrophiesPreview from "../../components/player/TrophiesPreview";
 import WalletPanel from "../../components/account/WalletPanel";
 import BetaFeedbackPanel from "../../components/feedback/BetaFeedbackPanel";
+import { useIsAdmin } from "../../lib/admin/useIsAdmin";
 import RivalCard from "../../components/social/RivalCard";
 import { ViewProfileButton } from "../../components/social/SocialActions";
 import { pushNotification } from "../../components/live/NotificationBell";
@@ -166,6 +167,8 @@ function mapMatchForDisplay(match: MatchResultRow, userId: string): DisplayMatch
 
 export default function AccountPage() {
   const router = useRouter();
+  // Convenience admin tools card — gated by the secure server check.
+  const isAdmin = useIsAdmin();
 
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [stats, setStats] = useState<PlayerStatsRow | null>(null);
@@ -376,6 +379,32 @@ export default function AccountPage() {
         </p>
         <h1 className="text-2xl font-black text-white">My Account</h1>
       </div>
+
+      {isAdmin ? (
+        <section className="overflow-hidden rounded-2xl border border-amber-400/35 bg-amber-950/15 p-4 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
+          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-300/80">
+            Admin Tools
+          </p>
+          <p className="mt-0.5 text-xs text-zinc-400">
+            You have admin access. These links are a convenience — the admin
+            pages enforce their own authorization.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link
+              href="/admin"
+              className="inline-flex items-center rounded-xl border border-amber-400/45 bg-amber-500/10 px-3 py-1.5 text-sm font-bold text-amber-100 transition-colors hover:border-amber-300/70 hover:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+            >
+              Open Beta Admin
+            </Link>
+            <Link
+              href="/admin/beta"
+              className="inline-flex items-center rounded-xl border border-amber-400/45 bg-amber-500/10 px-3 py-1.5 text-sm font-bold text-amber-100 transition-colors hover:border-amber-300/70 hover:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+            >
+              Open Beta Monitoring
+            </Link>
+          </div>
+        </section>
+      ) : null}
 
       <PromotionToast event={promotionEvent} />
 
