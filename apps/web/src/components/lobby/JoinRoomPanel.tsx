@@ -4,8 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { OutlineButton } from "../ui/OutlineButton";
 
-export default function JoinRoomPanel() {
-  const [roomCode, setRoomCode] = useState("");
+type JoinRoomPanelProps = {
+  /** Optional prefill from a shared invite link (?join=<code>). */
+  initialRoomCode?: string;
+};
+
+export default function JoinRoomPanel({ initialRoomCode }: JoinRoomPanelProps) {
+  const [roomCode, setRoomCode] = useState(initialRoomCode ?? "");
   const router = useRouter();
 
   function joinRoom() {

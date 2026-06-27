@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { buildChallengeHref } from "../../lib/challenge/challengeLinks";
 
 /**
  * Social action buttons (Phase 9).
@@ -65,10 +66,8 @@ export function ViewProfileButton({
 
 /**
  * Challenge a player. Routes to the lobby with a `?challenge=<username>`
- * query — the lobby is responsible for the actual match-creation flow.
- *
- * The lobby may or may not yet recognise this query parameter; that's
- * fine because Phase 9 is foundation-only.
+ * query — the lobby resolves the target, shows the Challenge Player panel,
+ * and frames the existing Private Room create/share flow.
  */
 export function ChallengePlayerButton({
   username,
@@ -85,7 +84,7 @@ export function ChallengePlayerButton({
 }) {
   return (
     <Link
-      href={`/lobby?challenge=${encodeURIComponent(username)}`}
+      href={buildChallengeHref(username)}
       className={classes(variant, size, className ?? "")}
       aria-label={`Challenge ${username}`}
     >
