@@ -192,10 +192,16 @@ export async function fetchMatchById(
     return { ok: false, error: "Match not found.", notFound: true };
   }
 
+  // Access control is enforced IN THE QUERY: filter by id AND viewer
+  // participation so the row never reaches the browser/network layer unless
+  // the viewer was one of the two players. (match_results is public-read, so
+  // a post-fetch-only check would still ship other players' rows over the
+  // wire.) The post-fetch check below is kept as defense in depth.
   const { data, error } = await supabase
     .from("match_results")
     .select(MATCH_COLUMNS)
     .eq("id", matchId)
+    .or(`player_one_id.eq.${viewerId},player_two_id.eq.${viewerId}`)
     .maybeSingle();
 
   if (error) {
@@ -204,7 +210,9 @@ export async function fetchMatchById(
 
   const row = data as MatchResultRow | null;
 
-  // Participation check: viewer must be one of the two players.
+  // Participation check (defense in depth): viewer must be one of the two
+  // players. The query above already guarantees this, but we re-assert it so
+  // the invariant is enforced even if the query filter is ever changed.
   if (
     !row ||
     (row.player_one_id !== viewerId && row.player_two_id !== viewerId)
