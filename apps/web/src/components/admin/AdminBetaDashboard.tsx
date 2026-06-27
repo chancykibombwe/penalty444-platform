@@ -17,6 +17,7 @@ import type {
   AdminBetaDashboardResponse,
   AdminFeedbackRow,
   AdminChatRow,
+  AdminChatSummary,
   AdminMatchRow,
   BetaFeedbackSummary,
 } from "../../app/api/admin/beta-dashboard/route";
@@ -63,6 +64,42 @@ function adjustSummary(
   const next = { ...summary };
   const oldKey = summaryKey(oldStatus);
   const newKey = summaryKey(newStatus);
+  if (oldKey) next[oldKey] = Math.max(0, next[oldKey] - 1);
+  if (newKey) next[newKey] = next[newKey] + 1;
+  return next;
+}
+
+// Chat moderation statuses — must match the lobby_chat_messages_status_valid
+// CHECK and the PATCH /api/admin/lobby-chat/status route.
+const CHAT_STATUSES = [
+  { value: "visible", label: "Visible" },
+  { value: "flagged", label: "Flagged" },
+  { value: "hidden", label: "Hidden" },
+] as const;
+type ChatStatusValue = (typeof CHAT_STATUSES)[number]["value"];
+
+function chatSummaryKey(status: string): keyof AdminChatSummary | null {
+  switch (status) {
+    case "visible":
+      return "visible";
+    case "flagged":
+      return "flagged";
+    case "hidden":
+      return "hidden";
+    default:
+      return null;
+  }
+}
+
+/** Move one chat row's count from oldStatus → newStatus (total unchanged). */
+function adjustChatSummary(
+  summary: AdminChatSummary,
+  oldStatus: string,
+  newStatus: string
+): AdminChatSummary {
+  const next = { ...summary };
+  const oldKey = chatSummaryKey(oldStatus);
+  const newKey = chatSummaryKey(newStatus);
   if (oldKey) next[oldKey] = Math.max(0, next[oldKey] - 1);
   if (newKey) next[newKey] = next[newKey] + 1;
   return next;
@@ -234,7 +271,25 @@ function FeedbackRow({
   );
 }
 
-function ChatRow({ row }: { row: AdminChatRow }) {
+function ChatRow({
+  row,
+  onUpdateStatus,
+}: {
+  row: AdminChatRow;
+  onUpdateStatus: (id: string, status: ChatStatusValue) => Promise<boolean>;
+}) {
+  const [updating, setUpdating] = useState(false);
+  const [error, setError] = useState(false);
+
+  async function setStatus(status: ChatStatusValue) {
+    if (updating || status === row.status) return;
+    setUpdating(true);
+    setError(false);
+    const ok = await onUpdateStatus(row.id, status);
+    if (!ok) setError(true);
+    setUpdating(false);
+  }
+
   return (
     <li className="border-t border-[#1B2433] px-4 py-2.5 first:border-t-0">
       <div className="flex items-center justify-between gap-2">
@@ -251,6 +306,37 @@ function ChatRow({ row }: { row: AdminChatRow }) {
       <p className="mt-0.5 break-words text-[13px] text-zinc-200">
         {row.messagePreview}
       </p>
+
+      {/* Moderation actions — status only. No delete / edit / ban. */}
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        {CHAT_STATUSES.map((s) => {
+          const active = row.status === s.value;
+          return (
+            <button
+              key={s.value}
+              type="button"
+              onClick={() => void setStatus(s.value)}
+              disabled={updating || active}
+              aria-pressed={active}
+              className={`rounded border px-2 py-0.5 text-[10px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black ${
+                active
+                  ? "border-[#3B9EFF]/55 bg-[#3B9EFF]/15 text-[#9AD2FF]"
+                  : "border-zinc-700 bg-black/40 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+              } disabled:opacity-50`}
+            >
+              {s.label}
+            </button>
+          );
+        })}
+        {updating ? (
+          <span className="text-[10px] text-zinc-500">Updating…</span>
+        ) : null}
+        {error ? (
+          <span className="text-[10px] text-red-300/80" role="alert">
+            Could not update chat status.
+          </span>
+        ) : null}
+      </div>
     </li>
   );
 }
@@ -307,7 +393,7 @@ export default function AdminBetaDashboard({
 }: {
   data: AdminBetaDashboardResponse;
 }) {
-  const { matchSummary, chatSummary, safety } = data;
+  const { matchSummary, safety } = data;
 
   // Feedback rows + summary are local state so a successful triage update
   // reflects immediately without a full refetch.
@@ -316,6 +402,12 @@ export default function AdminBetaDashboard({
   );
   const [feedbackSummary, setFeedbackSummary] = useState<BetaFeedbackSummary>(
     data.feedbackSummary
+  );
+
+  // Chat rows + summary are local state for the same reason.
+  const [chat, setChat] = useState<AdminChatRow[]>(data.recentChat);
+  const [chatSummary, setChatSummary] = useState<AdminChatSummary>(
+    data.chatSummary
   );
 
   async function handleUpdateStatus(
@@ -354,6 +446,42 @@ export default function AdminBetaDashboard({
     }
   }
 
+  async function handleUpdateChatStatus(
+    id: string,
+    status: ChatStatusValue
+  ): Promise<boolean> {
+    const previous = chat.find((row) => row.id === id);
+    if (!previous || previous.status === status) return true;
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) return false;
+
+      const res = await fetch("/api/admin/lobby-chat/status", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ messageId: id, status }),
+      });
+
+      if (!res.ok) return false;
+
+      setChat((prev) =>
+        prev.map((row) => (row.id === id ? { ...row, status } : row))
+      );
+      setChatSummary((prev) =>
+        adjustChatSummary(prev, previous.status, status)
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   return (
     <div className="mx-auto max-w-5xl space-y-4 px-4 py-6 pb-24">
       {/* Header */}
@@ -363,7 +491,8 @@ export default function AdminBetaDashboard({
         </p>
         <h1 className="text-2xl font-black text-white">Admin Beta Monitoring</h1>
         <p className="mt-0.5 text-sm text-zinc-400">
-          Beta operations dashboard with admin-only feedback triage.
+          Beta operations dashboard with admin-only feedback triage and chat
+          moderation.
         </p>
         <p className="mt-1 text-xs text-zinc-600">
           Monitoring only. No player funds, prizes, or real-money features are
@@ -416,12 +545,16 @@ export default function AdminBetaDashboard({
         {/* Recent chat */}
         <SectionCard
           title="Recent Lobby Chat"
-          subtitle={`Latest ${data.recentChat.length} visible`}
+          subtitle={`Latest ${chat.length} · ${chatSummary.flagged} flagged · ${chatSummary.hidden} hidden`}
         >
-          {data.recentChat.length > 0 ? (
+          {chat.length > 0 ? (
             <ul>
-              {data.recentChat.map((row) => (
-                <ChatRow key={row.id} row={row} />
+              {chat.map((row) => (
+                <ChatRow
+                  key={row.id}
+                  row={row}
+                  onUpdateStatus={handleUpdateChatStatus}
+                />
               ))}
             </ul>
           ) : (

@@ -68,6 +68,9 @@ export type AdminMatchRow = {
 
 export type AdminChatSummary = {
   total: number;
+  visible: number;
+  flagged: number;
+  hidden: number;
 };
 
 export type AdminChatRow = {
@@ -165,6 +168,9 @@ export async function GET(req: NextRequest) {
     matchTournament,
     recentMatchesResult,
     chatTotal,
+    chatVisible,
+    chatFlagged,
+    chatHidden,
     recentChatResult,
   ] = await Promise.all([
     headCount("beta_feedback"),
@@ -190,12 +196,17 @@ export async function GET(req: NextRequest) {
       .order("created_at", { ascending: false })
       .limit(20),
     headCount("lobby_chat_messages"),
+    headCount("lobby_chat_messages").eq("status", "visible"),
+    headCount("lobby_chat_messages").eq("status", "flagged"),
+    headCount("lobby_chat_messages").eq("status", "hidden"),
+    // Admin moderation view: latest messages across ALL statuses (visible /
+    // flagged / hidden). Public lobby chat is unchanged and still only reads
+    // status = 'visible' via its own RLS-scoped query.
     admin
       .from("lobby_chat_messages")
       .select("id, created_at, user_id, message, status")
-      .eq("status", "visible")
       .order("created_at", { ascending: false })
-      .limit(10),
+      .limit(20),
   ]);
 
   // 6. Resolve usernames for feedback + chat rows in one batched profiles read.
@@ -293,6 +304,9 @@ export async function GET(req: NextRequest) {
     recentMatches,
     chatSummary: {
       total: chatTotal.count ?? 0,
+      visible: chatVisible.count ?? 0,
+      flagged: chatFlagged.count ?? 0,
+      hidden: chatHidden.count ?? 0,
     },
     recentChat: chatRows.map((c) => ({
       id: c.id,
