@@ -8,6 +8,7 @@ import {
 import { LEADERBOARD_QUALIFICATION_THRESHOLD, type RankBy } from "./constants";
 import YourRankBar from "./YourRankBar";
 import RankBySelect from "./RankBySelect";
+import ChallengeRowButton from "../../components/social/ChallengeRowButton";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
@@ -225,10 +226,6 @@ function buildLeaderboardHref(
 
 function hasValidUserId(userId: string) {
   return userId.trim().length > 0;
-}
-
-function buildChallengeHref(userId: string, username: string) {
-  return `/lobby?${new URLSearchParams({ challengeUserId: userId, challengeUsername: username }).toString()}`;
 }
 
 function buildPlayerProfileHref(userId: string, username?: string | null) {
@@ -1175,19 +1172,13 @@ export default async function LeaderboardPage({
                         </p>
                       </div>
 
-                      {/* Challenge — search only */}
+                      {/* Challenge — search only; hides itself for the
+                          logged-in viewer's own row (client-side check). */}
                       {hasActiveSearch && hasValidUserId(player.id) ? (
-                        <Link
-                          href={buildChallengeHref(player.id, player.username)}
-                          className="shrink-0 rounded-lg px-2 py-0.5 text-xs font-semibold transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50"
-                          style={{
-                            background: "rgba(8,40,50,0.90)",
-                            border: "1px solid rgba(34,211,238,0.38)",
-                            color: "#67e8f9",
-                          }}
-                        >
-                          Challenge
-                        </Link>
+                        <ChallengeRowButton
+                          targetUserId={player.id}
+                          targetUsername={player.username}
+                        />
                       ) : null}
                     </div>
                   );

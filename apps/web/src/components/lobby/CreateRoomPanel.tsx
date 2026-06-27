@@ -5,11 +5,14 @@ import { useRouter } from "next/navigation";
 import { getSocket } from "../../lib/socket/client";
 import { getCurrentPlayerIdentity } from "../../lib/auth/playerIdentity";
 import { clearActiveMatch } from "../../lib/match/activeMatch";
+import {
+  buildInviteText,
+  buildJoinLink,
+} from "../../lib/challenge/challengeLinks";
 import { GradientButton } from "../ui/GradientButton";
 import { OutlineButton } from "../ui/OutlineButton";
 
 type CreateRoomPanelProps = {
-  challengeUserId?: string;
   challengeUsername?: string;
 };
 
@@ -28,6 +31,7 @@ export default function CreateRoomPanel({
   const [cancelling, setCancelling] = useState(false);
   const [hostUsername, setHostUsername] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
   const [canShare, setCanShare] = useState(false);
   const router = useRouter();
 
@@ -203,6 +207,19 @@ export default function CreateRoomPanel({
     });
   }
 
+  function copyInvite() {
+    if (!waitingRoom) return;
+    const inviteText = buildInviteText({
+      challengerName: hostUsername,
+      roomCode: waitingRoom.roomCode,
+      joinLink: buildJoinLink(waitingRoom.roomCode),
+    });
+    void navigator.clipboard.writeText(inviteText).then(() => {
+      setInviteCopied(true);
+      window.setTimeout(() => setInviteCopied(false), 2000);
+    });
+  }
+
   function shareRoomCode() {
     if (!waitingRoom || typeof navigator === "undefined" || !("share" in navigator)) return;
     void navigator.share({
@@ -267,6 +284,35 @@ export default function CreateRoomPanel({
             {waitingRoom.rounds} rounds · Free Play Beta
           </p>
         </div>
+
+        {/* Challenge invite — copyable message to share with the target */}
+        {challengeUsername ? (
+          <div className="rounded-xl border border-cyan-500/25 bg-cyan-950/20 px-3 py-2.5">
+            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300/70">
+              Invite for {challengeUsername}
+            </p>
+            <p className="mt-1.5 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-cyan-100/80">
+              {buildInviteText({
+                challengerName: hostUsername,
+                roomCode: waitingRoom.roomCode,
+                joinLink: buildJoinLink(waitingRoom.roomCode),
+              })}
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={copyInvite}
+                className="rounded-lg border border-cyan-500/40 bg-black/30 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100 transition hover:border-cyan-400/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+                style={{ color: inviteCopied ? "#86efac" : undefined }}
+              >
+                {inviteCopied ? "Invite Copied!" : "Copy Invite"}
+              </button>
+              <span className="text-[10px] text-zinc-500">
+                Share this with {challengeUsername}.
+              </span>
+            </div>
+          </div>
+        ) : null}
 
         {/* Player slots */}
         <div className="space-y-1.5">

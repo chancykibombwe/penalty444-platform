@@ -9,15 +9,22 @@ import CreateRoomPanel from "../../components/lobby/CreateRoomPanel";
 import JoinRoomPanel from "../../components/lobby/JoinRoomPanel";
 import LobbyStatusStrip from "../../components/lobby/LobbyStatusStrip";
 import LobbyChatPanel from "../../components/lobby/LobbyChatPanel";
+import ChallengePlayerPanel from "../../components/lobby/ChallengePlayerPanel";
 import { LobbyConnectionProvider } from "../../lib/socket/LobbyConnectionProvider";
+import { resolveChallengeTarget } from "../../lib/challenge/challengeLinks";
 import EmptyState from "../../components/ui/EmptyState";
 
 function LobbyPageContent() {
   const searchParams = useSearchParams();
-  const challengeUserId = searchParams.get("challengeUserId")?.trim() ?? "";
-  const challengeUsername = searchParams.get("challengeUsername")?.trim() ?? "";
-  const hasChallengeContext =
-    challengeUserId.length > 0 && challengeUsername.length > 0;
+  // Canonical `?challenge=<username>` plus legacy
+  // `?challengeUserId=&challengeUsername=` are both supported.
+  const challengeUsername = resolveChallengeTarget({
+    challenge: searchParams.get("challenge"),
+    challengeUsername: searchParams.get("challengeUsername"),
+  });
+  const hasChallengeContext = challengeUsername.length > 0;
+  // Optional Join Room prefill from a shared invite link.
+  const joinRoomCode = searchParams.get("join")?.trim().toUpperCase() ?? "";
 
   return (
     <RequireAuth>
@@ -59,19 +66,9 @@ function LobbyPageContent() {
 
             <LobbyStatusStrip />
 
-            {/* Challenge context banner */}
+            {/* Challenge Player panel — frames the Private Room flow below */}
             {hasChallengeContext ? (
-              <div className="inline-flex items-start gap-3 rounded-2xl border border-cyan-500/30 bg-cyan-950/20 px-4 py-3 shadow-[0_0_20px_rgba(34,211,238,0.07)]">
-                <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" aria-hidden />
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-cyan-100">
-                    Challenging {challengeUsername}
-                  </p>
-                  <p className="mt-0.5 text-xs text-cyan-200/65">
-                    Create a private room and share the code with this player.
-                  </p>
-                </div>
-              </div>
+              <ChallengePlayerPanel targetUsername={challengeUsername} />
             ) : null}
 
             {/* Main column + sidebar on desktop; stacked on mobile */}
@@ -90,12 +87,11 @@ function LobbyPageContent() {
                   </p>
                   <div className="grid grid-cols-2 gap-2 sm:gap-3">
                     <CreateRoomPanel
-                      challengeUserId={hasChallengeContext ? challengeUserId : undefined}
                       challengeUsername={
                         hasChallengeContext ? challengeUsername : undefined
                       }
                     />
-                    <JoinRoomPanel />
+                    <JoinRoomPanel initialRoomCode={joinRoomCode || undefined} />
                   </div>
                 </div>
 
