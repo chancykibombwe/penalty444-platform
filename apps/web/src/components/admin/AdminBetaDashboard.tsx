@@ -363,7 +363,7 @@ export default function AdminBetaDashboard({
         </p>
         <h1 className="text-2xl font-black text-white">Admin Beta Monitoring</h1>
         <p className="mt-0.5 text-sm text-zinc-400">
-          Read-only beta operations dashboard.
+          Beta operations dashboard with admin-only feedback triage.
         </p>
         <p className="mt-1 text-xs text-zinc-600">
           Monitoring only. No player funds, prizes, or real-money features are
