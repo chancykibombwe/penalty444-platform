@@ -8,6 +8,7 @@ import RankedMatchmakingPanel from "../../components/lobby/RankedMatchmakingPane
 import CreateRoomPanel from "../../components/lobby/CreateRoomPanel";
 import JoinRoomPanel from "../../components/lobby/JoinRoomPanel";
 import LobbyStatusStrip from "../../components/lobby/LobbyStatusStrip";
+import LobbyChatPanel from "../../components/lobby/LobbyChatPanel";
 import { LobbyConnectionProvider } from "../../lib/socket/LobbyConnectionProvider";
 import EmptyState from "../../components/ui/EmptyState";
 
@@ -119,6 +120,9 @@ function LobbyPageContent() {
                     />
                   </div>
                 </details>
+
+                {/* Arena Chat — global lobby chat (Free Play beta) */}
+                <LobbyChatPanel />
               </aside>
             </div>
 
