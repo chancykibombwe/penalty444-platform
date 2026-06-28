@@ -373,11 +373,19 @@ export default function AccountPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 pb-24 sm:pb-6">
-      <div>
-        <p className="text-[10px] font-black uppercase tracking-[0.25em] text-emerald-400/70">
-          444 Arena · Free Play Beta
-        </p>
-        <h1 className="text-2xl font-black text-white">My Account</h1>
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-emerald-400/70">
+            444 Arena · Free Play Beta
+          </p>
+          <h1 className="text-2xl font-black text-white">My Account</h1>
+        </div>
+        <Link
+          href="/beta-guide"
+          className="shrink-0 rounded-lg border border-[#1B2433] bg-black/40 px-2.5 py-1.5 text-[11px] font-bold text-zinc-300 transition-colors hover:border-zinc-600 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+        >
+          Beta Guide →
+        </Link>
       </div>
 
       {isAdmin ? (
