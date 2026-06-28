@@ -223,7 +223,7 @@ function includesText(value: string | null | undefined, query: string): boolean 
 }
 
 const FILTER_SELECT_CLASS =
-  "rounded-lg border border-zinc-800 bg-black/45 px-2 py-1 text-[11px] text-zinc-200 [color-scheme:dark] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black";
+  "rounded-lg border border-zinc-800 bg-black/45 px-2 py-1.5 text-[11px] text-zinc-200 [color-scheme:dark] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black sm:py-1";
 
 function FilterSelect({
   label,
@@ -237,14 +237,14 @@ function FilterSelect({
   options: { value: string; label: string }[];
 }) {
   return (
-    <label className="inline-flex items-center gap-1.5">
-      <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">
+    <label className="flex w-full items-center gap-1.5 sm:w-auto">
+      <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-600">
         {label}
       </span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={FILTER_SELECT_CLASS}
+        className={`${FILTER_SELECT_CLASS} flex-1 sm:flex-none`}
         aria-label={label}
       >
         {options.map((o) => (
@@ -273,7 +273,7 @@ function FilterSearch({
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       aria-label={placeholder}
-      className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-black/45 px-2.5 py-1 text-[12px] text-white placeholder:text-zinc-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+      className="w-full min-w-0 rounded-lg border border-zinc-800 bg-black/45 px-2.5 py-1.5 text-[12px] text-white placeholder:text-zinc-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black sm:w-auto sm:flex-1 sm:py-1 sm:min-w-[180px]"
     />
   );
 }
@@ -340,7 +340,7 @@ function FeedbackRow({
               onClick={() => void setStatus(s.value)}
               disabled={updating || active}
               aria-pressed={active}
-              className={`rounded border px-2 py-0.5 text-[10px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black ${
+              className={`rounded border px-2.5 py-1 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black sm:px-2 sm:py-0.5 sm:text-[10px] ${
                 active
                   ? "border-[#3B9EFF]/55 bg-[#3B9EFF]/15 text-[#9AD2FF]"
                   : "border-zinc-700 bg-black/40 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
@@ -410,7 +410,7 @@ function ChatRow({
               onClick={() => void setStatus(s.value)}
               disabled={updating || active}
               aria-pressed={active}
-              className={`rounded border px-2 py-0.5 text-[10px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black ${
+              className={`rounded border px-2.5 py-1 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black sm:px-2 sm:py-0.5 sm:text-[10px] ${
                 active
                   ? "border-[#3B9EFF]/55 bg-[#3B9EFF]/15 text-[#9AD2FF]"
                   : "border-zinc-700 bg-black/40 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
@@ -755,7 +755,7 @@ export default function AdminBetaDashboard({
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 px-4 py-6 pb-24">
+    <div className="mx-auto max-w-5xl space-y-4 px-3 py-6 pb-24 sm:px-4">
       {/* Header */}
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.25em] text-emerald-400/70">
@@ -773,42 +773,46 @@ export default function AdminBetaDashboard({
       </div>
 
       {/* Refresh / live-update controls */}
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#1B2433] bg-[#0D1420] px-4 py-2.5">
-        <button
-          type="button"
-          onClick={() => void refreshDashboard()}
-          disabled={refreshing}
-          className="rounded-lg border border-[#3B9EFF]/45 bg-[#3B9EFF]/10 px-3 py-1.5 text-xs font-bold text-[#9AD2FF] transition-colors hover:border-[#3B9EFF]/70 hover:bg-[#3B9EFF]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black disabled:opacity-50"
-        >
-          {refreshing ? "Refreshing…" : "Refresh"}
-        </button>
+      <div className="flex flex-col items-stretch gap-2 rounded-2xl border border-[#1B2433] bg-[#0D1420] px-4 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void refreshDashboard()}
+            disabled={refreshing}
+            className="min-h-[36px] flex-1 rounded-lg border border-[#3B9EFF]/45 bg-[#3B9EFF]/10 px-3 py-1.5 text-xs font-bold text-[#9AD2FF] transition-colors hover:border-[#3B9EFF]/70 hover:bg-[#3B9EFF]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black disabled:opacity-50 sm:min-h-0 sm:flex-none"
+          >
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setAutoRefresh((v) => !v)}
-          aria-pressed={autoRefresh}
-          className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black ${
-            autoRefresh
-              ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-200"
-              : "border-zinc-700 bg-black/40 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-          }`}
-        >
-          Auto-refresh: {autoRefresh ? "ON" : "OFF"}
-        </button>
+          <button
+            type="button"
+            onClick={() => setAutoRefresh((v) => !v)}
+            aria-pressed={autoRefresh}
+            className={`min-h-[36px] flex-1 rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black disabled:opacity-50 sm:min-h-0 sm:flex-none ${
+              autoRefresh
+                ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-200"
+                : "border-zinc-700 bg-black/40 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+            }`}
+          >
+            Auto-refresh: {autoRefresh ? "ON" : "OFF"}
+          </button>
+        </div>
 
-        <span className="text-[11px] text-zinc-500">
-          Last updated: {formatDateTime(lastRefreshedAt)}
-        </span>
-
-        {autoRefresh ? (
-          <span className="text-[11px] text-zinc-600">· every 30s</span>
-        ) : null}
-
-        {refreshError ? (
-          <span className="text-[11px] text-red-300/80" role="alert">
-            {refreshError}
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="break-words text-[11px] text-zinc-500">
+            Last updated: {formatDateTime(lastRefreshedAt)}
           </span>
-        ) : null}
+
+          {autoRefresh ? (
+            <span className="text-[11px] text-zinc-600">· every 30s</span>
+          ) : null}
+
+          {refreshError ? (
+            <span className="break-words text-[11px] text-red-300/80" role="alert">
+              {refreshError}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {/* Activity counts */}
@@ -836,7 +840,7 @@ export default function AdminBetaDashboard({
           title="Recent Beta Feedback"
           subtitle={`Showing ${filteredFeedback.length} of ${feedback.length}`}
           filters={
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <FilterSelect
                 label="Status"
                 value={feedbackStatusFilter}
@@ -883,7 +887,7 @@ export default function AdminBetaDashboard({
           title="Recent Lobby Chat"
           subtitle={`Showing ${filteredChat.length} of ${chat.length} · ${chatSummary.flagged} flagged · ${chatSummary.hidden} hidden`}
           filters={
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <FilterSelect
                 label="Status"
                 value={chatStatusFilter}
@@ -943,7 +947,7 @@ export default function AdminBetaDashboard({
         title="Recent Admin Audit Log"
         subtitle={`Showing ${filteredAuditLog.length} of ${dashboardData.recentAuditLog.length} admin actions`}
         filters={
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <FilterSelect
               label="Action"
               value={auditActionFilter}
