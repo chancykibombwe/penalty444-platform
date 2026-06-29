@@ -448,6 +448,31 @@ export default function AccountPage() {
             Free Play Beta · Stats are for beta testing only · No real-money prizes
           </p>
 
+          {/* Report a Beta Issue — discoverability callout for the feedback
+              section below. Links to the existing BetaFeedbackPanel anchor. */}
+          <section className="overflow-hidden rounded-2xl border border-[#3B9EFF]/30 bg-[#3B9EFF]/[0.06] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-sm font-black text-white">Report a Beta Issue</p>
+                <p className="mt-1 text-xs leading-relaxed text-zinc-400">
+                  Found a bug, confusing screen, mobile layout problem, or wrong
+                  match result? Send feedback here so we can review it during
+                  beta.
+                </p>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  Helpful reports include what happened, the page you were on,
+                  and your device/browser if possible.
+                </p>
+              </div>
+              <a
+                href="#beta-feedback"
+                className="inline-flex min-h-[40px] w-full shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] px-4 py-2 text-sm font-black text-white transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/75 focus-visible:ring-offset-1 focus-visible:ring-offset-black sm:w-auto"
+              >
+                Send Feedback
+              </a>
+            </div>
+          </section>
+
           <CompetitiveProfileCard
             username={displayName}
             stats={competitiveStats}
@@ -571,7 +596,9 @@ export default function AccountPage() {
             />
           </div>
 
-          <BetaFeedbackPanel />
+          <div id="beta-feedback" className="scroll-mt-20">
+            <BetaFeedbackPanel />
+          </div>
 
           <div className="pt-1">
             <button
