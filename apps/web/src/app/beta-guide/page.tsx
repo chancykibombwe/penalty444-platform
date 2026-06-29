@@ -182,6 +182,21 @@ export default function BetaGuidePage() {
         </ul>
       </section>
 
+      {/* Feedback CTA → existing Account feedback anchor */}
+      <section className="overflow-hidden rounded-2xl border border-[#3B9EFF]/30 bg-[#3B9EFF]/[0.06] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="min-w-0 text-sm text-zinc-200">
+            Found a bug or issue? Report it from your Account feedback panel.
+          </p>
+          <Link
+            href="/account#beta-feedback"
+            className="inline-flex min-h-[40px] w-full shrink-0 items-center justify-center rounded-xl border border-[#3B9EFF]/45 bg-[#3B9EFF]/10 px-4 py-2 text-sm font-bold text-[#9AD2FF] transition-colors hover:border-[#3B9EFF]/70 hover:bg-[#3B9EFF]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black sm:w-auto"
+          >
+            Report a Beta Issue →
+          </Link>
+        </div>
+      </section>
+
       {/* Quick links */}
       <section>
         <p className="mb-2 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
@@ -227,7 +242,7 @@ export default function BetaGuidePage() {
         </ul>
         <div className="mt-4">
           <Link
-            href="/account"
+            href="/account#beta-feedback"
             className="inline-flex rounded-xl bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] px-4 py-2 text-sm font-black text-white transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/75 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
           >
             Submit Feedback
