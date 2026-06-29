@@ -71,7 +71,13 @@ export default function HeroBanner({
             >
               ▶ Play Free
             </Link>
-            <div className="flex items-center gap-4 sm:ml-1">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:ml-1">
+              <Link
+                href="/beta-guide"
+                className="text-xs font-bold text-emerald-300/80 transition-colors hover:text-emerald-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500/60"
+              >
+                Beta Guide →
+              </Link>
               <Link
                 href="/how-to-play"
                 className="text-xs font-bold text-zinc-400 transition-colors hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/60"
@@ -86,6 +92,18 @@ export default function HeroBanner({
               </Link>
             </div>
           </div>
+
+          {/* New-tester hint → Beta Guide */}
+          <p className="mt-2 text-[11px] text-zinc-500 sm:text-xs">
+            New tester?{" "}
+            <Link
+              href="/beta-guide"
+              className="font-semibold text-emerald-300/80 underline-offset-2 transition-colors hover:text-emerald-200 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500/60"
+            >
+              Read the Beta Guide
+            </Link>{" "}
+            first — Free Play only.
+          </p>
 
           {/* Beta safety notice */}
           <p className="mt-3 hidden text-[10px] text-zinc-600 sm:block">
