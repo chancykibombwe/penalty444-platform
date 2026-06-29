@@ -289,16 +289,16 @@ export default function BetaGuidePage() {
       </SectionCard>
 
       {/* Footer CTA */}
-      <div className="flex flex-wrap gap-3 pt-1">
+      <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:flex-wrap">
         <Link
           href="/lobby"
-          className="rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-2.5 text-sm font-black text-zinc-950 transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/75 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+          className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-2.5 text-sm font-black text-zinc-950 transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/75 focus-visible:ring-offset-1 focus-visible:ring-offset-black sm:w-auto"
         >
           Start Testing ⚽
         </Link>
         <Link
           href="/how-to-play"
-          className="rounded-xl border border-zinc-700 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:border-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+          className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-zinc-600 bg-[#0D1420] px-5 py-2.5 text-sm font-bold text-zinc-100 transition-colors hover:border-zinc-400 hover:bg-[#141d2b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black sm:w-auto"
         >
           How to Play
         </Link>
