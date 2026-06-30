@@ -3079,6 +3079,8 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           isSuddenDeath={isSuddenDeath}
           isTournament={isTournamentMatch}
           isFinal={isFinalTournamentMatch}
+          currentTurn={round}
+          totalTurns={normalTurns}
         />
       </div>
 

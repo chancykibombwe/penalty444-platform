@@ -10,6 +10,13 @@ import type { Role } from "./matchPresentation";
  * Highlights the active KICKER (gold ring + pulse) and keeps a strong
  * score hierarchy without the height of two separate stacked cards.
  *
+ * Below the score row, a compact PROGRESS checklist shows how far the match
+ * has advanced (completed / current / pending shots). It is intentionally
+ * progress-only: the scoreboard only receives cumulative scores, not a
+ * per-turn outcome history, so we never infer per-round win/loss on the
+ * client. True per-round win/loss indicators would require existing
+ * round-history data to be exposed to this component safely.
+ *
  * The parent must already own `myRole` / `opponentRole` / `scorePulse` etc.
  * — this component does not touch sockets, gameplay rules, or persistence.
  */
@@ -24,6 +31,8 @@ export default function MatchScoreboard({
   isSuddenDeath,
   isTournament,
   isFinal,
+  currentTurn,
+  totalTurns,
 }: {
   myName: string;
   opponentName: string;
@@ -35,12 +44,16 @@ export default function MatchScoreboard({
   isSuddenDeath: boolean;
   isTournament: boolean;
   isFinal: boolean;
+  /** Current turn/shot number (1-indexed). Optional — progress row hides if absent. */
+  currentTurn?: number;
+  /** Total turns/shots in normal play (maxRounds × 2). Optional. */
+  totalTurns?: number;
 }) {
   const goldTrim = isTournament || isFinal;
 
   return (
     <section
-      className={`flex items-center justify-between gap-3 rounded-lg border bg-zinc-950/95 px-2 py-1.5 shadow-xl sm:gap-4 sm:rounded-3xl sm:px-5 sm:py-4 md:rounded-[2rem] md:px-7 md:py-5 ${
+      className={`flex flex-col gap-1.5 rounded-lg border bg-zinc-950/95 px-2 py-1.5 shadow-xl sm:gap-2 sm:rounded-3xl sm:px-5 sm:py-4 md:rounded-[2rem] md:px-7 md:py-5 ${
         isSuddenDeath
           ? "border-yellow-500/40 shadow-[0_0_20px_rgba(234,179,8,0.08)]"
           : isFinal
@@ -51,6 +64,7 @@ export default function MatchScoreboard({
       }`}
       aria-label="Match score"
     >
+      <div className="flex items-center justify-between gap-3 sm:gap-4">
       <PlayerSide
         name={myName}
         score={myScore}
@@ -91,6 +105,15 @@ export default function MatchScoreboard({
         isFinal={isFinal}
         goldTrim={goldTrim}
         align="right"
+      />
+      </div>
+
+      <RoundProgress
+        currentTurn={currentTurn}
+        totalTurns={totalTurns}
+        isSuddenDeath={isSuddenDeath}
+        goldTrim={goldTrim}
+        isFinal={isFinal}
       />
     </section>
   );
@@ -180,4 +203,98 @@ function PlayerSide({
     }
     return null;
   }
+}
+
+/**
+ * Compact per-shot PROGRESS checklist.
+ *
+ * Renders a small row of dots — one per normal-play shot (turn) — showing
+ * completed shots (filled), the current shot (highlighted), and pending
+ * shots (dimmed). This is progress-only on purpose: we only have cumulative
+ * scores here, so we do NOT derive per-shot win/loss on the client.
+ *
+ * TODO: true per-round win/loss indicators (green = scored, red = saved/miss)
+ * would require the existing authoritative round-history to be passed into
+ * this component. Until that data is exposed safely, we show progress only —
+ * never inventing outcomes.
+ *
+ * Sudden death is open-ended (no fixed shot count), so we show a compact
+ * "Sudden Death" badge instead of a dot row.
+ */
+function RoundProgress({
+  currentTurn,
+  totalTurns,
+  isSuddenDeath,
+  goldTrim,
+  isFinal,
+}: {
+  currentTurn?: number;
+  totalTurns?: number;
+  isSuddenDeath: boolean;
+  goldTrim: boolean;
+  isFinal: boolean;
+}) {
+  if (isSuddenDeath) {
+    return (
+      <div className="flex items-center justify-center">
+        <span className="inline-flex items-center gap-1 rounded-full border border-yellow-500/40 bg-yellow-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.18em] text-yellow-200/90 sm:text-[9px]">
+          <span className="h-1 w-1 animate-pulse rounded-full bg-yellow-300" aria-hidden />
+          Sudden Death
+        </span>
+      </div>
+    );
+  }
+
+  // Need a sane, positive shot count to render the checklist.
+  if (
+    typeof totalTurns !== "number" ||
+    !Number.isFinite(totalTurns) ||
+    totalTurns <= 0
+  ) {
+    return null;
+  }
+
+  const total = Math.min(Math.floor(totalTurns), 30); // guard against odd data
+  const current =
+    typeof currentTurn === "number" && Number.isFinite(currentTurn)
+      ? Math.floor(currentTurn)
+      : 0;
+
+  const activeDot = isFinal
+    ? "bg-yellow-300 ring-1 ring-yellow-200/70"
+    : goldTrim
+      ? "bg-amber-300 ring-1 ring-amber-200/70"
+      : "bg-cyan-300 ring-1 ring-cyan-200/70";
+
+  const completedCount = Math.max(0, Math.min(current - 1, total));
+
+  return (
+    <div
+      className="flex flex-wrap items-center justify-center gap-1"
+      role="img"
+      aria-label={`Shot progress: ${Math.min(Math.max(current, 0), total)} of ${total}`}
+    >
+      {Array.from({ length: total }, (_, i) => {
+        const shot = i + 1;
+        const isCompleted = shot < current;
+        const isActive = shot === current;
+        return (
+          <span
+            key={shot}
+            aria-hidden
+            className={`h-1.5 w-1.5 shrink-0 rounded-full transition-colors sm:h-2 sm:w-2 ${
+              isActive
+                ? `${activeDot} animate-pulse`
+                : isCompleted
+                  ? "bg-zinc-400"
+                  : "bg-zinc-700"
+            }`}
+          />
+        );
+      })}
+      <span className="ml-1 text-[8px] font-bold tabular-nums text-zinc-600 sm:text-[9px]">
+        {completedCount}/{total}
+      </span>
+    </div>
+  );
 }
