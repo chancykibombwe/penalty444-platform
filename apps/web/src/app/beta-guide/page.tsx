@@ -251,6 +251,24 @@ export default function BetaGuidePage() {
         </ul>
       </SectionCard>
 
+      {/* Ready to test? → lobby */}
+      <section className="overflow-hidden rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.06] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.4)]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-black text-white">Ready to test?</p>
+            <p className="mt-0.5 text-xs text-zinc-400">
+              Start from the lobby and run through the Free Play checklist.
+            </p>
+          </div>
+          <Link
+            href="/lobby"
+            className="inline-flex min-h-[40px] w-full shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-4 py-2 text-sm font-black text-zinc-950 transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/75 focus-visible:ring-offset-1 focus-visible:ring-offset-black sm:w-auto"
+          >
+            Go to Lobby →
+          </Link>
+        </div>
+      </section>
+
       {/* What to report */}
       <SectionCard
         title="What to Report"
