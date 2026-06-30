@@ -3347,6 +3347,18 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               </a>
             )}
           </div>
+
+          {/* Subtle post-match beta-feedback shortcut → existing Account
+              feedback anchor. Secondary, not a primary CTA. */}
+          <div className="mt-4 text-center">
+            <p className="text-[11px] text-zinc-500">Something went wrong?</p>
+            <Link
+              href="/account#beta-feedback"
+              className="mt-0.5 inline-flex items-center gap-1 text-xs font-semibold text-zinc-400 underline-offset-2 transition-colors hover:text-zinc-200 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/60"
+            >
+              Report issue from this match →
+            </Link>
+          </div>
         </section>
       ) : null}
 
