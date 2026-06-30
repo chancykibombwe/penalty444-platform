@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import RequireAuth from "../../components/auth/RequireAuth";
 import PublicMatchOffersPanel from "../../components/lobby/PublicMatchOffersPanel";
@@ -99,6 +100,32 @@ function LobbyPageContent() {
 
               {/* Sidebar (stacks below main column on mobile) */}
               <aside className="space-y-2 sm:space-y-3 lg:sticky lg:top-20 lg:space-y-5">
+                {/* Beta Testing Help — static shortcuts to guide + feedback */}
+                <section className="overflow-hidden rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-3 sm:p-3.5">
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">
+                    Beta Testing Help
+                  </p>
+                  <p className="mt-1.5 text-xs leading-relaxed text-zinc-400">
+                    Testing the Free Play beta? Use the guide for what to test,
+                    or send feedback if something feels broken, confusing, or
+                    slow.
+                  </p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                    <Link
+                      href="/beta-guide"
+                      className="inline-flex min-h-[36px] items-center justify-center rounded-lg border border-zinc-700 bg-black/40 px-3 py-1.5 text-xs font-bold text-zinc-200 transition-colors hover:border-zinc-500 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+                    >
+                      Open Beta Guide →
+                    </Link>
+                    <Link
+                      href="/account#beta-feedback"
+                      className="inline-flex min-h-[36px] items-center justify-center rounded-lg border border-[#3B9EFF]/45 bg-[#3B9EFF]/10 px-3 py-1.5 text-xs font-bold text-[#9AD2FF] transition-colors hover:border-[#3B9EFF]/70 hover:bg-[#3B9EFF]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+                    >
+                      Send Feedback
+                    </Link>
+                  </div>
+                </section>
+
                 {/* Play Again — recent opponents, collapsible */}
                 <details className="group overflow-hidden rounded-2xl border border-zinc-800/60 bg-zinc-900/40">
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500 [&::-webkit-details-marker]:hidden">
