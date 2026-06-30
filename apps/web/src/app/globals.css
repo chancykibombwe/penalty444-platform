@@ -1,8 +1,13 @@
 @import "tailwindcss" source("../");
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* 444 ARENA is an ALWAYS-DARK arena theme. The default background/foreground
+     are the brand dark values — never white — so nothing flashes or bleeds
+     white behind pages, buttons, or native chrome. There is intentionally NO
+     `prefers-color-scheme: light` path; the app owns its theme. */
+  --background: #0a0e14; /* arena-bg */
+  --foreground: #ededed;
+  color-scheme: dark; /* dark scrollbars / form chrome / canvas — no white flash */
 }
 
 @theme inline {
@@ -11,7 +16,15 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 
-  /* 444 ARENA — Premium Mobile UI Pass design tokens (Part 2 spec) */
+  /* ── 444 ARENA brand palette ──────────────────────────────────────────
+     Palette rule (Final UI / Launch Look — see docs/final-ui-direction-audit.md):
+       • Primary (neon cyan/blue)  → --color-arena-primary / -primary-deep
+       • Competitive accent (gold, used sparingly) → --color-arena-gold
+       • Success / beta accent (emerald) → --color-arena-green
+       • Danger / error → --color-arena-red
+       • Backgrounds / surfaces / borders / muted stay dark + consistent.
+     Prefer these tokens over raw hex going forward; broad component
+     migration happens in later Final-UI area PRs, not here. */
   --color-arena-bg: #0a0e14;
   --color-arena-bg-deep: #000000;
   --color-arena-surface: #0d1420;
@@ -24,13 +37,6 @@
   --color-arena-gold: #e0a000;
   --color-arena-red: #ef4444;
   --color-arena-muted: #5a6472;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 html,
