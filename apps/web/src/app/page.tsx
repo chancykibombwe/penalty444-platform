@@ -134,7 +134,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
       {/* Brand accent tick — neon cyan/blue primary, consistent across sections. */}
       <span
         aria-hidden
-        className="inline-block h-3 w-[3px] shrink-0 rounded-full bg-gradient-to-b from-[#3B9EFF] to-[#1E6FE0] shadow-[0_0_8px_rgba(59,158,255,0.6)]"
+        className="inline-block h-3 w-[3px] shrink-0 rounded-full bg-gradient-to-b from-arena-primary to-arena-primary-deep shadow-[0_0_8px_rgba(59,158,255,0.6)]"
       />
       {children}
     </p>
