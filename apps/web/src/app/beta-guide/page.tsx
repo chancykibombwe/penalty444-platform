@@ -24,6 +24,15 @@ const WHAT_TO_TEST = [
   "Submit beta feedback from your Account page or the feedback form",
 ];
 
+const QUICK_TEST = [
+  "Log in and confirm your username/account loads.",
+  "Start a Free Play public match.",
+  "Complete a full Penalty444 match.",
+  "Test Rematch or Challenge Again after a match.",
+  "Check the result screen and scoreboard.",
+  "Submit feedback if something feels broken, confusing, or slow.",
+];
+
 const WHAT_TO_REPORT = [
   "Login / signup problems",
   "Match connection issues",
@@ -224,6 +233,19 @@ export default function BetaGuidePage() {
       >
         <ul className="grid gap-2 sm:grid-cols-2">
           {WHAT_TO_TEST.map((item) => (
+            <CheckItem key={item}>{item}</CheckItem>
+          ))}
+        </ul>
+      </SectionCard>
+
+      {/* Quick test checklist — compact, action-focused run-through */}
+      <SectionCard
+        title="Quick Test Checklist"
+        subtitle="A fast run-through if you only have a few minutes."
+        accent="blue"
+      >
+        <ul className="grid gap-2">
+          {QUICK_TEST.map((item) => (
             <CheckItem key={item}>{item}</CheckItem>
           ))}
         </ul>
