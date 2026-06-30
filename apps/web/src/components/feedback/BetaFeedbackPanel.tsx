@@ -151,10 +151,15 @@ export default function BetaFeedbackPanel({
               <div>
                 <label
                   htmlFor={messageId}
-                  className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-400"
+                  className="mb-1 block text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-400"
                 >
                   What happened?
                 </label>
+                <p className="mb-1.5 text-[11px] leading-relaxed text-zinc-500">
+                  Please include what happened, what you expected, the page or
+                  match room, and your device/browser if possible. A match room
+                  code or screenshot helps when relevant.
+                </p>
                 <textarea
                   id={messageId}
                   value={message}
