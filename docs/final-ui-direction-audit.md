@@ -113,27 +113,29 @@ Three themes dominate the gap to "premium":
 
 ## 3. Recommended PR sequence (small, one area at a time)
 
-> Numbering note: the Unity B1 stub took GitHub #162, so these open at **#163+**. Each is small, additive, React-only, and excludes the locked beta-support surfaces.
+> Numbering note: this audit is PR **#163** (the Unity B1 stub took #162), so the area PRs open at **#164+**. Each is small, additive, React-only, and excludes the locked beta-support surfaces.
 
 | PR | Area | Goal / definition of done |
 |---|---|---|
-| **#163 — Brand foundation** | globals.css tokens + dark default | Retire white default → always-dark arena theme; document the palette rules (primary / competitive / beta accents). No per-component redesign yet. Low risk, unblocks consistency. |
-| **#164 — Home / Landing final look** | `page.tsx`, home components | Tighten section narrative & density; premium hero; strong branded empty states for live/activity strips. |
-| **#165 — Lobby final look** | `lobby/page.tsx`, lobby panels | Clear primary-vs-secondary hierarchy; primary "find match" dominates; spacing/weight pass. (Leave the locked Beta Help card.) |
-| **#166 — Match room final look** | match presentation components | Polish pre-start waiting card + victory/defeat/draw result card for a "wow" moment. Additive & 3D-flag-compatible. (Leave the locked Match-End feedback link.) |
-| **#167 — Game cards / future games** | `GameCard`, `COMING_SOON_GAMES` | Add Card444; make coming-soon cards intentionally inactive (no silent `/` nav); consistent card treatment. |
-| **#168 — Mobile launch sweep** | cross-surface classes only | One systematic 360–390px pass for overflow / tap targets / above-the-fold CTAs across the main surfaces. |
+| **#164 — Brand foundation** | globals.css tokens + dark default | Retire white default → always-dark arena theme; document the palette rules (primary / competitive / beta accents). No per-component redesign yet. Low risk, unblocks consistency. |
+| **#165 — Home / Landing final look** | `page.tsx`, home components | Tighten section narrative & density; premium hero; strong branded empty states for live/activity strips. |
+| **#166 — Lobby final look** | `lobby/page.tsx`, lobby panels | Clear primary-vs-secondary hierarchy; primary "find match" dominates; spacing/weight pass. (Leave the locked Beta Help card.) |
+| **#167 — Match room final look** | match presentation components | Polish pre-start waiting card + victory/defeat/draw result card for a "wow" moment. Additive & 3D-flag-compatible. (Leave the locked Match-End feedback link.) |
+| **#168 — Game cards / future games** | `GameCard`, `COMING_SOON_GAMES` | Add Card444; make coming-soon cards intentionally inactive (no silent `/` nav); consistent card treatment. |
+| **#169 — Mobile launch sweep** | cross-surface classes only | One systematic 360–390px pass for overflow / tap targets / above-the-fold CTAs across the main surfaces. |
 
-Start with **#163 (brand foundation)** — it's low-risk, systemic, and makes every later PR cleaner.
+Start with **#164 (brand foundation)** — it's low-risk, systemic, and makes every later PR cleaner.
 
 ---
 
-## 4. Open questions for Chancy (decide before #163/#164)
+## 4. Approved decisions (resolved)
 
-1. **Brand identity:** is there a defined logo / wordmark / palette, or should the audit propose one? (Affects #163 and the hero.)
-2. **Primary audience for the launch look:** wider testers, or investors/public? (Investor-facing → tighter hero + stronger social proof; tester-facing → keep utility prominent.)
-3. **Card444 + future games:** confirm the canonical coming-soon set (Chess444 / Draught444 / Crush444 / Card444) so cards, Beta Guide, and policy match.
-4. **Light mode:** confirm we drop OS-preference theming and commit to always-dark (recommended).
+These are the agreed answers that drive the area PRs:
+
+1. **Brand identity:** a premium **text-based "444 ARENA" wordmark** for now (no logo mark yet). Visual language: **dark arena, neon cyan/blue primary, a controlled gold accent** for competitive moments.
+2. **Primary audience:** **wider beta testers first**, investor/public-safe second. → keep utility prominent; stay launch-presentable, but don't over-index on investor polish yet.
+3. **Future games:** **Penalty444 active**; **Chess444, Draught444, Crush444, Card444** all "Coming Soon" (Card444 must be added to `COMING_SOON_GAMES`).
+4. **Theme:** commit to an **always-dark arena theme** (drop OS-preference / light-mode default).
 
 ---
 
