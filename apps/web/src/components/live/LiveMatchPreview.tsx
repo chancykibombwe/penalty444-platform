@@ -10,6 +10,7 @@ import {
 import { useVisibleInterval } from "../../lib/polling/useVisibleInterval";
 import ExpandToggle from "../ui/ExpandToggle";
 import LivePulseBadge from "./LivePulseBadge";
+import LiveStripEmpty from "./LiveStripEmpty";
 
 /**
  * Live Match preview strip (Phase 7).
@@ -70,9 +71,12 @@ export default function LiveMatchPreview({
       {isLoading ? (
         <PreviewSkeleton />
       ) : list.length === 0 ? (
-        <p className="mt-4 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-4 text-center text-sm font-semibold text-zinc-400">
-          Preparing live arena matches…
-        </p>
+        <LiveStripEmpty
+          message="Preparing live arena matches…"
+          pill="Waiting for players"
+          ctaHref="/lobby"
+          ctaLabel="Play Free →"
+        />
       ) : (
         <div className="mt-2">
           <ul className="grid gap-1.5">

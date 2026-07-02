@@ -10,6 +10,7 @@ import { useVisibleInterval } from "../../lib/polling/useVisibleInterval";
 import { supabase } from "../../lib/supabase/client";
 import ExpandToggle from "../ui/ExpandToggle";
 import LivePulseBadge from "./LivePulseBadge";
+import LiveStripEmpty from "./LiveStripEmpty";
 
 /**
  * PlayerMomentsStrip — recent champions and recent winners (read-only).
@@ -90,9 +91,7 @@ export default function PlayerMomentsStrip({
       {isLoading ? (
         <MomentsSkeleton />
       ) : list.length === 0 ? (
-        <p className="mt-4 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-4 text-center text-sm font-semibold text-zinc-400">
-          Rising competitors are warming up…
-        </p>
+        <LiveStripEmpty message="Rising competitors are warming up…" />
       ) : (
         <div className="mt-2">
           <ul className="grid gap-1.5">
