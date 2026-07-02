@@ -130,7 +130,12 @@ const COMING_SOON_GAMES: GameCardData[] = [
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[9px] font-black uppercase tracking-[0.28em] text-zinc-500 sm:text-[10px] sm:tracking-[0.32em]">
+    <p className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.28em] text-zinc-400 sm:text-[10px] sm:tracking-[0.32em]">
+      {/* Brand accent tick — neon cyan/blue primary, consistent across sections. */}
+      <span
+        aria-hidden
+        className="inline-block h-3 w-[3px] shrink-0 rounded-full bg-gradient-to-b from-arena-primary to-arena-primary-deep shadow-[0_0_8px_rgba(59,158,255,0.6)]"
+      />
       {children}
     </p>
   );
@@ -301,7 +306,7 @@ export default function HomePage() {
   }, [activeMatch, activeTournament]);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5 pb-2">
+    <div className="mx-auto max-w-6xl space-y-6 pb-2 sm:space-y-8">
       <HomeShared />
 
       {/* ── 1. HERO ── */}
@@ -334,7 +339,7 @@ export default function HomePage() {
 
       {/* ── 3. LIVE GAME: PENALTY444 ── */}
       <section aria-label="Penalty444 — Live game">
-        <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="mb-2.5 flex items-center justify-between gap-2 sm:mb-3">
           <SectionLabel>Live Game</SectionLabel>
           <Link
             href="/how-to-play"
@@ -392,7 +397,7 @@ export default function HomePage() {
 
       {/* ── 4. FUTURE GAMES — COMING SOON ── */}
       <section aria-label="More games — Coming Soon">
-        <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="mb-2.5 flex items-center justify-between gap-2 sm:mb-3">
           <SectionLabel>More Games</SectionLabel>
           <span className="rounded-full border border-zinc-700/50 bg-zinc-900/60 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
             Coming Soon
@@ -472,7 +477,7 @@ export default function HomePage() {
 
       {/* ── 11. NEWS & ANNOUNCEMENTS ── */}
       <section aria-label="News and Announcements">
-        <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="mb-2.5 flex items-center justify-between gap-2 sm:mb-3">
           <SectionLabel>News &amp; Announcements</SectionLabel>
           <Link
             href="/news"
