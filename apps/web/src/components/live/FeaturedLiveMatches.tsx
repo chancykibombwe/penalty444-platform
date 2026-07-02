@@ -10,6 +10,7 @@ import { supabase } from "../../lib/supabase/client";
 import ExpandToggle from "../ui/ExpandToggle";
 import FeaturedLiveMatchCard from "./FeaturedLiveMatchCard";
 import LivePulseBadge from "./LivePulseBadge";
+import LiveStripEmpty from "./LiveStripEmpty";
 
 /**
  * Featured Live Matches — premium spotlight strip for the Home page.
@@ -75,9 +76,11 @@ export default function FeaturedLiveMatches({
       {isLoading ? (
         <FeaturedSkeleton />
       ) : list.length === 0 ? (
-        <p className="mt-4 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-4 text-center text-sm font-semibold text-zinc-400">
-          Preparing featured arenas…
-        </p>
+        <LiveStripEmpty
+          message="Preparing featured arenas…"
+          ctaHref="/lobby"
+          ctaLabel="Play Free →"
+        />
       ) : (
         <div className="mt-2">
           {hero ? <FeaturedLiveMatchCard match={hero} emphasis="hero" /> : null}

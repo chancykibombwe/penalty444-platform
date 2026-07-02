@@ -9,6 +9,7 @@ import {
 } from "../../lib/social/featured";
 import { useVisibleInterval } from "../../lib/polling/useVisibleInterval";
 import LivePulseBadge from "../live/LivePulseBadge";
+import LiveStripEmpty from "../live/LiveStripEmpty";
 import RankBadge from "../player/RankBadge";
 import ExpandToggle from "../ui/ExpandToggle";
 import { ViewProfileButton, ChallengePlayerButton } from "./SocialActions";
@@ -83,9 +84,7 @@ export default function FeaturedPlayers({
       {isLoading ? (
         <FeaturedSkeleton />
       ) : list.length === 0 ? (
-        <p className="mt-4 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-4 text-center text-sm font-semibold text-zinc-400">
-          Rising competitors are warming up…
-        </p>
+        <LiveStripEmpty message="Rising competitors are warming up…" />
       ) : (
         <div className="mt-2">
           <div className="grid gap-2">

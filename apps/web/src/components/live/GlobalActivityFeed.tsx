@@ -10,6 +10,7 @@ import {
 import { useVisibleInterval } from "../../lib/polling/useVisibleInterval";
 import ExpandToggle from "../ui/ExpandToggle";
 import LivePulseBadge from "./LivePulseBadge";
+import LiveStripEmpty from "./LiveStripEmpty";
 
 /**
  * Global Live Activity Feed (Phase 7).
@@ -102,9 +103,7 @@ export default function GlobalActivityFeed({
       {isLoading ? (
         <FeedSkeleton />
       ) : items.length === 0 ? (
-        <p className="mt-4 rounded-2xl border border-dashed border-[#1B2433] bg-black/35 px-4 py-4 text-center text-sm font-semibold text-zinc-400">
-          Preparing live arena activity…
-        </p>
+        <LiveStripEmpty message="Preparing live arena activity…" />
       ) : (
         <div className="mt-2">
           <ul className="grid gap-1.5">
