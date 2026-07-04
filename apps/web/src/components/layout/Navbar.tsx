@@ -207,8 +207,14 @@ export default function Navbar() {
           pre-start overlay (`z-40`) so Home / Lobby / Wallet / etc.
           stay clickable while a creator is waiting for an opponent
           on `/match/[roomCode]`. Without it the `fixed inset-0`
-          overlay covers the navbar visually AND blocks taps. */}
-      <header className="relative z-50 border-b border-zinc-800 bg-gradient-to-b from-zinc-950 to-black">
+          overlay covers the navbar visually AND blocks taps.
+
+          On the Home page BELOW `md`, the Home redesign's HomeTopBar takes
+          over (wordmark + ⚡ FREE PLAY pill + bell), so this header hides
+          there to avoid double chrome. Desktop (md+) is unchanged. */}
+      <header
+        className={`${pathname === "/" ? "hidden md:block " : ""}relative z-50 border-b border-zinc-800 bg-gradient-to-b from-zinc-950 to-black`}
+      >
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-2.5 md:py-3">
           <Link
             href="/"
@@ -338,8 +344,11 @@ export default function Navbar() {
           desktop header: a creator waiting for an opponent must
           still be able to tap Home / Lobby / Wallet without
           having to back out of the match page first. */}
+      {/* On the Home page the Home redesign's BottomMobileNav replaces this
+          global bottom nav (they would otherwise stack). All other routes
+          keep it exactly as before. */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-50 border-t border-[#1B2433] bg-[#0A0E14]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-[#0A0E14]/85 md:hidden"
+        className={`${pathname === "/" ? "hidden " : ""}fixed inset-x-0 bottom-0 z-50 border-t border-[#1B2433] bg-[#0A0E14]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-[#0A0E14]/85 md:hidden`}
         aria-label="Primary mobile"
       >
         <ul className="mx-auto grid max-w-md grid-cols-5 px-1">
