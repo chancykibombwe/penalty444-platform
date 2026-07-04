@@ -12,6 +12,13 @@ type QuickActionCardProps = {
   icon: ReactNode;
   /** Color flavor for the card glow + CTA. */
   tone?: "cyan" | "amber" | "purple";
+  /**
+   * Allow the subtitle to wrap (up to 2 lines) instead of truncating on a
+   * single line. Opt-in and defaults to `false`, so the existing mobile
+   * Home quick-actions row (PR #170) renders byte-identically; the desktop
+   * quick-actions row sets this to avoid cramped/ellipsised subtitles.
+   */
+  wrapSubtitle?: boolean;
 };
 
 const TONE_CLASSES: Record<NonNullable<QuickActionCardProps["tone"]>, {
@@ -51,6 +58,7 @@ export default function QuickActionCard({
   cta,
   icon,
   tone = "cyan",
+  wrapSubtitle = false,
 }: QuickActionCardProps) {
   const t = TONE_CLASSES[tone];
 
@@ -83,7 +91,13 @@ export default function QuickActionCard({
           <h3 className="text-sm font-black uppercase tracking-tight text-white sm:text-base">
             {title}
           </h3>
-          <p className="truncate text-[11px] text-zinc-400 sm:text-sm">{subtitle}</p>
+          <p
+            className={`text-[11px] text-zinc-400 sm:text-sm ${
+              wrapSubtitle ? "line-clamp-2" : "truncate"
+            }`}
+          >
+            {subtitle}
+          </p>
         </div>
       </div>
 

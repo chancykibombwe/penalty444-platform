@@ -8,13 +8,14 @@ import QuickActionCard from "../QuickActionCard";
  * PRACTICE has no real destination in the app yet, so — per the brief — it is
  * shown as a disabled "Coming Soon" tile rather than a faked/broken link.
  *
- * Reuses the shared QuickActionCard (PR #170) for the real actions. Free Play
- * only; no stakes / rewards wording.
+ * Reuses the shared QuickActionCard (PR #170) for the real actions, with
+ * `wrapSubtitle` so subtitles wrap cleanly instead of truncating on desktop.
+ * Free Play only; no stakes / rewards wording.
  */
 export default function DesktopQuickActions() {
   return (
     <section
-      className="grid grid-cols-2 gap-3 xl:grid-cols-4"
+      className="grid grid-cols-2 items-stretch gap-3 xl:grid-cols-4"
       aria-label="Quick actions"
     >
       <QuickActionCard
@@ -24,6 +25,7 @@ export default function DesktopQuickActions() {
         href="/lobby"
         tone="cyan"
         icon="⚡"
+        wrapSubtitle
       />
       <QuickActionCard
         title="CREATE ROOM"
@@ -32,6 +34,7 @@ export default function DesktopQuickActions() {
         href="/lobby"
         tone="purple"
         icon="🔒"
+        wrapSubtitle
       />
       <QuickActionCard
         title="JOIN ROOM"
@@ -40,6 +43,7 @@ export default function DesktopQuickActions() {
         href="/lobby"
         tone="cyan"
         icon="🎟"
+        wrapSubtitle
       />
 
       {/* PRACTICE — no real destination yet, shown as a disabled Coming Soon
@@ -59,7 +63,7 @@ export default function DesktopQuickActions() {
             <h3 className="text-sm font-black uppercase tracking-tight text-white sm:text-base">
               PRACTICE
             </h3>
-            <p className="truncate text-[11px] text-zinc-400 sm:text-sm">
+            <p className="text-[11px] text-zinc-400 line-clamp-2 sm:text-sm">
               Solo drills to sharpen up.
             </p>
           </div>
