@@ -3,9 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import ContinuePlayingCard from "../components/home/ContinuePlayingCard";
-import GameCard, {
-  type GameCardData,
-} from "../components/home/GameCard";
+import type { GameCardData } from "../components/home/GameCard";
+import GamesGrid from "../components/home/GamesGrid";
 import HeroBanner from "../components/home/HeroBanner";
 import HomeMobileShell from "../components/home/HomeMobileShell";
 import HomeQuickActions from "../components/home/HomeQuickActions";
@@ -100,13 +99,17 @@ const HOW_IT_WORKS = [
   },
 ] as const;
 
+// Coming-soon games are never navigable — GameCard renders comingSoon
+// entries as a plain disabled <div>, never a <Link>. `href` is left empty
+// (rather than "/") so there is no misleading route value even at the data
+// layer — defense in depth alongside GameCard's own guard.
 const COMING_SOON_GAMES: GameCardData[] = [
   {
     id: "chess444",
     title: "Chess444",
     subtitle: "Strategy · Classic",
     status: "coming-soon",
-    href: "/",
+    href: "",
     icon: "♟",
     comingSoon: true,
   },
@@ -115,7 +118,7 @@ const COMING_SOON_GAMES: GameCardData[] = [
     title: "Draught444",
     subtitle: "Strategy · Board",
     status: "coming-soon",
-    href: "/",
+    href: "",
     icon: "🪙",
     comingSoon: true,
   },
@@ -124,8 +127,17 @@ const COMING_SOON_GAMES: GameCardData[] = [
     title: "Crush444",
     subtitle: "Puzzle · Arcade",
     status: "coming-soon",
-    href: "/",
+    href: "",
     icon: "💥",
+    comingSoon: true,
+  },
+  {
+    id: "card444",
+    title: "Card444",
+    subtitle: "Cards · Strategy",
+    status: "coming-soon",
+    href: "",
+    icon: "🃏",
     comingSoon: true,
   },
 ];
@@ -347,10 +359,12 @@ export default function HomePage() {
         </section>
       ) : null}
 
-      {/* ── 3. LIVE GAME: PENALTY444 ── */}
-      <section aria-label="Penalty444 — Live game" data-home-slot="games-live">
+      {/* ── 3. FEATURED GAMES — locked section label. Penalty444 stays the
+          large, bespoke "live" card (visually strongest); the coming-soon
+          row below uses the shared GameCard/GamesGrid components. ── */}
+      <section aria-label="Featured games" data-home-slot="games">
         <div className="mb-2.5 flex items-center justify-between gap-2 sm:mb-3">
-          <SectionLabel>Live Game</SectionLabel>
+          <SectionLabel>Featured Games</SectionLabel>
           <Link
             href="/how-to-play"
             className="text-[11px] font-bold uppercase tracking-wider text-cyan-300/80 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/60"
@@ -359,16 +373,20 @@ export default function HomePage() {
           </Link>
         </div>
 
-        <div className="relative overflow-hidden rounded-3xl border border-[#3B9EFF]/40 bg-gradient-to-br from-[#0A0E14] via-[#0C1220] to-black p-4 shadow-2xl shadow-[#3B9EFF]/10 sm:p-5">
+        {/* Penalty444 — active/live, visually strongest featured game */}
+        <div
+          data-home-slot="games-live"
+          className="relative overflow-hidden rounded-3xl border border-arena-primary/40 bg-gradient-to-br from-arena-bg via-[#0C1220] to-arena-bg-deep p-4 shadow-2xl shadow-arena-primary/10 sm:p-5"
+        >
           <div
             aria-hidden
-            className="pointer-events-none absolute -top-16 -right-16 h-48 w-48 rounded-full bg-[#3B9EFF]/10 blur-3xl"
+            className="pointer-events-none absolute -top-16 -right-16 h-48 w-48 rounded-full bg-arena-primary/10 blur-3xl"
           />
           <div className="relative flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-[#3B9EFF]/55 bg-[#3B9EFF]/15 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-[#9AD2FF]">
-                  <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[#3B9EFF] shadow-[0_0_8px_rgba(59,158,255,0.8)]" aria-hidden />
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-arena-primary/55 bg-arena-primary/15 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-[#9AD2FF]">
+                  <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-arena-primary shadow-[0_0_8px_rgba(59,158,255,0.8)]" aria-hidden />
                   Free Play · Live
                 </span>
                 <span className="rounded-full border border-zinc-700/60 bg-zinc-900/60 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-zinc-400">
@@ -391,7 +409,7 @@ export default function HomePage() {
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <Link
               href="/lobby"
-              className="inline-flex min-h-[40px] items-center gap-2 rounded-2xl bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] px-5 py-1.5 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_24px_rgba(59,158,255,0.35)] transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/75 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+              className="inline-flex min-h-[40px] items-center gap-2 rounded-2xl bg-gradient-to-r from-arena-primary to-arena-primary-deep px-5 py-1.5 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_24px_rgba(59,158,255,0.35)] transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-arena-primary/75 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
             >
               ▶ Enter Lobby
             </Link>
@@ -403,21 +421,18 @@ export default function HomePage() {
             </Link>
           </div>
         </div>
-      </section>
 
-      {/* ── 4. FUTURE GAMES — COMING SOON ── */}
-      <section aria-label="More games — Coming Soon" data-home-slot="games-coming-soon">
-        <div className="mb-2.5 flex items-center justify-between gap-2 sm:mb-3">
-          <SectionLabel>More Games</SectionLabel>
-          <span className="rounded-full border border-zinc-700/50 bg-zinc-900/60 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
-            Coming Soon
-          </span>
-        </div>
-
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">
-          {COMING_SOON_GAMES.map((game) => (
-            <GameCard key={game.id} game={game} />
-          ))}
+        {/* Coming soon — Chess444 / Draught444 / Crush444 / Card444 */}
+        <div data-home-slot="games-coming-soon" className="mt-3">
+          <div className="mb-2 flex items-center gap-2">
+            <p className="text-[9px] font-black uppercase tracking-[0.22em] text-zinc-500 sm:text-[10px]">
+              More Games
+            </p>
+            <span className="rounded-full border border-zinc-700/50 bg-zinc-900/60 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
+              Coming Soon
+            </span>
+          </div>
+          <GamesGrid games={COMING_SOON_GAMES} />
         </div>
       </section>
 
