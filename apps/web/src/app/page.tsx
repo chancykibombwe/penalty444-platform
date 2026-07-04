@@ -8,6 +8,7 @@ import GameCard, {
 } from "../components/home/GameCard";
 import HeroBanner from "../components/home/HeroBanner";
 import HomeMobileShell from "../components/home/HomeMobileShell";
+import HomeQuickActions from "../components/home/HomeQuickActions";
 import HomeShared from "../components/home/HomeShared";
 import LoggedOutCta from "../components/auth/LoggedOutCta";
 import HomeTournamentPreview from "../components/home/HomeTournamentPreview";
@@ -320,9 +321,10 @@ export default function HomePage() {
           signed in, so the logged-in home stays uncluttered). */}
       <LoggedOutCta variant="hero" className="-mt-2" />
 
-      {/* data-home-slot="quick-actions" — reserved: the Quick Actions row
-          (QUICK MATCH / CREATE ROOM / JOIN ROOM / PRACTICE) lands here in a
-          later Home PR. No placeholder rendered to avoid empty UI. */}
+      {/* ── QUICK ACTIONS ── */}
+      <div data-home-slot="quick-actions">
+        <HomeQuickActions />
+      </div>
 
       {/* ── 2. CONTINUE PLAYING (conditional) ── */}
       {continueCards.length > 0 ? (

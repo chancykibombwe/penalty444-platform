@@ -50,14 +50,19 @@ export default function HeroBanner({
             444 Arena · Free Play Beta
           </p>
 
-          {/* Main headline */}
+          {/* Main headline — locked copy: "SKILL WINS / EVERY TIME"
+              (uppercase applied via the h1's `uppercase` class, matching
+              the existing pattern rather than hardcoding caps in JSX). */}
           <h1 className="mt-1.5 text-2xl font-black uppercase leading-tight tracking-tight sm:text-3xl md:text-4xl">
-            <span className="bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] bg-clip-text text-transparent">
-              Penalty444
+            <span className="block bg-gradient-to-r from-arena-primary to-arena-primary-deep bg-clip-text text-transparent">
+              Skill Wins
+            </span>
+            <span className="block bg-gradient-to-r from-arena-primary to-arena-primary-deep bg-clip-text text-transparent">
+              Every Time
             </span>
           </h1>
-          <p className="mt-0.5 text-sm font-bold text-zinc-300 sm:text-base">
-            The skill-based penalty shootout.
+          <p className="mt-1 text-sm font-bold text-zinc-300 sm:text-base">
+            Step into the arena. Pick your side. Outplay your opponent.
           </p>
           <p className="mt-0.5 text-[11px] text-zinc-500 sm:text-xs">
             Free to play · No real money · No cash prizes
@@ -67,9 +72,9 @@ export default function HeroBanner({
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
             <Link
               href={primaryHref}
-              className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#3B9EFF] to-[#1E6FE0] px-5 py-1.5 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_28px_rgba(59,158,255,0.4)] transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B9EFF]/75 focus-visible:ring-offset-2 focus-visible:ring-offset-black sm:w-auto"
+              className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-arena-primary to-arena-primary-deep px-5 py-1.5 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_28px_rgba(59,158,255,0.4)] transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-arena-primary/75 focus-visible:ring-offset-2 focus-visible:ring-offset-black sm:w-auto"
             >
-              ▶ Play Free
+              <span aria-hidden>▶</span> PLAY FREE
             </Link>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:ml-1">
               <Link
