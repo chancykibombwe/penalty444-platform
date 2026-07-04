@@ -62,7 +62,6 @@ export default function PlayerStatsStrip({
   const matches = effectiveStats.matches ?? 0;
   const winRate = formatWinRate(wins, matches);
   const streak = effectiveStats.streak ?? 0;
-  const tournamentWins = effectiveStats.tournamentWins ?? 0;
 
   return (
     <section
@@ -90,14 +89,14 @@ export default function PlayerStatsStrip({
             placement.inPlacement
               ? placement.played > 0
                 ? "Placement"
-                : "Unranked"
+                : "New Player"
               : tier.label
           }
           hint={
             placement.inPlacement
               ? placement.played > 0
                 ? `${placement.played}/${placement.required} played`
-                : "Complete placements"
+                : "Play your first match"
               : "Climbing"
           }
           tone={
@@ -112,14 +111,14 @@ export default function PlayerStatsStrip({
         <StatTile
           compact
           label="Win Rate"
-          value={ranked ? `${winRate}%` : "—"}
+          value={`${winRate}%`}
           hint={ranked ? undefined : "After placements"}
           tone="violet"
         />
         <StatTile
           compact
           label="Streak"
-          value={formatStreakLabel(streak)}
+          value={streak === 0 ? "0" : formatStreakLabel(streak)}
           hint={
             streak > 0 ? "On fire" : streak < 0 ? "Bounce back" : "Stay sharp"
           }
@@ -127,11 +126,10 @@ export default function PlayerStatsStrip({
         />
         <StatTile
           compact
-          label="Trophies"
-          value={tournamentWins.toLocaleString()}
-          hint={tournamentWins > 0 ? "Tournament wins" : "Start competing"}
+          label="Wins"
+          value={wins.toLocaleString()}
+          hint={wins > 0 ? "All-time wins" : "Start competing"}
           tone="gold"
-          icon="🏆"
         />
       </div>
     </section>
