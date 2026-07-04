@@ -2,6 +2,7 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import Navbar from "../components/layout/Navbar";
+import FreePlayNoticeStrip from "../components/layout/FreePlayNoticeStrip";
 import ActiveMatchRecovery from "../components/match/ActiveMatchRecovery";
 import MatchReadyNotification from "../components/match/MatchReadyNotification";
 import TournamentMatchReadyNotification from "../components/tournament/TournamentMatchReadyNotification";
@@ -39,16 +40,9 @@ export default function RootLayout({
         <TournamentMatchReadyNotification />
         <Navbar />
 
-        {/* Free Play Beta notice strip */}
-        <div className="border-b border-[#1B2433] bg-[#080C12] py-1 text-center text-[10px] font-black uppercase tracking-[0.22em] text-zinc-400">
-          <Link
-            href="/games/penalty444"
-            className="hover:text-zinc-200"
-          >
-            Free Play Beta
-          </Link>
-          {" "}· No real money · No cash prizes
-        </div>
+        {/* Free Play Beta notice strip — hidden on Home per the locked Home
+            design (Home keeps Free Play messaging in hero/pill/footer). */}
+        <FreePlayNoticeStrip />
 
         <main className="p-4 pb-28 md:p-6 md:pb-6">{children}</main>
 

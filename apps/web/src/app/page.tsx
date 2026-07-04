@@ -7,6 +7,7 @@ import GameCard, {
   type GameCardData,
 } from "../components/home/GameCard";
 import HeroBanner from "../components/home/HeroBanner";
+import HomeMobileShell from "../components/home/HomeMobileShell";
 import HomeShared from "../components/home/HomeShared";
 import LoggedOutCta from "../components/auth/LoggedOutCta";
 import HomeTournamentPreview from "../components/home/HomeTournamentPreview";
@@ -306,15 +307,22 @@ export default function HomePage() {
   }, [activeMatch, activeTournament]);
 
   return (
+    <HomeMobileShell>
     <div className="mx-auto max-w-6xl space-y-6 pb-2 sm:space-y-8">
       <HomeShared />
 
       {/* ── 1. HERO ── */}
-      <HeroBanner primaryHref="/lobby" secondaryHref="/tournaments" />
+      <div data-home-slot="hero">
+        <HeroBanner primaryHref="/lobby" secondaryHref="/tournaments" />
+      </div>
 
       {/* Auth entry points for logged-out visitors (renders nothing once
           signed in, so the logged-in home stays uncluttered). */}
       <LoggedOutCta variant="hero" className="-mt-2" />
+
+      {/* data-home-slot="quick-actions" — reserved: the Quick Actions row
+          (QUICK MATCH / CREATE ROOM / JOIN ROOM / PRACTICE) lands here in a
+          later Home PR. No placeholder rendered to avoid empty UI. */}
 
       {/* ── 2. CONTINUE PLAYING (conditional) ── */}
       {continueCards.length > 0 ? (
@@ -338,7 +346,7 @@ export default function HomePage() {
       ) : null}
 
       {/* ── 3. LIVE GAME: PENALTY444 ── */}
-      <section aria-label="Penalty444 — Live game">
+      <section aria-label="Penalty444 — Live game" data-home-slot="games-live">
         <div className="mb-2.5 flex items-center justify-between gap-2 sm:mb-3">
           <SectionLabel>Live Game</SectionLabel>
           <Link
@@ -396,7 +404,7 @@ export default function HomePage() {
       </section>
 
       {/* ── 4. FUTURE GAMES — COMING SOON ── */}
-      <section aria-label="More games — Coming Soon">
+      <section aria-label="More games — Coming Soon" data-home-slot="games-coming-soon">
         <div className="mb-2.5 flex items-center justify-between gap-2 sm:mb-3">
           <SectionLabel>More Games</SectionLabel>
           <span className="rounded-full border border-zinc-700/50 bg-zinc-900/60 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
@@ -412,7 +420,9 @@ export default function HomePage() {
       </section>
 
       {/* ── 5. PLAYER STATS ── */}
-      <PlayerStatsStrip stats={playerStats} />
+      <div data-home-slot="stats">
+        <PlayerStatsStrip stats={playerStats} />
+      </div>
 
       {/* ── 6. HOW IT WORKS (collapsible) ── */}
       <section aria-label="How the beta works">
@@ -545,5 +555,6 @@ export default function HomePage() {
         444 Arena · Free Play Beta · No real money · No cash prizes
       </footer>
     </div>
+    </HomeMobileShell>
   );
 }
