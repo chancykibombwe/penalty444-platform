@@ -6,6 +6,7 @@ import ContinuePlayingCard from "../components/home/ContinuePlayingCard";
 import type { GameCardData } from "../components/home/GameCard";
 import GamesGrid from "../components/home/GamesGrid";
 import HeroBanner from "../components/home/HeroBanner";
+import HomeDesktopLayout from "../components/home/desktop/HomeDesktopLayout";
 import HomeMobileShell from "../components/home/HomeMobileShell";
 import HomeQuickActions from "../components/home/HomeQuickActions";
 import HomeShared from "../components/home/HomeShared";
@@ -320,8 +321,11 @@ export default function HomePage() {
   }, [activeMatch, activeTournament]);
 
   return (
-    <HomeMobileShell>
-    <div className="mx-auto max-w-6xl space-y-6 pb-2 sm:space-y-8">
+    <>
+      {/* ── Mobile + tablet Home (PRs #169–#171). Hidden at lg+, where the
+          locked Home Desktop V1 layout takes over. Unchanged at 360/390. ── */}
+      <HomeMobileShell>
+    <div className="mx-auto max-w-6xl space-y-6 pb-2 sm:space-y-8 lg:hidden">
       <HomeShared />
 
       {/* ── 1. HERO ── */}
@@ -573,5 +577,13 @@ export default function HomePage() {
       </footer>
     </div>
     </HomeMobileShell>
+
+      {/* ── Home Desktop V1 layout (lg+ only). Reuses the same fetched
+          playerStats / continue cards; panels read data read-only. ── */}
+      <HomeDesktopLayout
+        playerStats={playerStats}
+        continueCards={continueCards}
+      />
+    </>
   );
 }
