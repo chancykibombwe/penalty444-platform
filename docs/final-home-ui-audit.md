@@ -18,6 +18,8 @@
   - #172 Home Desktop Layout
   - #173 Home Desktop Visual Polish
 - **Production deployment:** https://penalty444-platform-at1y.vercel.app/ (live Vercel build of the same Home).
+- **Desktop review link:** https://penalty444-platform-at1y.vercel.app/ — checked at 1280 px and 1440 px.
+- **Mobile review link:** https://penalty444-platform-at1y.vercel.app/ — checked with DevTools mobile emulation at 360 px and 390 px.
 - **Method:** local `tsc` + production build, plus live browser QA against the production URL using DevTools-protocol viewport emulation and layout measurements (documented per check below), plus source greps for copy-safety.
 
 ## 2. Viewports checked
