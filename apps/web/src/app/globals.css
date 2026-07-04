@@ -111,3 +111,16 @@ body {
     appearance: textfield;
   }
 }
+
+@layer utilities {
+  /* Hide the native horizontal scrollbar on premium horizontal rails
+     (e.g. the desktop Featured Games row) while keeping the row scrollable
+     via trackpad / wheel / touch / keyboard. Presentation-only. */
+  .no-scrollbar {
+    -ms-overflow-style: none; /* IE / legacy Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none; /* Chromium / Safari */
+  }
+}

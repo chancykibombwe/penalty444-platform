@@ -71,10 +71,23 @@ export default function DesktopFeaturedGames() {
         </span>
       </div>
 
-      <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1">
-        {FEATURED_GAMES.map((game) => (
-          <GameCard key={game.id} game={game} />
-        ))}
+      {/* Horizontal featured-games rail. The native scrollbar is hidden
+          (.no-scrollbar) so the row reads as intentional; snap keeps cards
+          aligned. A right-edge fade signals "more to scroll" and softens the
+          card cut-off. `overflow-x-auto` is scoped to this rail — it never
+          creates horizontal PAGE overflow (the container is min-w-0). */}
+      <div className="relative">
+        <div className="no-scrollbar flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-1 pr-10">
+          {FEATURED_GAMES.map((game) => (
+            <GameCard key={game.id} game={game} />
+          ))}
+          {/* Trailing spacer so the last card can snap fully clear of the fade. */}
+          <div aria-hidden className="w-1 shrink-0" />
+        </div>
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 w-12 rounded-r-2xl bg-gradient-to-l from-arena-bg via-arena-bg/70 to-transparent"
+        />
       </div>
     </section>
   );
