@@ -1160,7 +1160,7 @@ async function saveMatchResult(room: Room): Promise<boolean> {
 
   if (room.resultSaved) {
     console.log(
-      `[Settlement] duplicate result skipped (in-memory flag) roomCode=${room.code} instanceId=${room.matchInstanceId}`
+      `[Settlement] match result reason=skipped_in_memory roomCode=${room.code} matchInstance=${room.matchInstance ?? 1} matchInstanceId=${room.matchInstanceId}`
     );
     return false;
   }
@@ -1210,6 +1210,12 @@ async function saveMatchResult(room: Room): Promise<boolean> {
     rounds: room.maxRounds,
     is_draw: isDraw,
     match_instance: room.matchInstance ?? 1,
+    // Stable, globally-unique idempotency key for THIS match instance
+    // (a UUID minted at room creation and rotated on every rematch). This is
+    // the real uniqueness anchor: a recycled room_code no longer collides with
+    // a prior match's (room_code, match_instance) row, while repeated endMatch
+    // calls for the same match still collide here and are treated as benign.
+    match_instance_id: room.matchInstanceId,
   };
 
   const { error } = await supabase.from("match_results").insert(payload);
@@ -1229,14 +1235,14 @@ async function saveMatchResult(room: Room): Promise<boolean> {
 
   if (isUniqueViolation) {
     console.log(
-      `[Settlement] duplicate result skipped (db unique) roomCode=${room.code} instanceId=${room.matchInstanceId}`
+      `[Settlement] match result reason=idempotent_existing roomCode=${room.code} matchInstance=${room.matchInstance ?? 1} matchInstanceId=${room.matchInstanceId}`
     );
     // Don't run RP / advancement again — another writer already won.
     return false;
   }
 
   console.log(
-    `[Settlement] result insert created roomCode=${room.code} instanceId=${room.matchInstanceId}`
+    `[Settlement] match result reason=inserted roomCode=${room.code} matchInstance=${room.matchInstance ?? 1} matchInstanceId=${room.matchInstanceId}`
   );
 
   try {
