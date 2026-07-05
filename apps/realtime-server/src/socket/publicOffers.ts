@@ -14,7 +14,10 @@ import {
   refundMatchEscrowForPlayer,
 } from "../economy";
 import { allowSocketAction } from "../security/rateLimit";
-import { assertSocketUserMatchesPlayer } from "../security/socketIdentity";
+import {
+  assertSocketUserMatchesPlayer,
+  getSocketUserId,
+} from "../security/socketIdentity";
 import { diagLog } from "../diagnostics/log";
 
 /**
@@ -38,6 +41,18 @@ export const PUBLIC_OFFER_HOST_GRACE_MS = 15_000;
  * the wire shape kept narrow).
  */
 const publicOfferHostGraceTimers = new Map<string, NodeJS.Timeout>();
+
+/**
+ * In-memory claim set for in-flight `publicOffer:join` attempts, keyed by
+ * `offerId`. A join does async work (stake / escrow locks) between the room
+ * capacity check and the `room.players.push`; without this lock two joiners
+ * could both pass the capacity check during that await window and produce a
+ * 3-player room. The first joiner claims the offerId synchronously; any second
+ * join sees the claim and is turned away with a safe "unavailable" response.
+ * The claim is always released in the handler's `finally`, so a failed join
+ * never leaves an offer permanently unjoinable.
+ */
+const pendingOfferJoins = new Set<string>();
 
 type CreateRoomWithPlayersFn = (
   players: RoomPlayer[],
@@ -499,6 +514,7 @@ export function registerPublicOfferHandlers(socket: Socket) {
       playerId: string;
       username?: string;
     }) => {
+      let offerClaimed = false;
       try {
         diagLog("publicOffer:join received", {
           offerId,
@@ -602,6 +618,25 @@ export function registerPublicOfferHandlers(socket: Socket) {
           return;
         }
 
+        // Claim this offer for the current joiner BEFORE any async work
+        // (stake / escrow locks below). A concurrent second join for the
+        // same offer will see the claim and be turned away safely, so two
+        // joiners can never both pass the capacity check during the await
+        // window and push into a 3-player room. Released in `finally`.
+        if (pendingOfferJoins.has(offerId)) {
+          console.warn(
+            `[Security] publicOffer:join contended offerId=${offerId} ` +
+              `socketId=${socket.id} playerId=${playerId}`
+          );
+          socket.emit("publicOffers:error", {
+            message: "Someone is already joining this offer. Try another.",
+          });
+          emitPublicOffersToSocket(socket.id, "join contended");
+          return;
+        }
+        pendingOfferJoins.add(offerId);
+        offerClaimed = true;
+
         // Phase 8B beta lock — Public Offers are Free Play only. Defense
         // in depth: even though `publicOffer:create` now always persists
         // `stakeAmount: 0`, never let a join lock a non-zero stake. Paid
@@ -643,6 +678,21 @@ export function registerPublicOfferHandlers(socket: Socket) {
             reason: "stake_locked",
             playerId,
           });
+        }
+
+        // Re-check capacity after the async locks — a matched join could
+        // have completed while we awaited. Belt-and-suspenders alongside the
+        // pendingOfferJoins claim above: never push a third player. On a race
+        // loss, unwind this joiner's locks so they are not left charged.
+        if (room.players.length >= 2) {
+          await deps.unlockStake(playerId, joinStakeAmount);
+          await refundMatchEscrowForPlayer(room, playerId);
+          publicOffers.delete(offerId);
+          emitPublicOffers("publicOffer:join room filled post-lock");
+          socket.emit("publicOffers:error", {
+            message: "Room already filled.",
+          });
+          return;
         }
 
         const playerName = cleanUsername(username);
@@ -702,6 +752,12 @@ export function registerPublicOfferHandlers(socket: Socket) {
         socket.emit("publicOffers:error", {
           message: "Failed to join public offer.",
         });
+      } finally {
+        // Always release the join claim so a failed / rejected attempt never
+        // leaves an offer permanently unjoinable.
+        if (offerClaimed) {
+          pendingOfferJoins.delete(offerId);
+        }
       }
     }
   );
@@ -748,6 +804,25 @@ export function registerPublicOfferHandlers(socket: Socket) {
       if (!playerMatchCancel.ok) {
         socket.emit("publicOffers:error", {
           message: "Authentication required. Please sign in again.",
+        });
+        return;
+      }
+
+      // Defense in depth: bind cancellation to the host's live socket, not
+      // only a claimed playerId. In enforce mode the verified JWT above
+      // already proves host identity (the host slot's socketId may differ
+      // after a reconnect), so we additionally require the socket to occupy
+      // the host slot ONLY when there is no verified identity (soft/dev mode).
+      const cancelVerified = getSocketUserId(socket) !== null;
+      const hostRoomForCancel = rooms.get(offer.roomCode);
+      const hostSocketId = hostRoomForCancel?.players?.[0]?.socketId;
+      if (!cancelVerified && hostSocketId !== socket.id) {
+        console.warn(
+          `[Security] publicOffer:cancel rejected reason=socket_not_host ` +
+            `offerId=${offerId} socketId=${socket.id} playerId=${playerId}`
+        );
+        socket.emit("publicOffers:error", {
+          message: "Only the host can cancel this offer.",
         });
         return;
       }

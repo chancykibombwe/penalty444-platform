@@ -171,7 +171,29 @@ export function inspectRealtimeServerEnv(): EnvProblem[] {
     });
   }
 
-  // 4. JWT enforcement vs. real-money flag (mirrors `economyLaunchBlockers`).
+  // 4. SOCKET_JWT_ENFORCE — production hard gate.
+  //
+  // In production the realtime server MUST reject unauthenticated / spoofed
+  // sockets: without it, any scripted socket.io client can claim an arbitrary
+  // playerId (player IDs are not secret — they are broadcast in room rosters
+  // and the public leaderboard) and hijack or cancel another player's room /
+  // match. This is INDEPENDENT of the economy flags below — even a Free Play
+  // beta must not run with soft identity in production. Boot fails fast so a
+  // later env drift can never silently ship an unsafe realtime server.
+  //
+  // Development / local intentionally stays flexible (warn only) so the
+  // free-play flow keeps working without wiring JWT verification.
+  if (prod && !isTrue("SOCKET_JWT_ENFORCE")) {
+    problems.push({
+      severity: "fatal",
+      message:
+        "SOCKET_JWT_ENFORCE must be true in production. Without it the " +
+        "realtime server accepts unauthenticated sockets that can spoof " +
+        "another player's identity. Set SOCKET_JWT_ENFORCE=true.",
+    });
+  }
+
+  // 5. JWT enforcement vs. real-money flag (mirrors `economyLaunchBlockers`).
   if (isTrue("ECONOMY_REAL_MONEY_ENABLED") && !isTrue("SOCKET_JWT_ENFORCE")) {
     problems.push({
       severity: "fatal",
@@ -181,7 +203,7 @@ export function inspectRealtimeServerEnv(): EnvProblem[] {
     });
   }
 
-  // 5. JWT enforcement when economy is on (warn only).
+  // 6. JWT enforcement when economy is on (warn only).
   if (
     isTrue("ECONOMY_ENABLED") &&
     !isTrue("SOCKET_JWT_ENFORCE") &&
