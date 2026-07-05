@@ -4,7 +4,10 @@ import { clearRoomTimer } from "../gameplay/timers";
 import { cleanUsername, normalizeRoomCode } from "../room/codes";
 import { evaluateMatchStart } from "../room/readiness";
 import { allowSocketAction } from "../security/rateLimit";
-import { assertSocketUserMatchesPlayer } from "../security/socketIdentity";
+import {
+  assertSocketUserMatchesPlayer,
+  getSocketUserId,
+} from "../security/socketIdentity";
 import { rooms } from "../state/stores";
 import type { MatchType, Room, RoomPlayer } from "../types/room";
 import { diagLog } from "../diagnostics/log";
@@ -250,6 +253,23 @@ export function registerRoomSocketHandlers(socket: Socket) {
       if (!playerMatchCancel.ok) {
         socket.emit("error:message", {
           message: "Authentication required. Please sign in again.",
+        });
+        return;
+      }
+
+      // Defense in depth: bind cancellation to the host's live socket, not
+      // only a claimed playerId. In enforce mode a verified JWT already
+      // proves host identity (and `creator.socketId` may legitimately differ
+      // after a reconnect), so we additionally require the socket to occupy
+      // the host slot ONLY when there is no verified identity (soft/dev mode).
+      const cancelVerified = getSocketUserId(socket) !== null;
+      if (!cancelVerified && creator.socketId !== socket.id) {
+        console.warn(
+          `[Security] room:cancel rejected reason=socket_not_host ` +
+            `roomCode=${code} socketId=${socket.id} playerId=${normalizedPlayerId}`
+        );
+        socket.emit("error:message", {
+          message: "Only the room creator can cancel this room.",
         });
         return;
       }
@@ -565,6 +585,23 @@ export function registerRoomSocketHandlers(socket: Socket) {
 
       const player = room.players.find((p) => p.playerId === playerId);
       if (!player) return;
+
+      // Defense in depth: a socket already occupying a DIFFERENT player's
+      // slot in this room may not rebind another slot via presence (cross-slot
+      // hijack). In enforce mode the verified-JWT check above already blocks
+      // this; this guard also holds in soft/dev mode. Legitimate same-player
+      // reconnect is unaffected — it only rebinds its OWN slot below.
+      const boundToOtherSlot = room.players.find(
+        (p) => p.socketId === socket.id && p.playerId !== playerId
+      );
+      if (boundToOtherSlot) {
+        console.warn(
+          `[Security] player:present rejected reason=socket_bound_to_other_player ` +
+            `roomCode=${code} socketId=${socket.id} claimed=${playerId} ` +
+            `boundPlayerId=${boundToOtherSlot.playerId}`
+        );
+        return;
+      }
 
       // Refresh the bound socketId — the client may have reconnected
       // with a fresh socket between `room:join` and `player:present`.
