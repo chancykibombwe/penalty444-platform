@@ -1,0 +1,20 @@
+# Unity-generated folders and files — never commit these.
+# Scoped to the unity/ tree only; does not affect the repo root .gitignore.
+Library/
+Temp/
+Obj/
+Logs/
+UserSettings/
+Builds/
+Build/
+.vs/
+
+# Generated solution/project files
+*.csproj
+*.sln
+*.suo
+*.user
+*.userprefs
+
+# Unity crash/build logs
+*.stackdump
