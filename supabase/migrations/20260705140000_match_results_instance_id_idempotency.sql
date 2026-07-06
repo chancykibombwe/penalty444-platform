@@ -27,15 +27,23 @@
 --   • New match reusing a room_code  → new match_instance_id → PERSISTS
 --     correctly (the MATCH-1 fix).
 --
--- Deploy safety:
---   The column is added NOT NULL with DEFAULT gen_random_uuid()::text, so:
---     - every existing row is backfilled with a distinct id in one step;
---     - an insert from the CURRENT (not-yet-updated) realtime server that omits
---       the column still gets a unique default and persists — no deploy-order
---       hazard, and recycled-code collisions are already fixed even before the
---       app code ships. Once the updated server ships it supplies
---       room.matchInstanceId, which additionally gives the repeated-endMatch
---       idempotency (same id collides).
+-- Deploy ordering (both directions handled — this migration is NOT sufficient
+-- on its own; it is paired with a backend fallback):
+--   • Migration applied BEFORE the updated server ships: the column DEFAULT
+--     gen_random_uuid()::text backfills existing rows and gives any insert that
+--     omits the column (old server) a unique value, so persistence keeps working.
+--   • Updated server ships BEFORE this migration is applied: the server would
+--     otherwise insert match_instance_id into a column that does not exist yet
+--     (Postgres 42703 undefined_column). saveMatchResult handles this with a
+--     TEMPORARY defensive fallback that retries once with the legacy payload
+--     (log reason=match_instance_id_column_missing_retry_legacy). That fallback
+--     exists only to survive the migration window.
+--
+--   FULL MATCH-1 protection (recycled room_code separation) is active ONLY once
+--   BOTH (a) this migration is applied AND (b) the realtime backend is deployed
+--   with the match_instance_id write. Until both are live, idempotency falls
+--   back to the pre-existing guards (the in-memory resultSaved flag and, while
+--   it still exists, the legacy (room_code, match_instance) unique constraint).
 --
 -- Non-destructive: no DROP TABLE / DROP COLUMN. Existing rows are preserved and
 -- each keeps a unique id. match_instance is kept as-is (still written; still

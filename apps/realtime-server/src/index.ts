@@ -1188,7 +1188,9 @@ async function saveMatchResult(room: Room): Promise<boolean> {
     console.warn("No active Penalty444 season found; saving match without season_id.");
   }
 
-  const payload = {
+  // Legacy payload — every column here predates this change and exists in all
+  // environments.
+  const legacyPayload = {
     room_code: room.code,
     match_type: room.matchType,
     game_id: "penalty444",
@@ -1210,15 +1212,44 @@ async function saveMatchResult(room: Room): Promise<boolean> {
     rounds: room.maxRounds,
     is_draw: isDraw,
     match_instance: room.matchInstance ?? 1,
-    // Stable, globally-unique idempotency key for THIS match instance
-    // (a UUID minted at room creation and rotated on every rematch). This is
-    // the real uniqueness anchor: a recycled room_code no longer collides with
-    // a prior match's (room_code, match_instance) row, while repeated endMatch
-    // calls for the same match still collide here and are treated as benign.
+  };
+
+  // Preferred payload — adds the stable, globally-unique idempotency key for
+  // THIS match instance (a UUID minted at room creation and rotated on every
+  // rematch). This is the real uniqueness anchor: a recycled room_code no
+  // longer collides with a prior match's (room_code, match_instance) row,
+  // while repeated endMatch calls for the same match still collide here and
+  // are treated as benign.
+  const payload = {
+    ...legacyPayload,
     match_instance_id: room.matchInstanceId,
   };
 
-  const { error } = await supabase.from("match_results").insert(payload);
+  let { error } = await supabase.from("match_results").insert(payload);
+
+  // Deploy-window compatibility: if Railway ships this server BEFORE the
+  // migration that adds match_instance_id is applied, Postgres rejects the
+  // insert with 42703 (undefined_column). This is a temporary defensive
+  // fallback for migration ordering only — retry once with the legacy payload
+  // so match persistence keeps working. During that window idempotency falls
+  // back to the pre-existing guards (the in-memory resultSaved flag and, until
+  // this migration drops it, the legacy (room_code, match_instance) unique
+  // constraint). Full MATCH-1 protection is active only once BOTH the
+  // migration is applied AND this write path is deployed.
+  const undefinedColumnMsg =
+    typeof error?.message === "string" ? error.message.toLowerCase() : "";
+  const isMatchInstanceIdColumnMissing =
+    (error?.code === "42703" ||
+      undefinedColumnMsg.includes("undefined column") ||
+      undefinedColumnMsg.includes("does not exist")) &&
+    undefinedColumnMsg.includes("match_instance_id");
+
+  if (error && isMatchInstanceIdColumnMissing) {
+    console.warn(
+      `[Settlement] match result reason=match_instance_id_column_missing_retry_legacy roomCode=${room.code} matchInstance=${room.matchInstance ?? 1} matchInstanceId=${room.matchInstanceId}`
+    );
+    ({ error } = await supabase.from("match_results").insert(legacyPayload));
+  }
 
   // Unique-violation Postgres code: treat as a benign duplicate. Other
   // failures invalidate the in-memory flag so a future retry can succeed.
