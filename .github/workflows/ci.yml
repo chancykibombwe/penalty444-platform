@@ -1,0 +1,74 @@
+name: CI
+
+# Foundation release guard: every PR into master (and pushes to master) must
+# pass a minimal set of safety checks before merge — web TypeScript check,
+# web production build, and realtime-server TypeScript/build check.
+#
+# Intentionally minimal: lint is NOT a required blocker in this phase (there is
+# pre-existing lint debt that must not block foundation lock). No secrets are
+# required — the web build does not depend on Supabase credentials at build
+# time (dynamic routes fall back to empty config), so CI runs on public config.
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: Web — typecheck & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Production build
+        run: npm run build
+
+  realtime-server:
+    name: Realtime server — typecheck & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/realtime-server
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/realtime-server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript build (tsc)
+        run: npm run build
