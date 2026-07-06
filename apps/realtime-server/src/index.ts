@@ -1227,26 +1227,36 @@ async function saveMatchResult(room: Room): Promise<boolean> {
 
   let { error } = await supabase.from("match_results").insert(payload);
 
-  // Deploy-window compatibility: if Railway ships this server BEFORE the
-  // migration that adds match_instance_id is applied, Postgres rejects the
-  // insert with 42703 (undefined_column). This is a temporary defensive
-  // fallback for migration ordering only — retry once with the legacy payload
-  // so match persistence keeps working. During that window idempotency falls
-  // back to the pre-existing guards (the in-memory resultSaved flag and, until
-  // this migration drops it, the legacy (room_code, match_instance) unique
-  // constraint). Full MATCH-1 protection is active only once BOTH the
-  // migration is applied AND this write path is deployed.
-  const undefinedColumnMsg =
+  // Deploy-window compatibility: if the match_instance_id column is not yet
+  // visible when this server inserts, retry once with the legacy payload so
+  // match persistence keeps working. This is a temporary defensive fallback
+  // for migration ordering only. Two forms of the SAME migration-window
+  // problem are handled:
+  //   - Postgres rejects the insert with 42703 (undefined_column) when the
+  //     column does not exist on the table yet.
+  //   - Supabase/PostgREST rejects it with PGRST204 ("Could not find the
+  //     'match_instance_id' column of 'match_results' in the schema cache")
+  //     when the column exists but the PostgREST schema cache has not
+  //     refreshed yet.
+  // During that window idempotency falls back to the pre-existing guards (the
+  // in-memory resultSaved flag and, until this migration drops it, the legacy
+  // (room_code, match_instance) unique constraint). Full MATCH-1 protection is
+  // active only once BOTH the migration is applied AND this write path is
+  // deployed.
+  const columnMissingMsg =
     typeof error?.message === "string" ? error.message.toLowerCase() : "";
   const isMatchInstanceIdColumnMissing =
     (error?.code === "42703" ||
-      undefinedColumnMsg.includes("undefined column") ||
-      undefinedColumnMsg.includes("does not exist")) &&
-    undefinedColumnMsg.includes("match_instance_id");
+      error?.code === "PGRST204" ||
+      columnMissingMsg.includes("undefined column") ||
+      columnMissingMsg.includes("does not exist") ||
+      columnMissingMsg.includes("schema cache") ||
+      columnMissingMsg.includes("could not find")) &&
+    columnMissingMsg.includes("match_instance_id");
 
   if (error && isMatchInstanceIdColumnMissing) {
     console.warn(
-      `[Settlement] match result reason=match_instance_id_column_missing_retry_legacy roomCode=${room.code} matchInstance=${room.matchInstance ?? 1} matchInstanceId=${room.matchInstanceId}`
+      `[Settlement] match result reason=match_instance_id_column_missing_retry_legacy code=${error?.code ?? "unknown"} roomCode=${room.code} matchInstance=${room.matchInstance ?? 1} matchInstanceId=${room.matchInstanceId}`
     );
     ({ error } = await supabase.from("match_results").insert(legacyPayload));
   }
