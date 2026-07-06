@@ -30,6 +30,17 @@ jobs:
     defaults:
       run:
         working-directory: apps/web
+    # Build-time-only PLACEHOLDER public config. The leaderboard is an async
+    # Server Component that constructs a Supabase client during Next.js
+    # build-time page-data collection; @supabase/supabase-js throws
+    # "supabaseUrl is required." if NEXT_PUBLIC_SUPABASE_URL is absent. These
+    # are non-secret, obviously-fake placeholders that only let the build
+    # compile — CI never connects to Supabase, and real values live in Vercel.
+    # NOT secrets: no service-role key, no admin emails, no private tokens,
+    # and economy stays off (no economy flags set here).
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
     steps:
       - name: Checkout
         uses: actions/checkout@v4
