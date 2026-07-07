@@ -1,8 +1,11 @@
 # Penalty444Client (Unity) — Scaffold
 
-> Status: **Scaffold only.** This folder currently holds documentation
-> placeholders. No Unity engine project, scenes, scripts, or build output are
-> committed yet. Engine work begins in the B2 build phase after review.
+> Status: **B2 local prototype scaffold.** This folder holds the Unity project
+> source scaffold: presentation-only C# scripts under `Assets/Scripts/`, folder
+> placeholders (`Scenes/`, `Prefabs/`, `Materials/`), and standard Unity
+> `Packages/` + `ProjectSettings/` text files so the project opens locally.
+> No WebGL build output is committed, and nothing is connected to the live web
+> app. See `docs/unity-b2-local-prototype-scaffold.md`.
 
 This is the future home of the Penalty444 3D Unity project. It pairs with the
 passive React bridge component `apps/web/src/components/match/MatchRenderer3D.tsx`
@@ -22,14 +25,19 @@ passive React bridge component `apps/web/src/components/match/MatchRenderer3D.ts
 - Unity communicates with React only via the validated, same-origin
   `postMessage` contract documented in the plan.
 
-## Planned layout (B2)
+## Layout (B2)
 
 ```
 unity/Penalty444Client/
   Assets/
-    Scenes/        Penalty444Prototype scene (B2)
-    Scripts/       UnityBridgeReceiver.cs, PenaltySceneController.cs,
-                   LaneTarget.cs, ResultAnimator.cs (B2)
+    Scenes/        Penalty444Prototype scene (assembled manually in the Editor;
+                   see docs/unity-b2-local-prototype-scaffold.md)
+    Scripts/       PenaltyVisualTypes.cs, UnityBridgeReceiver.cs,
+                   PenaltySceneController.cs, LaneTarget.cs, ResultAnimator.cs
+    Prefabs/       placeholder (empty)
+    Materials/     placeholder (empty)
+  Packages/        Unity package manifest (standard text files)
+  ProjectSettings/ Unity project settings (standard text files)
 ```
 
 ## Not committed
