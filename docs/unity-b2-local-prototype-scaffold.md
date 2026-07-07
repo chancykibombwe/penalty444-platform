@@ -43,9 +43,22 @@ to draw.
 3. Open the project. Unity regenerates `Library/` locally (gitignored). The
    scripts under `Assets/Scripts/` should compile with no errors.
 
-## 3. Assembling the `Penalty444Prototype` scene manually
+## 3. The `Penalty444Prototype` scene (assembled in PR #190)
 
-Scene YAML is not hand-authored in git — create the scene in the Editor:
+> **Status:** the scene now EXISTS at
+> `Assets/Scenes/Penalty444Prototype.unity`. It was assembled and saved by
+> Unity Editor **6000.4.2f1** (batch `-executeMethod` scene-builder run — the
+> scene YAML is Editor-generated, not hand-authored), with the small
+> solid-color materials in `Assets/Materials/` (`ArenaFloor`, `GoalFrame`,
+> `KickerPlaceholder`, `KeeperPlaceholder`, `Ball`, `LaneIdle`). All inspector
+> references are wired: `SceneController` (PenaltySceneController) →
+> placeholders/lanes/UI/animator, `BridgeReceiver` (UnityBridgeReceiver) →
+> controller, `ResultAnimator` → ball + keeper transforms, and each lane cube's
+> `LaneTarget` has its Lane + Renderer set. Mock validation (all six bridge
+> events) passed — see §4.
+>
+> The steps below are kept as the reference for rebuilding the scene by hand
+> if it is ever recreated:
 
 1. **File → New Scene**, save as `Assets/Scenes/Penalty444Prototype.unity`.
 2. Create these GameObjects:
@@ -66,8 +79,10 @@ Scene YAML is not hand-authored in git — create the scene in the Editor:
 ## 4. Testing locally with mock events
 
 1. Enter **Play Mode**. The controller resets to Idle ("Waiting…").
-2. Select **MatchPresentation**, right-click the **UnityBridgeReceiver**
-   component header, and fire the context-menu mocks:
+2. Select the **BridgeReceiver** GameObject (in the committed scene the
+   presentation scripts live on separate `SceneController` / `BridgeReceiver` /
+   `ResultAnimator` objects), right-click the **UnityBridgeReceiver** component
+   header, and fire the context-menu mocks:
    - `Mock/staging_begin` → status shows "Get ready…", lanes idle.
    - `Mock/round_result — LEFT vs RIGHT → GOAL` → LEFT lane tints green, RIGHT lane tints yellow, ball nudges into the net, status shows "GOAL!".
    - `Mock/round_result — CENTER vs CENTER → SAVE` → CENTER tints red + selected, keeper nudges, status shows "SAVED!".
@@ -75,6 +90,23 @@ Scene YAML is not hand-authored in git — create the scene in the Editor:
    - `Mock/reset` → everything returns to idle.
 3. The Console logs every dispatched event — these mocks are the ONLY input in
    B2. There is no web integration, dev harness route, or postMessage wiring yet.
+
+**Recorded mock-test results (PR #190, Unity 6000.4.2f1):** the saved scene was
+reloaded and all six bridge events were exercised through `UnityBridgeReceiver`
+— `reset`, `staging_begin`, `round_result` GOAL (LEFT vs RIGHT),
+`round_result` SAVE (CENTER vs CENTER), `round_result` DRAW (RIGHT vs LEFT),
+`match_end` winner, and `match_end` draw. All 13 assertions passed: visual
+state transitions (Idle → Staging → Result → Ended → Idle), round status text
+("Waiting…" / "Get ready…" / "GOAL!" / "SAVED!" / "DRAW"), and result banner
+("MATCH OVER" / "MATCH DRAW" / cleared). Scripts compiled with no console
+errors.
+
+**Known limitations (placeholder-level by design):** primitives only (capsules/
+cubes/sphere/plane) — no player models, stadium art, or textures; "animations"
+are simple transform nudges + `Debug.Log`; the scoreboard shows a static
+"— : —" (real score display is a later phase, driven by server-resolved data);
+draw plays no movement; validation ran in edit mode — Play Mode behaves the
+same but adds the `Start()` auto-reset.
 
 ## 5. Explicitly not in this phase
 
