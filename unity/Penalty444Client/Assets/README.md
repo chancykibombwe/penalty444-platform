@@ -1,12 +1,11 @@
-# Assets — Scaffold placeholder
+# Assets — Penalty444 3D prototype (Phase B2)
 
-Future Unity `Assets/` root for the Penalty444 3D prototype. Empty for now
-(scaffold only). The B2 build phase will add:
+Unity `Assets/` root for the Penalty444 3D local prototype:
 
-- `Scenes/Penalty444Prototype` — the prototype scene (arena floor, goal, keeper,
-  kicker, ball, LEFT/CENTER/RIGHT lane targets, scoreboard UI, round status text,
-  result banner).
-- `Scripts/` — see `Scripts/README.md`.
+- `Scripts/` — presentation-only C# scripts (see `Scripts/README.md`).
+- `Scenes/` — home of the `Penalty444Prototype` scene, assembled manually in
+  the Unity Editor per `docs/unity-b2-local-prototype-scaffold.md`.
+- `Prefabs/`, `Materials/` — placeholder folders (empty in B2).
 
-No engine assets or binaries are committed in this PR. See
-`docs/unity-webgl-prototype-plan.md`.
+No WebGL build output or heavy binaries are committed. Unity remains visual
+presentation only — the Node realtime server is the single source of truth.
