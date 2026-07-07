@@ -18,3 +18,9 @@ Build/
 
 # Unity crash/build logs
 *.stackdump
+
+# Obsolete leftover default Unity project (untracked in PR #189).
+# It has no Assets/ — only generated caches and stock settings. The real
+# project is Penalty444Client/. Ignored so it never returns and doesn't
+# show as noise on machines that still have the folder locally.
+New Unity Project/
