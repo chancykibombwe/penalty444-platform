@@ -23,3 +23,12 @@ is served at the URL path `/unity/penalty444/`.
 - The build stays passive: no socket, no auth tokens, no Supabase writes, no
   picks, no official result computation. See `docs/unity-webgl-prototype-plan.md`
   and `docs/unity-webgl-build-pipeline.md`.
+
+## Status (B3 dry run, PR #193)
+
+No WebGL build output is committed here (still true). The B3 build **dry run was
+blocked** — no Unity Editor / WebGL Build Support was available where it was
+attempted; details in `docs/unity-webgl-build-pipeline.md` §6. Note that
+`penalty444/` under this folder is **not** git-ignored yet; the future PR that
+first places a build here should add that ignore rule before doing so, so a
+large/binary artifact can never be committed by accident.
