@@ -99,7 +99,9 @@ namespace Penalty444.Prototype
                     SetText(roundStatusText, $"Round {visualRoundCounter}: GOAL!");
                     break;
                 case PenaltyVisualResult.SAVE:
-                    resultAnimator?.PlaySave();
+                    // Pass the keeper's dive lane as a display-only direction hint
+                    // so the placeholder save leans toward the shot. Not authority.
+                    resultAnimator?.PlaySave(LaneDirection(keeperLane));
                     SetText(roundStatusText, $"Round {visualRoundCounter}: SAVED!");
                     break;
                 case PenaltyVisualResult.DRAW:
@@ -150,6 +152,18 @@ namespace Penalty444.Prototype
                 case PenaltyLane.CENTER: return centerLaneTarget;
                 case PenaltyLane.RIGHT: return rightLaneTarget;
                 default: return null;
+            }
+        }
+
+        // Display-only horizontal hint for the save lean: LEFT = −1, CENTER = 0,
+        // RIGHT = +1. Carries no authority; it only shapes the placeholder tween.
+        private static float LaneDirection(PenaltyLane lane)
+        {
+            switch (lane)
+            {
+                case PenaltyLane.LEFT: return -1f;
+                case PenaltyLane.RIGHT: return 1f;
+                default: return 0f;
             }
         }
 
