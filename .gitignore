@@ -54,3 +54,9 @@ supabase/.temp/
 
 # Claude Code session data (local settings, agent worktrees)
 .claude/
+
+# Unity WebGL build output (PR #194). A build artifact — never committed.
+# A future local/dev build may be placed here (served at /unity/penalty444/)
+# for manual testing only. Only the penalty444/ output folder is ignored;
+# apps/web/public/unity/README.md is intentionally kept tracked.
+apps/web/public/unity/penalty444/
