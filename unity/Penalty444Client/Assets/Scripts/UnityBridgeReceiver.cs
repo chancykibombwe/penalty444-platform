@@ -79,6 +79,14 @@ namespace Penalty444.Prototype
         private void MockRoundResultSave() =>
             OnRoundResult(PenaltyLane.CENTER, PenaltyLane.CENTER, PenaltyVisualResult.SAVE);
 
+        [ContextMenu("Mock/round_result — RIGHT vs LEFT → SAVE (directional)")]
+        private void MockRoundResultSaveDirectional() =>
+            OnRoundResult(PenaltyLane.RIGHT, PenaltyLane.LEFT, PenaltyVisualResult.SAVE);
+
+        [ContextMenu("Mock/round_result — CENTER vs CENTER → DRAW")]
+        private void MockRoundResultDraw() =>
+            OnRoundResult(PenaltyLane.CENTER, PenaltyLane.CENTER, PenaltyVisualResult.DRAW);
+
         [ContextMenu("Mock/match_end — winner")]
         private void MockMatchEndWinner() => OnMatchEnd(isDraw: false);
 

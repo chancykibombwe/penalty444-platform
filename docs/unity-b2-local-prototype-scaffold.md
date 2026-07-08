@@ -121,3 +121,93 @@ same but adds the `Start()` auto-reset.
 
 Next steps after this scaffold (future PRs, per plan §8): B3 loads a local
 WebGL build in a dev-only route; B4 sends mock events from a React dev harness.
+
+## 6. Visual polish & prototype animation pass (PR #191)
+
+> **Status:** this pass upgraded the presentation **scripts** and added
+> **solid-color materials**. It remains local Unity only — no WebGL build, no
+> web route, no `postMessage` wiring, no live match integration, no server
+> connection. Authority rules from §1 are unchanged: Unity never computes
+> results, submits picks, or writes stats/match results.
+
+**Unity version:** project targets Editor **6000.4.2f1** (unchanged;
+`ProjectSettings/ProjectVersion.txt`).
+
+### 6.1 Animation improvements (`ResultAnimator.cs`)
+
+The placeholder "animations" moved from one-frame transform snaps to simple,
+deterministic, **time-based tweens** (coroutines, `Mathf.SmoothStep` easing).
+No physics is used as authority; no randomness (mock runs stay repeatable);
+each routine tweens **from the captured idle pose** so repeated events never
+accumulate drift.
+
+- **`PlayGoal()`** — ball travels forward into the net over `goalDuration`
+  with a rise-and-fall **scale pulse**; ends resting in the net (reset restores).
+- **`PlaySave()` / `PlaySave(float keeperDir)`** — keeper **leans toward the
+  shot** (direction hint −1/0/+1 supplied by the controller from the keeper
+  lane, display-only) plus a small forward lunge; the ball **darts out and
+  eases back** (a recoil arc). A parameterless overload is kept for
+  compatibility.
+- **`PlayDraw()`** — a small **deterministic decaying left-right shake** plus a
+  subtle pulse (previously log-only), so DRAW now reads as a neutral,
+  no-winner beat.
+- **`PlayReset()`** — stops any in-flight coroutine and restores ball + keeper
+  position/scale to the captured idle baseline (clean, repeatable reset).
+
+### 6.2 Lane feedback (`LaneTarget.cs`)
+
+Kept the idle/selected/success/failed colour tints and added an optional brief
+**scale pulse** on non-idle states (`enablePulse`, default on) so the
+highlighted lane is easier to see. Still visual-only — colour + transform
+scale, no input capture, no network.
+
+### 6.3 Controller (`PenaltySceneController.cs`)
+
+Minimal readability change only: the SAVE branch now passes the keeper lane as
+a display-only horizontal **direction hint** to `PlaySave(...)` (via a private
+`LaneDirection` map). No rules, winner, score, or pick logic added.
+
+### 6.4 Mock triggers (`UnityBridgeReceiver.cs`)
+
+Added two editor context-menu mocks so the full step-8 test list is
+exercisable: a **directional SAVE** (`RIGHT vs LEFT → SAVE`) and a **round
+DRAW** (`CENTER vs CENTER → DRAW`). No behaviour change to the existing mocks.
+
+### 6.5 Materials added
+
+Five new small **solid-color** Standard-shader materials (no textures), under
+`Assets/Materials/`, matching the existing material template and the lane-state
+palette: `FieldLine` (0.90/0.90/0.90), `LaneSelected` (1.0/0.85/0.20),
+`LaneSuccess` (0.20/0.85/0.35), `LaneFailed` (0.90/0.25/0.25), `UIAccent`
+(0.23/0.62/1.0). `LaneIdle` already existed (from PR #190) and is **unchanged**
+(its GUID was preserved). No existing material was modified.
+
+### 6.6 Environment note & what still needs the Unity Editor
+
+This pass was prepared **without a Unity Editor in the working environment**, so
+the following were done and are review-verifiable as source:
+
+- ✅ Script edits (`ResultAnimator`, `LaneTarget`, `PenaltySceneController`,
+  `UnityBridgeReceiver`) — reviewed for C# correctness; **not** compiled by a
+  Unity Editor here.
+- ✅ New material assets (with valid unique `.meta` GUIDs).
+
+The following are **staged for the operator in the Unity Editor** and were **not**
+performed in this change (the 2065-line scene YAML was intentionally left
+untouched rather than hand-edited blind):
+
+- ⏳ Scene layout / camera framing / lighting adjustments in
+  `Penalty444Prototype.unity`.
+- ⏳ Assigning the new materials to the floor lines / lane cubes / UI accents in
+  the scene inspector.
+- ⏳ Running **Play Mode** and firing the mock context-menu events (reset,
+  staging_begin, round_result GOAL/SAVE/DRAW, match_end winner/draw, reset
+  again) to confirm the new tweens read well and the scene resets cleanly with
+  no console compile errors.
+
+### 6.7 Known limitations (placeholder-level by design)
+
+Primitives only (capsules/cubes/sphere/plane); solid colours, no textures/art;
+tweens are simple transform interpolations, not Animator clips or VFX; the
+scoreboard still shows a static "— : —" (real score display is a later
+server-driven phase). All intentional for a local prototype.
