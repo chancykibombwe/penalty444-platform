@@ -169,9 +169,11 @@ a display-only horizontal **direction hint** to `PlaySave(...)` (via a private
 
 ### 6.4 Mock triggers (`UnityBridgeReceiver.cs`)
 
-Added two editor context-menu mocks so the full step-8 test list is
-exercisable: a **directional SAVE** (`RIGHT vs LEFT → SAVE`) and a **round
-DRAW** (`CENTER vs CENTER → DRAW`). No behaviour change to the existing mocks.
+Added editor context-menu mocks so the full step-8 test list is exercisable:
+**directional SAVEs** (`LEFT vs LEFT → SAVE`, `RIGHT vs RIGHT → SAVE`) and a
+**round DRAW** (`CENTER vs CENTER → DRAW`). Saves use the SAME kicker/keeper
+lane, per the Penalty444 rule (same lane = SAVE, different lane = GOAL). No
+behaviour change to the existing mocks.
 
 ### 6.5 Materials added
 
