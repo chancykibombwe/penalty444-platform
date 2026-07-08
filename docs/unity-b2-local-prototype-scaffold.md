@@ -213,3 +213,68 @@ Primitives only (capsules/cubes/sphere/plane); solid colours, no textures/art;
 tweens are simple transform interpolations, not Animator clips or VFX; the
 scoreboard still shows a static "— : —" (real score display is a later
 server-driven phase). All intentional for a local prototype.
+
+## 7. Editor scene polish & material wiring (PR #192)
+
+> **Status:** the editor-only steps staged in §6.6 are now DONE. The scene was
+> polished through the **Unity Editor API** (batch `-executeMethod` polish tool
+> run by Editor **6000.4.2f1**, then deleted — the scene YAML was saved by
+> Unity, never hand-edited). This remains **local Unity only** — no WebGL
+> build, no web route, no `postMessage` wiring, no live match integration, no
+> server connection. Authority rules from §1 unchanged.
+
+### 7.1 Scene polish added
+
+- **Field markings** (new `FieldMarkings` group, primitives with colliders
+  stripped): goal line, penalty-box side/front lines, and a penalty spot under
+  the ball — all using the PR #191 `FieldLine` material.
+- **Goal clarity:** posts and crossbar thickened (0.12 → 0.18) so the frame
+  reads at the new camera distance.
+- **Lane targets:** widened/taller (1.75 × 1.95), evenly spaced at
+  x = −2.05 / 0 / +2.05, moved to z = 10.8 between the keeper and the goal
+  line so all three read clearly from the camera.
+
+### 7.2 Materials wired (from PR #191)
+
+- `FieldLine` → all field markings + penalty spot.
+- `LaneIdle` → lane cubes' shared material (idle look).
+- `LaneSelected` / `LaneSuccess` / `LaneFailed` → each `LaneTarget`'s
+  serialized tint palette is now **sampled from these material assets** in the
+  scene, so runtime tint states and the material palette cannot diverge.
+- `UIAccent` → scoreboard text colour (bold + outlined).
+- `ArenaFloor`, `GoalFrame`, `KickerPlaceholder`, `KeeperPlaceholder`, `Ball`
+  remain where they were.
+
+### 7.3 Camera / lighting
+
+- Camera: fixed penalty-shootout view from behind the kicker —
+  position (0, 2.7, −6.2) looking at (0, 1.45, 10.6), FOV 52. Kicker, ball,
+  goal, keeper, and all three lanes stay in frame; UI is screen-space overlay
+  so nothing is cut off.
+- Directional light: angle steepened to (45°, −32°), intensity 1.2 — simple
+  real-time lighting only, no baking.
+
+### 7.4 UI readability
+
+- `ScoreboardText`: UIAccent blue, bold, black outline.
+- `RoundStatusText`: 38 pt, black outline.
+- `ResultBannerText`: 76 pt bold with a wider rect (1400 × 130) and stronger
+  outline — MATCH OVER / MATCH DRAW are clearly readable in Game view.
+
+### 7.5 Mock tests performed (recorded, Unity 6000.4.2f1)
+
+Against the saved polished scene, the full required sequence ran through
+`UnityBridgeReceiver`: `reset`, `staging_begin`, `round_result` LEFT vs RIGHT →
+GOAL, CENTER vs CENTER → SAVE, LEFT vs LEFT → SAVE, RIGHT vs RIGHT → SAVE,
+CENTER vs CENTER → DRAW, `match_end` winner, `match_end` draw, `reset` again.
+All 13 assertions passed (3 wiring checks + 10 event checks): clean start, no
+console compile errors, correct state transitions and status/banner text, and
+a clean reset. Repeated events cannot permanently distort objects — the §6
+tweens always start from the captured idle pose and `PlayReset()` restores it.
+
+### 7.6 Known limitations
+
+Still primitives + solid colours (no textures, models, or stadium art); the
+penalty arc is omitted to keep geometry lightweight; the scoreboard remains a
+static "— : —"; automated validation ran in edit mode (coroutine tweens fully
+animate in Play Mode, which PR #191's manual Editor testing already confirmed).
