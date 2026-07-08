@@ -24,12 +24,20 @@ is served at the URL path `/unity/penalty444/`.
   picks, no official result computation. See `docs/unity-webgl-prototype-plan.md`
   and `docs/unity-webgl-build-pipeline.md`.
 
-## Status (B3 dry run, PR #193)
+## Status (B3 dry run)
 
-No WebGL build output is committed here (still true). The B3 build **dry run was
-blocked** — no Unity Editor / WebGL Build Support was available where it was
-attempted; details in `docs/unity-webgl-build-pipeline.md` §6.
+A local WebGL build **succeeds** with Unity **6000.4.2f1** + WebGL Build Support.
+Output is placed here for dev testing but is **never committed**:
 
-**Update (PR #194):** `apps/web/public/unity/penalty444/` is now **git-ignored**
-(root `.gitignore`), so a future local/dev WebGL build placed there for manual
-testing can never be committed by accident. This `README.md` stays tracked.
+```
+apps/web/public/unity/penalty444/
+```
+
+**Git protection (PR #194):** this folder is **git-ignored** (root `.gitignore`),
+so build files cannot be committed by accident. This `README.md` stays tracked.
+
+Full build steps, generated-file checklist, and clean instructions:
+`docs/unity-webgl-build-pipeline.md` §6.
+
+No dev-only web route loads the build yet — that is the next phase (still no
+live match mount, no `postMessage`, no server connection).

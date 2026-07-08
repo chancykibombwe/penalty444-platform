@@ -173,13 +173,11 @@ B2 is complete only when **all** of the following hold:
 ## 8. Future phases
 
 - **B2** — Unity local prototype scene (this plan). *(Done — PRs #188–#192.)*
-- **B3** — Unity WebGL build loaded in a **dev-only** route, not the live match.
-  - **B3 status (PR #193):** the WebGL build **pipeline dry run was BLOCKED** —
-    no Unity Editor / WebGL Build Support was available in the environment where
-    it was attempted, so no build was run or faked. The exact build steps,
-    WebGL-Build-Support install steps, output path, and validation checklist are
-    documented in `docs/unity-webgl-build-pipeline.md` §6, ready for an operator
-    with the Editor installed. The dev-only route itself remains a later step.
+- **B3** — Unity WebGL build pipeline dry run. *(Done — PR #193 documented the
+  process when blocked; dry run **completed** locally with WebGL Build Support
+  installed, output validated at `apps/web/public/unity/penalty444/`, not
+  committed. See `docs/unity-webgl-build-pipeline.md` §6.)* A **dev-only web
+  route** that loads the build remains the next B3 step.
 - **B4** — React sends **mock** events to Unity from a dev harness.
 - **B5** — Live match page optional visual mode behind a feature flag. *(Future only.)*
 - **B6** — Production-ready Unity 3D Penalty444 with fallback to the normal web

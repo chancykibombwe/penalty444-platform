@@ -119,8 +119,16 @@ same but adds the `Start()` auto-reset.
 - No server, Supabase, auth, wallet/economy, tournament, leaderboard, timer,
   reconnect, result-persistence, or gameplay-rule changes.
 
-Next steps after this scaffold (future PRs, per plan §8): B3 loads a local
-WebGL build in a dev-only route; B4 sends mock events from a React dev harness.
+Next steps after this scaffold (future PRs, per plan §8): B3 dev-only route loads
+the local WebGL build; B4 sends mock events from a React dev harness.
+
+## 8. B3 WebGL build dry run status
+
+The pipeline dry run **completed** after PR #193 documented it as blocked in an
+environment without the Editor. With Unity **6000.4.2f1** and WebGL Build
+Support installed, `Penalty444Prototype` builds successfully to
+`apps/web/public/unity/penalty444/` (~17 files, ~10.6 MB, gzip on). Output is
+git-ignored and not committed. See `docs/unity-webgl-build-pipeline.md` §6.
 
 ## 6. Visual polish & prototype animation pass (PR #191)
 
