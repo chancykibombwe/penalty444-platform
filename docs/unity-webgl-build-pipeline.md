@@ -128,10 +128,11 @@ unity/Penalty444Client/Builds/WebGL/Penalty444Prototype/
 ```
 
 `unity/.gitignore` already ignores `Builds/` and `Build/`, so this location is
-safe by construction. **Prefer this over `apps/web/public/unity/penalty444/`
-for the dry run**, because that web path is **not** currently git-ignored (see
-§6.6) and is only needed once a dev-only route actually loads the build (a later
-phase).
+safe by construction. Either path is now ignore-protected —
+`apps/web/public/unity/penalty444/` was added to the root `.gitignore` in
+PR #194 — but this scratch path stays the default for a pure pipeline dry run
+(the web path is only needed once a dev-only route actually loads the build, a
+later phase).
 
 ### 6.5 Expected generated files (validation checklist for the real run)
 
@@ -153,12 +154,10 @@ folder or rely on the `Builds/` ignore.
 - **Clean:** delete the scratch build folder, e.g. remove
   `unity/Penalty444Client/Builds/`. Because it is git-ignored it never appears in
   `git status`.
-- **Prerequisite before ever building into `apps/web/public/unity/penalty444/`:**
-  that path is **not** git-ignored today. A dedicated future PR (the one that
-  wires the dev-only route) should add an ignore rule for
-  `apps/web/public/unity/penalty444/` *before* placing any build there, so a
-  large/binary artifact can never be committed by accident. This PR does not
-  modify `.gitignore` (out of its scope).
+- **`apps/web/public/unity/penalty444/` is git-ignored** (root `.gitignore`,
+  added in PR #194), so a build placed there for a future dev-only route can
+  never be committed by accident. `apps/web/public/unity/README.md` stays
+  tracked.
 
 ### 6.7 Known limitations
 

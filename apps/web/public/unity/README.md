@@ -28,7 +28,8 @@ is served at the URL path `/unity/penalty444/`.
 
 No WebGL build output is committed here (still true). The B3 build **dry run was
 blocked** — no Unity Editor / WebGL Build Support was available where it was
-attempted; details in `docs/unity-webgl-build-pipeline.md` §6. Note that
-`penalty444/` under this folder is **not** git-ignored yet; the future PR that
-first places a build here should add that ignore rule before doing so, so a
-large/binary artifact can never be committed by accident.
+attempted; details in `docs/unity-webgl-build-pipeline.md` §6.
+
+**Update (PR #194):** `apps/web/public/unity/penalty444/` is now **git-ignored**
+(root `.gitignore`), so a future local/dev WebGL build placed there for manual
+testing can never be committed by accident. This `README.md` stays tracked.
