@@ -146,8 +146,20 @@ Exact filenames vary by Unity version/template; the checklist is: `index.html`,
 - No dev-only web route loads the build yet (next phase).
 - No `postMessage` wiring, no live match mount, no server connection.
 
-### 6.8 Next phase
+### 6.8 Dev-only viewer route (PR #196)
 
-A later, separately-reviewed PR adds a **dev-only** web route that loads the
-local build for manual viewing in a browser (still no live match mount, no
-`postMessage`, no server connection).
+`/dev/unity/penalty444` loads the local, git-ignored WebGL output
+(`/unity/penalty444/index.html`) in a plain `<iframe>` for manual viewing. It is
+server-gated (404 in production unless `UNITY_PROTOTYPE_ROUTE_ENABLED=true`, the
+same flag as `/dev/unity-prototype`), manually-typed only (not linked from any
+public surface), and **passive** — no `postMessage`, no Socket.IO, no Supabase,
+no wallet/economy, no live match state, no gameplay authority. When the build
+output is absent (fresh clone / Vercel), the page renders a "run the B3 build"
+instruction box instead of the iframe, so the app still builds without the
+git-ignored output.
+
+### 6.9 Next phase
+
+React → Unity **mock** `postMessage` events from a dev harness (B4) — introduced
+in a later, separately-reviewed PR. PR #196 deliberately adds **no** message
+wiring.
