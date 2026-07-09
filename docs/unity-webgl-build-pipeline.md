@@ -1,9 +1,9 @@
 # Unity WebGL Build Pipeline — Penalty444
 
-> Status: **Documentation only.** This describes how a future Unity WebGL build
-> will be produced and where it will live. No build tooling, CI step, or build
-> output is added in this PR. See `docs/unity-webgl-prototype-plan.md` for the
-> B2 scope and `docs/unity-3d-prototype-plan.md` for the architecture contract.
+> Status: **B3 dry run completed locally** (Unity 6000.4.2f1, WebGL Build Support
+> installed). Build output is validated at `apps/web/public/unity/penalty444/`
+> and intentionally **not committed**. No CI build step, no web route, no live
+> match integration. See `docs/unity-webgl-prototype-plan.md` for scope.
 
 ---
 
@@ -58,119 +58,96 @@ The build pipeline changes nothing about authority:
 No CI changes are introduced. If a future phase adds a Unity build to CI it must
 be a separate, reviewed PR; it is untouched here.
 
-## 6. B3 WebGL build dry run (PR #193) — BLOCKED: no Unity Editor available
+## 6. B3 WebGL build dry run — COMPLETED (Unity 6000.4.2f1)
 
-**Outcome: the dry run could not be executed because there is no Unity Editor
-(and therefore no WebGL Build Support module) available in the environment where
-this PR was prepared.** Per the B3 task rule, a build was **not** faked and no
-build output was hand-created — this is therefore a **documentation-only** PR
-that records the exact blocker and the steps to run the build on a real machine.
+**Outcome: the dry run succeeded.** WebGL Build Support is installed, the
+`Penalty444Prototype` scene builds to WebGL locally, and the generated output
+was validated on disk. **No build output was committed** — it lives under
+`apps/web/public/unity/penalty444/`, which is git-ignored (root `.gitignore`,
+PR #194).
 
-### 6.1 Environment evidence (why it is blocked)
+### 6.1 WebGL Build Support status
 
-- **Unity version targeted:** `6000.4.2f1` (from
-  `unity/Penalty444Client/ProjectSettings/ProjectVersion.txt`) — unchanged.
-- **Unity Editor:** none found on `PATH` or in the usual install locations
-  (`unity` / `unity-editor` / `Unity` / Unity Hub all absent).
-- **WebGL Build Support module:** not present (no `PlaybackEngines/WebGLSupport`
-  or equivalent). With no Editor installed, no build module can be present.
-- **Consequence:** steps 3–5 of the B3 task (run build, validate output, verify
-  no-commit of output) cannot be performed here. Scripts were also **not**
-  Unity-compiled here for the same reason (they are unchanged from PR #192).
+- **Unity Editor:** `6000.4.2f1 (7a4c1aeef971)` — matches
+  `ProjectSettings/ProjectVersion.txt`.
+- **WebGL Build Support:** **installed** — confirmed via
+  `Editor/Data/PlaybackEngines/WebGLSupport/` on the Hub install and
+  `UnityEditor.WebGL.Extensions.dll` registration in the Editor log.
+- **Install path (if missing on another machine):** Unity Hub → Installs →
+  ⚙ beside `6000.4.2f1` → **Add modules** → tick **WebGL Build Support**.
 
-### 6.2 WebGL Build Support — installation (do this before the real dry run)
+### 6.2 Build scene
 
-On a machine with Unity Hub:
+`Assets/Scenes/Penalty444Prototype.unity` (guid `d26389b1d3c201545bd895c8324741e2`)
 
-1. Open **Unity Hub → Installs**.
-2. If Editor **6000.4.2f1** is not installed: **Install Editor →** pick
-   `6000.4.2f1` (or a compatible `6000.4.x`).
-3. On the **Add modules** screen (or later via the ⚙ / **Add modules** on the
-   installed version), tick **WebGL Build Support** and install.
-4. Verify: `Editor → File → Build Profiles` (Unity 6) shows **Web / WebGL** as a
-   selectable platform (not greyed out with "module not installed").
+`EditorBuildSettings.asset` now records this scene as the sole enabled build
+scene (minimal Unity-generated settings change committed in this PR).
 
-Command-line install (headless machines), adjust the Hub path per OS:
+### 6.3 Exact build steps used
 
-```
-# example — the exact module id/changeset must match 6000.4.2f1
-unityhub -- --headless install-modules --version 6000.4.2f1 --module webgl
-```
+**Editor route (manual):**
 
-### 6.3 Exact build steps to run the dry run (once WebGL support is installed)
+1. Open `unity/Penalty444Client/` in Unity **6000.4.2f1**. Wait for compile.
+2. Open `Assets/Scenes/Penalty444Prototype.unity`.
+3. **File → Build Profiles → Web / WebGL → Switch Platform.**
+4. Confirm `Penalty444Prototype` is in the scene list.
+5. **Build** → output folder:
+   `apps/web/public/unity/penalty444/` (repo-relative from project root).
 
-Editor route:
-1. Open `unity/Penalty444Client/` in Unity **6000.4.2f1**. Confirm scripts
-   compile (Console clean).
-2. **File → Build Profiles → Web/WebGL → Switch Platform.**
-3. Confirm the **scene in build** is `Assets/Scenes/Penalty444Prototype.unity`
-   (add it to the profile's scene list if empty). Only commit the resulting
-   `EditorBuildSettings.asset` change if Unity records it and it is minimal.
-4. **Build** → choose a scratch output folder (see §6.4).
+**Batch/CLI route (used for the recorded dry run):**
 
-Batch/CLI route (deterministic; requires a small `-executeMethod` build script
-or the built-in build, not added in this PR):
+A temporary `-executeMethod` editor helper ran `BuildPipeline.BuildPlayer` for
+WebGL with the same scene and output path, then was deleted before commit. The
+operator can repeat via Editor steps above; a permanent build script is a later
+optional convenience.
+
+### 6.4 Output path
 
 ```
-<UnityEditor> -batchmode -nographics -quit \
-  -projectPath unity/Penalty444Client \
-  -buildTarget WebGL \
-  -logFile - \
-  # -executeMethod Penalty444.BuildTools.BuildWebGL   # (a future helper)
+apps/web/public/unity/penalty444/
 ```
 
-### 6.4 Output path for the dry run
+Served at `/unity/penalty444/` when placed in the Next.js `public/` tree.
+Git-ignored by `apps/web/public/unity/penalty444/` in the root `.gitignore`.
 
-Use a scratch path that is already git-ignored so nothing can be committed:
+### 6.5 Generated files (recorded from the successful dry run)
 
-```
-unity/Penalty444Client/Builds/WebGL/Penalty444Prototype/
-```
+Unity **6000.4.2f1** produced **17 files** (~10.6 MB total build size, ~5m 22s
+build time). Gzip compression is on by default in this Unity version:
 
-`unity/.gitignore` already ignores `Builds/` and `Build/`, so this location is
-safe by construction. Either path is now ignore-protected —
-`apps/web/public/unity/penalty444/` was added to the root `.gitignore` in
-PR #194 — but this scratch path stays the default for a pure pipeline dry run
-(the web path is only needed once a dev-only route actually loads the build, a
-later phase).
+| Path | Role |
+|------|------|
+| `index.html` | loader shell |
+| `Build/penalty444.loader.js` | Unity loader |
+| `Build/penalty444.framework.js.gz` | framework (gzipped) |
+| `Build/penalty444.data.gz` | asset data (gzipped) |
+| `Build/penalty444.wasm.gz` | wasm binary (gzipped) |
+| `TemplateData/*` | default template css, favicon, progress-bar images |
 
-### 6.5 Expected generated files (validation checklist for the real run)
+Exact filenames vary by Unity version/template; the checklist is: `index.html`,
+`Build/*.loader.js`, `Build/*.framework.js*`, `Build/*.data*`, `Build/*.wasm*`,
+`TemplateData/*`.
 
-After a successful WebGL build, expect (exact names vary by Unity version):
+### 6.6 Not committed — repeat & clean
 
-- `index.html`
-- `Build/*.loader.js`
-- `Build/*.framework.js`
-- `Build/*.data`
-- `Build/*.wasm`
-- `TemplateData/*` (css, favicon, progress-bar images)
-
-Confirm these exist locally, then **do not commit them** — delete the scratch
-folder or rely on the `Builds/` ignore.
-
-### 6.6 Repeat & clean
-
-- **Repeat:** re-run §6.3 after any scene/script change.
-- **Clean:** delete the scratch build folder, e.g. remove
-  `unity/Penalty444Client/Builds/`. Because it is git-ignored it never appears in
-  `git status`.
-- **`apps/web/public/unity/penalty444/` is git-ignored** (root `.gitignore`,
-  added in PR #194), so a build placed there for a future dev-only route can
-  never be committed by accident. `apps/web/public/unity/README.md` stays
-  tracked.
+- **Not committed:** `git ls-files apps/web/public/unity/penalty444/` returns
+  **0**; `git status` does not list the build output (ignore-protected).
+- **Repeat:** re-run §6.3 after scene/script changes.
+- **Clean:** delete the folder:
+  `Remove-Item -Recurse -Force apps/web/public/unity/penalty444` (PowerShell)
+  or `rm -rf apps/web/public/unity/penalty444`. Safe — it is never tracked.
 
 ### 6.7 Known limitations
 
-- No build was produced or validated in this environment — §6.5 is a checklist
-  for the operator, not a recorded result.
 - First WebGL builds are slow (IL2CPP + Emscripten) and large; keep them out of
   git.
-- The prototype is still primitives + solid colors (no art), so the build is a
-  pipeline smoke test, not a visual milestone.
+- The prototype is still primitives + solid colors (no art) — this validates the
+  **pipeline**, not visual quality.
+- No dev-only web route loads the build yet (next phase).
+- No `postMessage` wiring, no live match mount, no server connection.
 
 ### 6.8 Next phase
 
-Once a real WebGL build succeeds locally: a later, separately-reviewed PR adds a
-**dev-only** web route that loads the local build for manual viewing (still no
-live match mount, no `postMessage`, no server connection). No web/route work is
-started in this PR.
+A later, separately-reviewed PR adds a **dev-only** web route that loads the
+local build for manual viewing in a browser (still no live match mount, no
+`postMessage`, no server connection).
