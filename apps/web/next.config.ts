@@ -71,6 +71,45 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         headers,
       },
+      // ── Dev-only Unity WebGL build serving ───────────────────────────────
+      // Scoped strictly to /unity/penalty444/ (the git-ignored, local-only
+      // WebGL build; see docs/unity-webgl-build-pipeline.md). These rules are
+      // inert everywhere else and never weaken the global headers above. Two
+      // fixes, both required for the browser to run the build:
+      //   1. Unity ships pre-compressed .gz artifacts. Serve each with its real
+      //      Content-Type + `Content-Encoding: gzip` so the browser decompresses
+      //      and executes/parses it. (The global `nosniff` stays on — declaring
+      //      the correct type is exactly what satisfies it.)
+      //   2. Relax ONLY `X-Frame-Options` from DENY → SAMEORIGIN for this
+      //      subpath so the same-origin dev viewer (/dev/unity/penalty444) can
+      //      iframe /unity/penalty444/index.html. Per Next.js header precedence
+      //      ("the last header key will override the first"), this override wins
+      //      over the global DENY for these paths only; framing stays same-origin.
+      {
+        source: "/unity/penalty444/Build/:path*.framework.js.gz",
+        headers: [
+          { key: "Content-Type", value: "application/javascript" },
+          { key: "Content-Encoding", value: "gzip" },
+        ],
+      },
+      {
+        source: "/unity/penalty444/Build/:path*.wasm.gz",
+        headers: [
+          { key: "Content-Type", value: "application/wasm" },
+          { key: "Content-Encoding", value: "gzip" },
+        ],
+      },
+      {
+        source: "/unity/penalty444/Build/:path*.data.gz",
+        headers: [
+          { key: "Content-Type", value: "application/octet-stream" },
+          { key: "Content-Encoding", value: "gzip" },
+        ],
+      },
+      {
+        source: "/unity/penalty444/:path*",
+        headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }],
+      },
     ];
   },
 };
