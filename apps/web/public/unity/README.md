@@ -39,5 +39,14 @@ so build files cannot be committed by accident. This `README.md` stays tracked.
 Full build steps, generated-file checklist, and clean instructions:
 `docs/unity-webgl-build-pipeline.md` §6.
 
-No dev-only web route loads the build yet — that is the next phase (still no
-live match mount, no `postMessage`, no server connection).
+**Dev-only viewer (PR #196):** with the local build present, view it at
+
+```
+/dev/unity/penalty444
+```
+
+That route loads `/unity/penalty444/index.html` in an iframe for manual viewing
+only. It is 404 in production unless explicitly enabled on the server, is not
+linked from any public page, and is passive (no `postMessage`, no Socket.IO, no
+Supabase, no live match state). The build output stays **git-ignored and
+uncommitted**; if it is missing the route shows a "run the B3 build" message.

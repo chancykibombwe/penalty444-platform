@@ -176,9 +176,11 @@ B2 is complete only when **all** of the following hold:
 - **B3** — Unity WebGL build pipeline dry run. *(Done — PR #193 documented the
   process when blocked; dry run **completed** locally with WebGL Build Support
   installed, output validated at `apps/web/public/unity/penalty444/`, not
-  committed. See `docs/unity-webgl-build-pipeline.md` §6.)* A **dev-only web
-  route** that loads the build remains the next B3 step.
-- **B4** — React sends **mock** events to Unity from a dev harness.
+  committed. See `docs/unity-webgl-build-pipeline.md` §6.)* The **dev-only viewer
+  route** `/dev/unity/penalty444` (PR #196) loads that local build in an iframe
+  for manual viewing — **no** postMessage, **no** live match state.
+- **B4** — React sends **mock** events to Unity from a dev harness. *(Future —
+  this is where postMessage wiring is introduced; PR #196 deliberately does not.)*
 - **B5** — Live match page optional visual mode behind a feature flag. *(Future only.)*
 - **B6** — Production-ready Unity 3D Penalty444 with fallback to the normal web
   renderer. *(Future only.)*
