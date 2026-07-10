@@ -187,7 +187,17 @@ B2 is complete only when **all** of the following hold:
   the only implemented Unity→React event is `ready`. No live match state, no
   authority. Requires a fresh Unity WebGL rebuild after the bridge source change;
   build output stays git-ignored.)*
-- **B5** — Live match page optional visual mode behind a feature flag. *(Future only.)*
+- **B5** — Live match page optional visual mode behind a feature flag.
+  - **B5A (PR #199) — live resolved-round shadow mode.** `MatchRenderer3D` mounts
+    in the live match page as an OPTIONAL, DEFAULT-OFF secondary "shadow preview"
+    (both `NEXT_PUBLIC_UNITY_MATCH_ENABLED` and `NEXT_PUBLIC_UNITY_LIVE_SHADOW_ENABLED`
+    must be `"true"`). It forwards only accepted, server-resolved `round_result`
+    events from the existing `MatchRoomPanel` `match:result` flow — no new socket
+    listener, no gameplay authority. The React renderer stays primary and fully
+    authoritative. Only `round_result` (React→Unity) and `ready`/`error`
+    (Unity→React) are wired; `staging_begin`/`match_end`/`reset`/`animation_complete`
+    remain B5B. Not for production. See `docs/unity-b5a-live-shadow-mode.md`.
+  - **B5B+** — further live integration. *(Future only.)*
 - **B6** — Production-ready Unity 3D Penalty444 with fallback to the normal web
   renderer. *(Future only.)*
 
