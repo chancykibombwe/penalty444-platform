@@ -7,10 +7,22 @@ C# scripts for the Penalty444 3D local prototype. All of them are
   `PenaltyVisualResult` (GOAL/SAVE/DRAW), `PenaltyVisualState`
   (Idle/Staging/Revealing/Result/Ended). These do **not** replace the server/web
   types; they only describe what to draw.
-- `UnityBridgeReceiver.cs` — the future React→Unity message entry point.
-  In B2 it exposes public methods + Editor context-menu mocks for
-  `staging_begin`, `round_result`, `match_end`, `reset`, and dispatches them to
-  the scene controller. No sockets, no network, no auth/token/env reads.
+- `UnityBridgeReceiver.cs` — the React→Unity message entry point. Exposes public
+  dispatch methods + Editor context-menu mocks for `staging_begin`,
+  `round_result`, `match_end`, `reset`, and dispatches them to the scene
+  controller. In B4 (PR #198) it adds a WebGL entry point
+  `OnWebMessage(string json)` that parses the presentation fields of an
+  already-validated `PENALTY444_MATCH_EVENT` envelope and dispatches to those
+  same methods (it never derives a result from the lanes). Under
+  `#if UNITY_WEBGL && !UNITY_EDITOR` it registers the browser bridge in `Start()`.
+  No sockets, no network, no auth/token/env reads.
+- `../Plugins/WebGL/Penalty444WebBridge.jslib` — the WebGL browser bridge. Adds
+  one `window` "message" listener that accepts only same-origin, same-parent
+  `PENALTY444_MATCH_EVENT` envelopes, forwards them to
+  `UnityBridgeReceiver.OnWebMessage` via `SendMessage`, and posts a single
+  `PENALTY444_UNITY_EVENT` `ready` back to the parent. Opens no network, reads no
+  cookies/localStorage/tokens/secrets. **A fresh WebGL rebuild is required after
+  changing the bridge source.**
 - `PenaltySceneController.cs` — visual scene state machine (Idle → Staging →
   Revealing → Result → Ended). Holds references to the kicker/keeper/ball
   placeholders, the three lane targets, and scoreboard/status/banner text.

@@ -158,8 +158,25 @@ output is absent (fresh clone / Vercel), the page renders a "run the B3 build"
 instruction box instead of the iframe, so the app still builds without the
 git-ignored output.
 
-### 6.9 Next phase
+### 6.9 Mock event harness (PR #198, B4)
 
-React → Unity **mock** `postMessage` events from a dev harness (B4) — introduced
-in a later, separately-reviewed PR. PR #196 deliberately adds **no** message
-wiring.
+`/dev/unity-prototype` now loads the local WebGL build in an iframe and sends
+deterministic mock `PENALTY444_MATCH_EVENT` messages (staging_begin /
+round_result / match_end / reset) over **same-origin** postMessage. A WebGL
+`.jslib` bridge (`Assets/Plugins/WebGL/Penalty444WebBridge.jslib`) validates
+`event.origin === location.origin` and `event.source === window.parent`, forwards
+the envelope to `UnityBridgeReceiver.OnWebMessage`, and posts a single `ready`
+event back. Only `ready` is implemented (no `animation_complete` yet). No live
+match state, no Socket.IO, no Supabase, no authority.
+
+> **A fresh Unity WebGL rebuild is required after any bridge source change**
+> (the `.jslib` / `UnityBridgeReceiver.cs`), because the bridge is compiled into
+> the WebGL output. Rebuild to `apps/web/public/unity/penalty444/` and do not
+> commit it — the output stays git-ignored.
+
+The passive viewer at `/dev/unity/penalty444` (PR #196) is unchanged.
+
+### 6.10 Next phase
+
+B5 (live match page optional visual mode behind a feature flag) remains future
+work and is not started here.

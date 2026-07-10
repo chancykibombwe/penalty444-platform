@@ -179,8 +179,14 @@ B2 is complete only when **all** of the following hold:
   committed. See `docs/unity-webgl-build-pipeline.md` §6.)* The **dev-only viewer
   route** `/dev/unity/penalty444` (PR #196) loads that local build in an iframe
   for manual viewing — **no** postMessage, **no** live match state.
-- **B4** — React sends **mock** events to Unity from a dev harness. *(Future —
-  this is where postMessage wiring is introduced; PR #196 deliberately does not.)*
+- **B4** — React sends **mock** events to Unity from a dev harness. *(PR #198 —
+  the existing `/dev/unity-prototype` route now loads the real local WebGL build
+  in an iframe and drives it with deterministic mock `PENALTY444_MATCH_EVENT`
+  messages over strict same-origin postMessage. A WebGL `.jslib` bridge
+  validates origin/source and forwards envelopes to `UnityBridgeReceiver.OnWebMessage`;
+  the only implemented Unity→React event is `ready`. No live match state, no
+  authority. Requires a fresh Unity WebGL rebuild after the bridge source change;
+  build output stays git-ignored.)*
 - **B5** — Live match page optional visual mode behind a feature flag. *(Future only.)*
 - **B6** — Production-ready Unity 3D Penalty444 with fallback to the normal web
   renderer. *(Future only.)*
