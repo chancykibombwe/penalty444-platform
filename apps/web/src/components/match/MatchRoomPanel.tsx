@@ -820,11 +820,13 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   const livePhaseRef = useRef<MatchPhase>("NORMAL");
   const liveMatchInstanceRef = useRef<number>(1);
   useEffect(() => {
+    // Only mirror while the shadow feature is enabled — zero footprint when off.
+    if (!unityShadowEnabled) return;
     liveScoresRef.current = scores;
     liveMaxRoundsRef.current = maxRounds;
     livePhaseRef.current = phase;
     liveMatchInstanceRef.current = matchInstance;
-  }, [scores, maxRounds, phase, matchInstance]);
+  }, [unityShadowEnabled, scores, maxRounds, phase, matchInstance]);
   const [leaveMatchBusy, setLeaveMatchBusy] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [matchAborted, setMatchAborted] = useState(false);
@@ -1544,7 +1546,11 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
               kickerLane: authoritative.kickerPick,
               keeperLane: authoritative.keeperPick,
               result: authoritative.result,
-              scores: liveScoresRef.current,
+              // Latest client-held authoritative score snapshot, frozen at
+              // message-build time. match:result carries no scores, so this may
+              // be the pre-result score; no local score calc is done and Unity
+              // ignores scores in B5A. Copied so later state updates can't mutate it.
+              scores: { ...liveScoresRef.current },
               round: shadowRound,
               maxRounds: liveMaxRoundsRef.current,
               phase: livePhaseRef.current,

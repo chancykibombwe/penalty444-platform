@@ -221,8 +221,22 @@ export default function MatchRenderer3D({
     if (sentIdsRef.current.has(pending.id)) return;
     const target = iframeRef.current?.contentWindow;
     if (!target) return;
-    target.postMessage(pending.message, window.location.origin);
-    sentIdsRef.current.add(pending.id);
+    // Fail open: a postMessage exception must never escape into the match page.
+    // Only mark the id as sent on success; on failure surface a non-blocking
+    // onError and leave React fully unaffected (no retry loop, no throw).
+    try {
+      target.postMessage(pending.message, window.location.origin);
+      sentIdsRef.current.add(pending.id);
+    } catch (error) {
+      const detail =
+        error instanceof Error ? error.message : "Unknown postMessage failure";
+      callbacksRef.current.onError?.(
+        `Unity shadow message delivery failed: ${detail}`
+      );
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[unity-shadow] postMessage failed", error);
+      }
+    }
   }, []);
 
   useEffect(() => {

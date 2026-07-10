@@ -44,9 +44,13 @@ B5A.
 
 - **React → Unity:** `round_result` only (built from accepted authoritative
   state — `kickerLane`/`keeperLane`/`result` from the accepted result;
-  `round`/`maxRounds`/`phase`/`scores` from current authoritative match state).
-  If either lane is null, the message is skipped. The result is taken directly
-  from the server; it is never inferred from the lanes.
+  `round`/`maxRounds`/`phase` from current authoritative match state). If either
+  lane is null, the message is skipped. The result is taken directly from the
+  server; it is never inferred from the lanes.
+  - **Scores:** the message carries the **latest client-held authoritative score
+    snapshot** for contract completeness only. `match:result` does **not** include
+    scores, so this snapshot may be the pre-result score. B5A performs **no local
+    score calculation**, and **Unity ignores scores in B5A**.
 - **Unity → React:** `ready` (gates message delivery) and `error` (logged as a
   non-blocking dev warning). No dependency on `animation_complete`.
 - **Not wired in B5A:** `staging_begin`, `match_end`, `reset`,
