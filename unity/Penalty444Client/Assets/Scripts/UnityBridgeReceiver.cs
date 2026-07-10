@@ -34,6 +34,9 @@ namespace Penalty444.Prototype
         // Implemented in Assets/Plugins/WebGL/Penalty444WebBridge.jslib.
         [DllImport("__Internal")]
         private static extern void Penalty444RegisterWebBridge(string gameObjectName);
+
+        [DllImport("__Internal")]
+        private static extern void Penalty444UnregisterWebBridge();
 #endif
 
         private void Start()
@@ -50,6 +53,22 @@ namespace Penalty444.Prototype
             catch (Exception e)
             {
                 Debug.LogWarning($"[UnityBridgeReceiver] Web bridge registration failed: {e.Message}");
+            }
+#endif
+        }
+
+        private void OnDestroy()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // Remove the browser message listener the bridge registered, so a
+            // scene reload / teardown does not leave a stale listener behind.
+            try
+            {
+                Penalty444UnregisterWebBridge();
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[UnityBridgeReceiver] Web bridge unregister failed: {e.Message}");
             }
 #endif
         }
@@ -93,14 +112,26 @@ namespace Penalty444.Prototype
             switch (env.@event)
             {
                 case "staging_begin":
+                    if (env.payload == null || env.payload.startsAt <= 0)
+                    {
+                        Ignore("staging_begin: missing or invalid payload");
+                        break;
+                    }
                     OnStagingBegin();
                     break;
                 case "round_result":
                     DispatchRoundResult(env.payload);
                     break;
                 case "match_end":
-                    // Presentation uses only isDraw; winnerId is not authority here.
-                    OnMatchEnd(env.payload != null && env.payload.isDraw);
+                    // Presentation uses only isDraw; winnerId is not authority
+                    // here. A missing payload must NOT default to a valid
+                    // match-over presentation — reject it.
+                    if (env.payload == null)
+                    {
+                        Ignore("match_end: missing payload");
+                        break;
+                    }
+                    OnMatchEnd(env.payload.isDraw);
                     break;
                 case "reset":
                     OnReset();
