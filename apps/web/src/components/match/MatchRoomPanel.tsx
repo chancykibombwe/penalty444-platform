@@ -56,6 +56,7 @@ import {
   type Role,
   type ShotResult,
 } from "./matchPresentation";
+import MatchRenderer3D, { type UnityInbound } from "./MatchRenderer3D";
 
 type MatchResultPayload = {
   roomCode?: string;
@@ -799,6 +800,33 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   >(null);
   const [matchInstance, setMatchInstance] = useState(1);
   const [matchType, setMatchType] = useState<MatchType>("unknown");
+
+  // ── Unity live shadow preview (Phase B5A) — presentation only, default-off ──
+  // Two explicit, build-time flags. The optional Unity iframe mounts and
+  // receives ONLY accepted, server-resolved round_result events. This never
+  // affects React state, timing, scores, picks, or authority.
+  const unityShadowEnabled =
+    process.env.NEXT_PUBLIC_UNITY_MATCH_ENABLED === "true" &&
+    process.env.NEXT_PUBLIC_UNITY_LIVE_SHADOW_ENABLED === "true";
+  const [unityShadowMessage, setUnityShadowMessage] = useState<{
+    id: string;
+    message: UnityInbound;
+  } | null>(null);
+  // Mirror the current authoritative match state into refs so the once-
+  // subscribed match:result handler reads fresh values (not stale closure).
+  // Passive copies only — no renders, no timing change.
+  const liveScoresRef = useRef<Record<string, number>>({});
+  const liveMaxRoundsRef = useRef<number>(3);
+  const livePhaseRef = useRef<MatchPhase>("NORMAL");
+  const liveMatchInstanceRef = useRef<number>(1);
+  useEffect(() => {
+    // Only mirror while the shadow feature is enabled — zero footprint when off.
+    if (!unityShadowEnabled) return;
+    liveScoresRef.current = scores;
+    liveMaxRoundsRef.current = maxRounds;
+    livePhaseRef.current = phase;
+    liveMatchInstanceRef.current = matchInstance;
+  }, [unityShadowEnabled, scores, maxRounds, phase, matchInstance]);
   const [leaveMatchBusy, setLeaveMatchBusy] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [matchAborted, setMatchAborted] = useState(false);
@@ -1488,6 +1516,47 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           lateResultRoundRef.current
         );
         return;
+      }
+
+      // ── Unity live shadow preview (B5A) — presentation only, default-off ──
+      // The round result has now passed EVERY existing room/round/payload
+      // validation. Forward it to the optional Unity iframe, built purely from
+      // authoritative server-resolved state. This sets an isolated presentation
+      // state only — it never changes React scores/timing/reveal/authority, and
+      // is skipped entirely unless BOTH Unity flags are "true" and both lanes
+      // are present. env checks are inlined (not reactive) so no new socket-
+      // effect dependency is introduced.
+      if (
+        process.env.NEXT_PUBLIC_UNITY_MATCH_ENABLED === "true" &&
+        process.env.NEXT_PUBLIC_UNITY_LIVE_SHADOW_ENABLED === "true" &&
+        authoritative.kickerPick &&
+        authoritative.keeperPick
+      ) {
+        const shadowRound =
+          authoritative.round ?? expectedRound ?? lastPickRoundRef.current ?? 0;
+        // Stable, unique id from authoritative identifiers (not Date.now):
+        // room + match instance + round + result. Prevents duplicate delivery.
+        const shadowId = `${normalizedRoomCode}:${liveMatchInstanceRef.current}:${shadowRound}:${authoritative.result}`;
+        setUnityShadowMessage({
+          id: shadowId,
+          message: {
+            type: "PENALTY444_MATCH_EVENT",
+            event: "round_result",
+            payload: {
+              kickerLane: authoritative.kickerPick,
+              keeperLane: authoritative.keeperPick,
+              result: authoritative.result,
+              // Latest client-held authoritative score snapshot, frozen at
+              // message-build time. match:result carries no scores, so this may
+              // be the pre-result score; no local score calc is done and Unity
+              // ignores scores in B5A. Copied so later state updates can't mutate it.
+              scores: { ...liveScoresRef.current },
+              round: shadowRound,
+              maxRounds: liveMaxRoundsRef.current,
+              phase: livePhaseRef.current,
+            },
+          },
+        });
       }
 
       // Hotfix — `match:result` is now the single authority that
@@ -3634,6 +3703,43 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           <span className="text-zinc-800" aria-hidden>·</span>
           <span className="text-[9px] text-zinc-600">Free Play only · More features coming later</span>
         </div>
+      ) : null}
+
+      {/* ── Unity live shadow preview (Phase B5A) — dev-only, default-off ──
+          Mounts only when BOTH Unity flags are "true". Secondary panel below
+          the arena; it never obscures or replaces lane controls, scoreboard,
+          timer, reveal, disconnect, or match-end UI. Presentation only. */}
+      {unityShadowEnabled ? (
+        <section
+          className="mt-6 rounded-2xl border border-dashed border-arena-border bg-arena-surface/60 p-3"
+          aria-label="Unity live shadow preview (experimental, presentation only)"
+        >
+          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+            <span className="rounded bg-amber-900/60 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.22em] text-amber-300">
+              Experimental
+            </span>
+            <span className="rounded bg-zinc-800/70 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.22em] text-zinc-400">
+              Shadow preview
+            </span>
+            <span className="text-[10px] font-semibold text-zinc-500">
+              React UI remains authoritative · Server-resolved results only · No
+              pick input · No gameplay authority
+            </span>
+          </div>
+          <div className="aspect-video w-full overflow-hidden rounded-xl">
+            <MatchRenderer3D
+              message={unityShadowMessage?.message ?? null}
+              messageId={unityShadowMessage?.id ?? null}
+              onError={(m) =>
+                console.warn("[unity-shadow] non-blocking Unity error:", m)
+              }
+            />
+          </div>
+          <p className="mt-1.5 text-[10px] text-zinc-600">
+            Unity live shadow preview — presentation only. Mirrors already-resolved
+            rounds; it never drives the match.
+          </p>
+        </section>
       ) : null}
 
       </div>

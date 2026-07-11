@@ -50,3 +50,18 @@ integration (feeding `MatchRenderer3D` already-resolved match state via
   iframe shell.
 
 Both are public `NEXT_PUBLIC_*` values. No secrets are introduced.
+
+## Update — B5A live shadow mode (PR #199)
+
+`MatchRenderer3D` is no longer "not imported by any live page". In **B5A** it is
+mounted in the live match page (`MatchRoomPanel`) as an OPTIONAL, DEFAULT-OFF
+secondary shadow preview, gated by a **second** flag on top of the B1 gate:
+
+- `NEXT_PUBLIC_UNITY_LIVE_SHADOW_ENABLED` — must also be `"true"` for the shadow
+  preview to mount. When absent/false (the default, and required in production),
+  there is no Unity iframe, no Unity state, and no Unity listeners — the match
+  page behaves exactly as before.
+
+The renderer still opens no socket, reads no auth, and holds no authority. It
+receives only accepted, server-resolved `round_result` events forwarded from the
+existing `match:result` flow. See `docs/unity-b5a-live-shadow-mode.md`.

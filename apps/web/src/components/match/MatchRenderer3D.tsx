@@ -31,7 +31,7 @@
  *   - NEXT_PUBLIC_UNITY_BUILD_URL     — when missing, renders a safe placeholder.
  */
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type {
   Lane,
   ShotResult,
@@ -167,9 +167,22 @@ export function postMatchEventToUnity(
 
 type MatchRenderer3DProps = {
   /**
-   * Optional Unity → React event callbacks. Wired by the live match page in a
-   * later phase; harmless no-ops here. The renderer never derives match outcome
-   * from these — they only drive presentation/animation timing.
+   * Latest authoritative, already-resolved presentation message to forward INTO
+   * Unity (B5A: only `round_result`). Held pending until Unity signals `ready`,
+   * then sent at most once per `messageId` for the current iframe lifecycle. The
+   * renderer never derives outcome from this — it only forwards server-resolved
+   * state. When null/undefined, nothing is sent.
+   */
+  message?: UnityInbound | null;
+  /**
+   * Stable identity for `message`. A given id is delivered to Unity at most once
+   * per iframe lifecycle (deduplication). Changing it (new round) allows a new
+   * send; the same id will not be re-sent unless the iframe reloads.
+   */
+  messageId?: string | number | null;
+  /**
+   * Optional Unity → React event callbacks. The renderer never derives match
+   * outcome from these — they only drive presentation/animation timing.
    */
   onReady?: () => void;
   onAnimationComplete?: (round: number) => void;
@@ -177,6 +190,8 @@ type MatchRenderer3DProps = {
 };
 
 export default function MatchRenderer3D({
+  message = null,
+  messageId = null,
   onReady,
   onAnimationComplete,
   onError,
@@ -190,28 +205,82 @@ export default function MatchRenderer3D({
   const callbacksRef = useRef({ onReady, onAnimationComplete, onError });
   callbacksRef.current = { onReady, onAnimationComplete, onError };
 
+  // Send-queue state, all in refs so the once-subscribed listener stays stable.
+  const readyRef = useRef(false);
+  const pendingRef = useRef<{ message: UnityInbound; id: string | number } | null>(
+    null
+  );
+  const sentIdsRef = useRef<Set<string | number>>(new Set());
+
+  // Send the latest pending message to Unity — only when ready, only once per
+  // messageId per iframe lifecycle, always same-origin (never "*").
+  const flushPending = useCallback(() => {
+    if (!readyRef.current) return;
+    const pending = pendingRef.current;
+    if (!pending) return;
+    if (sentIdsRef.current.has(pending.id)) return;
+    const target = iframeRef.current?.contentWindow;
+    if (!target) return;
+    // Fail open: a postMessage exception must never escape into the match page.
+    // Only mark the id as sent on success; on failure surface a non-blocking
+    // onError and leave React fully unaffected (no retry loop, no throw).
+    try {
+      target.postMessage(pending.message, window.location.origin);
+      sentIdsRef.current.add(pending.id);
+    } catch (error) {
+      const detail =
+        error instanceof Error ? error.message : "Unknown postMessage failure";
+      callbacksRef.current.onError?.(
+        `Unity shadow message delivery failed: ${detail}`
+      );
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[unity-shadow] postMessage failed", error);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     // Only listen when there is actually an iframe build to listen to.
     if (!enabled || !buildUrl) return;
 
     function handleMessage(event: MessageEvent) {
-      // Same-origin only. A cross-origin/CDN build must be served from this
-      // origin for its messages to be accepted.
+      // Same-origin only, AND only from THIS iframe's window. A cross-origin/CDN
+      // build must be served from this origin for its messages to be accepted.
       if (event.origin !== window.location.origin) return;
+      if (event.source !== iframeRef.current?.contentWindow) return;
 
       const msg = validateUnityMessage(event.data);
       if (!msg) return;
 
       const cb = callbacksRef.current;
-      if (msg.event === "ready") cb.onReady?.();
-      else if (msg.event === "animation_complete") {
+      if (msg.event === "ready") {
+        readyRef.current = true;
+        cb.onReady?.();
+        flushPending();
+      } else if (msg.event === "animation_complete") {
         cb.onAnimationComplete?.(msg.payload.round);
       } else if (msg.event === "error") cb.onError?.(msg.payload.message);
     }
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [enabled, buildUrl]);
+  }, [enabled, buildUrl, flushPending]);
+
+  // Track the latest React → Unity message and try to send it. If Unity is not
+  // ready yet, it stays pending and is flushed on the next `ready`.
+  useEffect(() => {
+    if (!enabled || !buildUrl) return;
+    if (!message || messageId == null) return;
+    pendingRef.current = { message, id: messageId };
+    flushPending();
+  }, [enabled, buildUrl, message, messageId, flushPending]);
+
+  // iframe (re)load → Unity is no longer ready; clear the per-lifecycle sent set
+  // so the latest pending message can be delivered again after the new `ready`.
+  const handleIframeLoad = useCallback(() => {
+    readyRef.current = false;
+    sentIdsRef.current.clear();
+  }, []);
 
   // Flag off → render nothing. Guarantees zero footprint on the live build.
   if (!enabled) return null;
@@ -242,6 +311,7 @@ export default function MatchRenderer3D({
     <iframe
       ref={iframeRef}
       src={buildUrl}
+      onLoad={handleIframeLoad}
       title="Penalty444 3D match renderer"
       className="h-full w-full rounded-2xl border border-arena-border bg-black"
       allow="autoplay; fullscreen"
