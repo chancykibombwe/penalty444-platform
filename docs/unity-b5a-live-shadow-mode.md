@@ -1,5 +1,13 @@
 # Unity B5A — Live Resolved-Round Shadow Mode (PR #199)
 
+> **Superseded sequencing (see `docs/unity-b5b1-staging-result-sequence.md`, PR
+> #200):** B5A sent `round_result` to Unity immediately when the authoritative
+> `match:result` was accepted, so Unity revealed the outcome before the React
+> tension window finished. **B5B1** changes this to a two-phase, React-timed
+> sequence: `staging_begin` when React enters REVEALING, and `round_result` only
+> when React reaches REVEALED. The flags, authority model, and everything else in
+> this document are unchanged.
+
 > Status: **Optional, default-off, dev-only shadow preview.** B5A is **not** the
 > final live Unity mode. It mounts `MatchRenderer3D` in the live Penalty444 match
 > page purely to mirror already-resolved rounds. The React renderer remains the
