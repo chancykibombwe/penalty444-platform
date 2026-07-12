@@ -4,6 +4,11 @@
 > preview so Unity follows React's existing reveal timing instead of revealing
 > the result early. React remains the primary, authoritative match experience;
 > Unity is a presentation-only shadow renderer that never controls React.
+>
+> **Extended by B5B2 (`docs/unity-b5b2-match-end-rematch-reset.md`, PR #201):**
+> adds `match_end` (at the existing terminal `onMatchEnd` boundary, after the
+> final round result's reveal hold) and `reset` (on confirmed
+> `onRematchAccepted`). Same flags, authority model, and fail-open renderer.
 
 ## What changed vs B5A
 

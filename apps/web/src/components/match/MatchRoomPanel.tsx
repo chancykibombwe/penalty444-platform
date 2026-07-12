@@ -248,6 +248,40 @@ function assertAuthoritativeResultIntegrity(payload: MatchResultPayload): void {
   }
 }
 
+/**
+ * Presentation-only classification of an ALREADY-ENDED match for the optional
+ * Unity shadow preview (B5B2). The realtime server has already decided the match
+ * is over and persisted the winner; this reads the final authoritative score
+ * snapshot purely to pick a winnerId / isDraw for Unity's MATCH OVER / MATCH DRAW
+ * banner. It never decides whether the match ends and never mutates scores.
+ *
+ * Returns null (→ no Unity match_end sent, React unaffected) for a malformed
+ * snapshot or fewer than two valid numeric entries.
+ */
+type UnityMatchEndPresentation = {
+  winnerId: string | null;
+  isDraw: boolean;
+};
+
+function getUnityMatchEndPresentation(
+  scores: Record<string, number>
+): UnityMatchEndPresentation | null {
+  if (!scores || typeof scores !== "object") return null;
+
+  const entries = Object.entries(scores).filter(
+    ([, value]) => typeof value === "number" && Number.isFinite(value)
+  );
+  if (entries.length < 2) return null;
+
+  const highest = Math.max(...entries.map(([, value]) => value));
+  const leaders = entries.filter(([, value]) => value === highest);
+
+  if (leaders.length === 1) {
+    return { winnerId: leaders[0][0], isDraw: false };
+  }
+  return { winnerId: null, isDraw: true };
+}
+
 function isResultRoundAcceptable(
   resultRound: number | undefined,
   expectedRound: number | null,
@@ -1689,6 +1723,40 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setRematchRequested(false);
       setLeaveMatchBusy(false);
 
+      // ── Unity live shadow preview (B5B2) — MATCH END, default-off ──
+      // Runs ONLY in this terminal branch — the reveal-active branch above
+      // defers and returns, so the final round result keeps its existing reveal
+      // hold first (the deferred onMatchEnd re-runs here after the hold). Classify
+      // the final authoritative scores into winnerId/isDraw for Unity's MATCH
+      // OVER / MATCH DRAW banner. Presentation only; skipped unless BOTH flags are
+      // "true"; a malformed snapshot fails open (no send). Stable id dedupes a
+      // duplicate match:end for the same match instance. env checks inlined (not
+      // reactive) → no new socket-effect dependency.
+      if (
+        process.env.NEXT_PUBLIC_UNITY_MATCH_ENABLED === "true" &&
+        process.env.NEXT_PUBLIC_UNITY_LIVE_SHADOW_ENABLED === "true"
+      ) {
+        const presentation = getUnityMatchEndPresentation(payload.scores);
+        if (presentation) {
+          setUnityShadowMessage({
+            id: `${normalizedRoomCode}:${liveMatchInstanceRef.current}:match-end`,
+            message: {
+              type: "PENALTY444_MATCH_EVENT",
+              event: "match_end",
+              payload: {
+                winnerId: presentation.winnerId,
+                isDraw: presentation.isDraw,
+              },
+            },
+          });
+        } else if (process.env.NODE_ENV !== "production") {
+          console.warn(
+            "[unity-shadow] match_end skipped — malformed final scores",
+            payload.scores
+          );
+        }
+      }
+
       if (payload.tournamentId) {
         setTournamentId(payload.tournamentId);
         tournamentContextRef.current = {
@@ -1760,6 +1828,29 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       clearAbortRedirectTimeout();
       setLeaveMatchBusy(false);
       setStatus("Rematch started");
+
+      // ── Unity live shadow preview (B5B2) — REMATCH RESET, default-off ──
+      // Runs after React's existing rematch reset state is applied. Tells the
+      // optional Unity iframe to return to its idle/waiting scene. Presentation
+      // only: it does NOT accept the rematch, start the next round, change
+      // matchInstance, clear server state, or affect React timing — the following
+      // authoritative match:update drives the new rematch state. The id uses the
+      // CURRENT (terminal) match instance intentionally: it identifies the match
+      // being cleared. Skipped unless BOTH flags are "true"; env checks inlined
+      // (not reactive) → no new socket-effect dependency.
+      if (
+        process.env.NEXT_PUBLIC_UNITY_MATCH_ENABLED === "true" &&
+        process.env.NEXT_PUBLIC_UNITY_LIVE_SHADOW_ENABLED === "true"
+      ) {
+        setUnityShadowMessage({
+          id: `${normalizedRoomCode}:${liveMatchInstanceRef.current}:rematch-reset`,
+          message: {
+            type: "PENALTY444_MATCH_EVENT",
+            event: "reset",
+            payload: null,
+          },
+        });
+      }
     }
 
     function onMatchRejoinState(data: MatchRejoinStatePayload) {

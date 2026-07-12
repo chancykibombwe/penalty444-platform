@@ -205,7 +205,16 @@ B2 is complete only when **all** of the following hold:
     `animation_complete` dependency. `PenaltySceneController.BeginStaging` now
     resets actor poses (not the visual round counter). `match_end`/`reset` remain
     B5B2. See `docs/unity-b5b1-staging-result-sequence.md`.
-  - **B5B2+** — `match_end` / `reset` integration and beyond. *(Future only.)*
+  - **B5B2 (PR #201) — live match-end + rematch reset.** Adds exactly two
+    React→Unity events: `match_end` when the existing deferred `onMatchEnd`
+    applies the authoritative terminal state (the final round result keeps its
+    existing reveal hold first), and `reset` on a confirmed `onRematchAccepted`.
+    Final authoritative scores are classified into `winnerId`/`isDraw` for the
+    presentation banner only; a malformed snapshot fails open (no send). No new
+    timer, no `animation_complete`, no Unity source change → no WebGL rebuild.
+    See `docs/unity-b5b2-match-end-rematch-reset.md`.
+  - **B5B3+** — further live integration and any path toward a production visual
+    mode. *(Future only.)*
 - **B6** — Production-ready Unity 3D Penalty444 with fallback to the normal web
   renderer. *(Future only.)*
 

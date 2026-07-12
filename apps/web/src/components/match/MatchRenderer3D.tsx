@@ -168,8 +168,9 @@ export function postMatchEventToUnity(
 type MatchRenderer3DProps = {
   /**
    * Latest authoritative, already-resolved presentation message to forward INTO
-   * Unity (B5A: only `round_result`). Held pending until Unity signals `ready`,
-   * then sent at most once per `messageId` for the current iframe lifecycle. The
+   * Unity (the live shadow may forward `staging_begin`, `round_result`,
+   * `match_end`, or `reset`). Held pending until Unity signals `ready`, then
+   * sent at most once per `messageId` for the current iframe lifecycle. The
    * renderer never derives outcome from this — it only forwards server-resolved
    * state. When null/undefined, nothing is sent.
    */
