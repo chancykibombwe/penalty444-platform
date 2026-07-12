@@ -3833,10 +3833,13 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         </div>
       ) : null}
 
-      {/* ── Unity live shadow preview (Phase B5A) — dev-only, default-off ──
-          Mounts only when BOTH Unity flags are "true". Secondary panel below
-          the arena; it never obscures or replaces lane controls, scoreboard,
-          timer, reveal, disconnect, or match-end UI. Presentation only. */}
+      {/* ── Unity live shadow preview (Phase B5B3) — dev-only, default-off ──
+          Mounts only when BOTH Unity flags are "true". Secondary panel below the
+          arena; it never obscures or replaces lane controls, scoreboard, timer,
+          reveal, disconnect, or match-end UI. Presentation only. The live shadow
+          now forwards staging_begin / round_result / match_end / reset, and the
+          renderer fails open to an "unavailable" card (React unaffected) if the
+          3D preview cannot load / become ready. */}
       {unityShadowEnabled ? (
         <section
           className="mt-6 rounded-2xl border border-dashed border-arena-border bg-arena-surface/60 p-3"
@@ -3864,9 +3867,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             />
           </div>
           <p className="mt-1.5 text-[10px] text-zinc-600">
-            React-timed cinematic shadow preview — presentation only. Stages during
-            the React reveal, then mirrors the already-resolved result; it never
-            drives the match.
+            React-timed cinematic shadow preview — presentation only; the React
+            match remains authoritative. Stages during the React reveal, then
+            mirrors the already-resolved result. It never drives the match and
+            fails open (shows an “unavailable” card) if the 3D preview cannot load.
           </p>
         </section>
       ) : null}

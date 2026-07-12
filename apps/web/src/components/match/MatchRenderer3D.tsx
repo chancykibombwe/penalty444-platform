@@ -31,7 +31,7 @@
  *   - NEXT_PUBLIC_UNITY_BUILD_URL     — when missing, renders a safe placeholder.
  */
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   Lane,
   ShotResult,
@@ -165,6 +165,16 @@ export function postMatchEventToUnity(
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
+/**
+ * Presentation-only readiness timeout for the OPTIONAL shadow iframe. If Unity
+ * has not emitted `ready` within this window the preview fails open (see
+ * `markUnavailable`). This never gates the React match in any way.
+ */
+const UNITY_READY_TIMEOUT_MS = 15_000;
+
+/** Presentation-only lifecycle of the optional shadow iframe. */
+type UnityRendererStatus = "loading" | "ready" | "unavailable";
+
 type MatchRenderer3DProps = {
   /**
    * Latest authoritative, already-resolved presentation message to forward INTO
@@ -213,32 +223,68 @@ export default function MatchRenderer3D({
   );
   const sentIdsRef = useRef<Set<string | number>>(new Set());
 
+  // Presentation-only lifecycle (B5B3). Never gates the React match.
+  const [status, setStatus] = useState<UnityRendererStatus>("loading");
+  const [unavailableReason, setUnavailableReason] = useState<string | null>(null);
+  const unavailableRef = useRef(false);
+  const readyTimeoutRef = useRef<number | null>(null);
+
+  const clearReadyTimeout = useCallback(() => {
+    if (readyTimeoutRef.current !== null) {
+      window.clearTimeout(readyTimeoutRef.current);
+      readyTimeoutRef.current = null;
+    }
+  }, []);
+
+  // Idempotent fail-open transition into the unavailable state. Presentation
+  // only: it never throws, never affects React, and fires `onError` at most once.
+  const markUnavailable = useCallback(
+    (reason: string) => {
+      if (unavailableRef.current) return;
+      unavailableRef.current = true;
+      clearReadyTimeout();
+      readyRef.current = false;
+      setStatus("unavailable");
+      setUnavailableReason(reason);
+      try {
+        callbacksRef.current.onError?.(reason);
+      } catch {
+        /* onError must never break the renderer */
+      }
+    },
+    [clearReadyTimeout]
+  );
+
+  // Arm the presentation-only readiness timeout for the current iframe lifecycle.
+  const armReadyTimeout = useCallback(() => {
+    if (unavailableRef.current) return;
+    clearReadyTimeout();
+    readyTimeoutRef.current = window.setTimeout(() => {
+      readyTimeoutRef.current = null;
+      markUnavailable("3D preview did not become ready.");
+    }, UNITY_READY_TIMEOUT_MS);
+  }, [clearReadyTimeout, markUnavailable]);
+
   // Send the latest pending message to Unity — only when ready, only once per
-  // messageId per iframe lifecycle, always same-origin (never "*").
+  // messageId per iframe lifecycle, always same-origin (never "*"). A caught
+  // delivery exception fails the preview open (markUnavailable), never React.
   const flushPending = useCallback(() => {
-    if (!readyRef.current) return;
+    if (!readyRef.current || unavailableRef.current) return;
     const pending = pendingRef.current;
     if (!pending) return;
     if (sentIdsRef.current.has(pending.id)) return;
     const target = iframeRef.current?.contentWindow;
     if (!target) return;
-    // Fail open: a postMessage exception must never escape into the match page.
-    // Only mark the id as sent on success; on failure surface a non-blocking
-    // onError and leave React fully unaffected (no retry loop, no throw).
     try {
       target.postMessage(pending.message, window.location.origin);
       sentIdsRef.current.add(pending.id);
     } catch (error) {
-      const detail =
-        error instanceof Error ? error.message : "Unknown postMessage failure";
-      callbacksRef.current.onError?.(
-        `Unity shadow message delivery failed: ${detail}`
-      );
       if (process.env.NODE_ENV !== "production") {
         console.warn("[unity-shadow] postMessage failed", error);
       }
+      markUnavailable("3D preview message delivery failed.");
     }
-  }, []);
+  }, [markUnavailable]);
 
   useEffect(() => {
     // Only listen when there is actually an iframe build to listen to.
@@ -255,17 +301,23 @@ export default function MatchRenderer3D({
 
       const cb = callbacksRef.current;
       if (msg.event === "ready") {
+        if (unavailableRef.current) return; // don't resurrect a failed preview
+        clearReadyTimeout();
         readyRef.current = true;
+        setStatus("ready");
         cb.onReady?.();
         flushPending();
       } else if (msg.event === "animation_complete") {
         cb.onAnimationComplete?.(msg.payload.round);
-      } else if (msg.event === "error") cb.onError?.(msg.payload.message);
+      } else if (msg.event === "error") {
+        // Fail open on a Unity-reported error (idempotent).
+        markUnavailable("3D preview reported an error.");
+      }
     }
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [enabled, buildUrl, flushPending]);
+  }, [enabled, buildUrl, flushPending, clearReadyTimeout, markUnavailable]);
 
   // Track the latest React → Unity message and try to send it. If Unity is not
   // ready yet, it stays pending and is flushed on the next `ready`.
@@ -276,18 +328,32 @@ export default function MatchRenderer3D({
     flushPending();
   }, [enabled, buildUrl, message, messageId, flushPending]);
 
-  // iframe (re)load → Unity is no longer ready; clear the per-lifecycle sent set
-  // so the latest pending message can be delivered again after the new `ready`.
+  // Arm the readiness timeout for this component lifecycle; clear on unmount.
+  useEffect(() => {
+    if (!enabled || !buildUrl) return;
+    armReadyTimeout();
+    return () => clearReadyTimeout();
+  }, [enabled, buildUrl, armReadyTimeout, clearReadyTimeout]);
+
+  // iframe (re)load → back to loading; Unity no longer ready; clear the per-
+  // lifecycle sent set; re-arm a fresh readiness timeout.
   const handleIframeLoad = useCallback(() => {
+    if (unavailableRef.current) return;
     readyRef.current = false;
     sentIdsRef.current.clear();
-  }, []);
+    setStatus("loading");
+    armReadyTimeout();
+  }, [armReadyTimeout]);
+
+  // Native iframe load failure (network error) → fail open (idempotent).
+  const handleIframeError = useCallback(() => {
+    markUnavailable("3D preview failed to load.");
+  }, [markUnavailable]);
 
   // Flag off → render nothing. Guarantees zero footprint on the live build.
   if (!enabled) return null;
 
-  // Enabled but no build configured → safe internal placeholder (not shown to
-  // users in Phase B1 because this component is not mounted anywhere live).
+  // Enabled but no build configured → existing safe configuration placeholder.
   if (!buildUrl) {
     return (
       <div
@@ -305,17 +371,55 @@ export default function MatchRenderer3D({
     );
   }
 
-  // Enabled + build URL present → passive iframe shell. A later phase finalizes
-  // the Unity loader, the React→Unity send path, and DOM fallback wiring. This
-  // shell holds NO sockets, NO auth, and forwards NO match-control input.
+  // Unavailable → the iframe is UNMOUNTED and a compact fail-open card is shown.
+  // The React match continues normally; no further sends are attempted.
+  if (status === "unavailable") {
+    return (
+      <div
+        className="flex h-full w-full items-center justify-center rounded-2xl border border-dashed border-arena-border bg-arena-surface px-4 py-6 text-center"
+        role="status"
+        aria-live="polite"
+      >
+        <div>
+          <p className="text-sm font-bold text-zinc-300">3D preview unavailable</p>
+          <p className="mt-1 text-xs text-zinc-500">
+            The React match continues normally.
+          </p>
+          {process.env.NODE_ENV !== "production" && unavailableReason ? (
+            <p className="mt-2 text-[10px] text-zinc-600">{unavailableReason}</p>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  // loading | ready → passive iframe shell. A non-interactive "loading" overlay
+  // shows until Unity emits `ready`. NO sockets, NO auth, NO match-control input.
   return (
-    <iframe
-      ref={iframeRef}
-      src={buildUrl}
-      onLoad={handleIframeLoad}
-      title="Penalty444 3D match renderer"
-      className="h-full w-full rounded-2xl border border-arena-border bg-black"
-      allow="autoplay; fullscreen"
-    />
+    <div className="relative h-full w-full">
+      <iframe
+        ref={iframeRef}
+        src={buildUrl}
+        onLoad={handleIframeLoad}
+        onError={handleIframeError}
+        title="Penalty444 3D match renderer"
+        className="h-full w-full rounded-2xl border border-arena-border bg-black"
+        allow="autoplay; fullscreen"
+      />
+      {status === "loading" ? (
+        <div
+          className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-black/55"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="text-center">
+            <p className="text-sm font-bold text-cyan-200">Loading 3D preview…</p>
+            <p className="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">
+              React match remains active
+            </p>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
