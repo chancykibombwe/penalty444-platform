@@ -1403,6 +1403,45 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       setResultFlavorMessage(pickResultFlavorMessage(authoritative.result));
       setOpponentStatus("");
 
+      // ── Unity live shadow preview (B5B1) — RESULT phase, default-off ──
+      // React has now reached REVEALED. This is the sequencing boundary: only
+      // now forward the GOAL/SAVE/DRAW to the optional Unity iframe, built purely
+      // from authoritative server-resolved state. NO new timer — React's reveal
+      // timing above is the single source of sequencing. Skipped unless BOTH
+      // flags are "true" and both lanes are present; scores are frozen; the
+      // result comes straight from the server and is never derived from lanes.
+      if (
+        process.env.NEXT_PUBLIC_UNITY_MATCH_ENABLED === "true" &&
+        process.env.NEXT_PUBLIC_UNITY_LIVE_SHADOW_ENABLED === "true" &&
+        authoritative.kickerPick &&
+        authoritative.keeperPick
+      ) {
+        const resultRound =
+          authoritative.round ?? lastPickRoundRef.current ?? 0;
+        // Distinct id from the staging message for this round (…:result vs …:staging).
+        const resultId = `${normalizedRoomCode}:${liveMatchInstanceRef.current}:${resultRound}:result`;
+        setUnityShadowMessage({
+          id: resultId,
+          message: {
+            type: "PENALTY444_MATCH_EVENT",
+            event: "round_result",
+            payload: {
+              kickerLane: authoritative.kickerPick,
+              keeperLane: authoritative.keeperPick,
+              result: authoritative.result,
+              // Latest client-held authoritative score snapshot, frozen at
+              // build time (match:result carries no scores → may be pre-result;
+              // no local score calc; Unity ignores scores). Copied so later
+              // state updates can't mutate it.
+              scores: { ...liveScoresRef.current },
+              round: resultRound,
+              maxRounds: liveMaxRoundsRef.current,
+              phase: livePhaseRef.current,
+            },
+          },
+        });
+      }
+
       // "Dramatic hold": keep the result on screen so REVEALED actually
       // paints before the server's next-round `match:update` clears it.
       // Casual gets a shorter hold (~1500ms); tournament keeps the longer
@@ -1518,13 +1557,15 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         return;
       }
 
-      // ── Unity live shadow preview (B5A) — presentation only, default-off ──
-      // The round result has now passed EVERY existing room/round/payload
-      // validation. Forward it to the optional Unity iframe, built purely from
-      // authoritative server-resolved state. This sets an isolated presentation
-      // state only — it never changes React scores/timing/reveal/authority, and
-      // is skipped entirely unless BOTH Unity flags are "true" and both lanes
-      // are present. env checks are inlined (not reactive) so no new socket-
+      // ── Unity live shadow preview (B5B1) — STAGING phase, default-off ──
+      // The result has passed EVERY existing room/round/payload validation and
+      // React is about to enter REVEALING. Tell the optional Unity iframe to
+      // enter its staging ("Get ready…") pose NOW; the actual GOAL/SAVE/DRAW is
+      // sent later, only when React reaches REVEALED (see applyRevealedResult).
+      // React's existing reveal timing is unchanged and is the single source of
+      // sequencing — no Unity timer or ack controls React. This sets an isolated
+      // presentation state only; skipped unless BOTH flags are "true" and both
+      // lanes are present. env checks inlined (not reactive) so no new socket-
       // effect dependency is introduced.
       if (
         process.env.NEXT_PUBLIC_UNITY_MATCH_ENABLED === "true" &&
@@ -1532,29 +1573,17 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         authoritative.kickerPick &&
         authoritative.keeperPick
       ) {
-        const shadowRound =
+        const stagingRound =
           authoritative.round ?? expectedRound ?? lastPickRoundRef.current ?? 0;
-        // Stable, unique id from authoritative identifiers (not Date.now):
-        // room + match instance + round + result. Prevents duplicate delivery.
-        const shadowId = `${normalizedRoomCode}:${liveMatchInstanceRef.current}:${shadowRound}:${authoritative.result}`;
+        // Stable id from authoritative identifiers. Date.now() is used ONLY for
+        // startsAt, never as the message identity.
+        const stagingId = `${normalizedRoomCode}:${liveMatchInstanceRef.current}:${stagingRound}:staging`;
         setUnityShadowMessage({
-          id: shadowId,
+          id: stagingId,
           message: {
             type: "PENALTY444_MATCH_EVENT",
-            event: "round_result",
-            payload: {
-              kickerLane: authoritative.kickerPick,
-              keeperLane: authoritative.keeperPick,
-              result: authoritative.result,
-              // Latest client-held authoritative score snapshot, frozen at
-              // message-build time. match:result carries no scores, so this may
-              // be the pre-result score; no local score calc is done and Unity
-              // ignores scores in B5A. Copied so later state updates can't mutate it.
-              scores: { ...liveScoresRef.current },
-              round: shadowRound,
-              maxRounds: liveMaxRoundsRef.current,
-              phase: livePhaseRef.current,
-            },
+            event: "staging_begin",
+            payload: { startsAt: Date.now() },
           },
         });
       }
@@ -3736,8 +3765,9 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             />
           </div>
           <p className="mt-1.5 text-[10px] text-zinc-600">
-            Unity live shadow preview — presentation only. Mirrors already-resolved
-            rounds; it never drives the match.
+            React-timed cinematic shadow preview — presentation only. Stages during
+            the React reveal, then mirrors the already-resolved result; it never
+            drives the match.
           </p>
         </section>
       ) : null}

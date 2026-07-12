@@ -197,7 +197,15 @@ B2 is complete only when **all** of the following hold:
     authoritative. Only `round_result` (React→Unity) and `ready`/`error`
     (Unity→React) are wired; `staging_begin`/`match_end`/`reset`/`animation_complete`
     remain B5B. Not for production. See `docs/unity-b5a-live-shadow-mode.md`.
-  - **B5B+** — further live integration. *(Future only.)*
+  - **B5B1 (PR #200) — live staging + timed result sequence.** Splits the B5A
+    single send into a React-timed two-phase sequence: `staging_begin` when the
+    accepted result enters React REVEALING, then `round_result` only when React
+    reaches REVEALED (`applyRevealedResult`). React's existing reveal timing is
+    unchanged and remains the sole sequencing source — no Unity timer, no
+    `animation_complete` dependency. `PenaltySceneController.BeginStaging` now
+    resets actor poses (not the visual round counter). `match_end`/`reset` remain
+    B5B2. See `docs/unity-b5b1-staging-result-sequence.md`.
+  - **B5B2+** — `match_end` / `reset` integration and beyond. *(Future only.)*
 - **B6** — Production-ready Unity 3D Penalty444 with fallback to the normal web
   renderer. *(Future only.)*
 

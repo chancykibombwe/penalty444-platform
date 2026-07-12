@@ -70,6 +70,11 @@ namespace Penalty444.Prototype
             State = PenaltyVisualState.Staging;
 
             ResetAllLanes();
+            // Restore the ball/keeper to their idle poses from the previous
+            // round's result animation before the "Get ready…" pose is shown.
+            // This does NOT call ResetScene() and does NOT reset the visual round
+            // counter — only the actor poses are cleaned up. No timer, no logic.
+            resultAnimator?.PlayReset();
             SetText(roundStatusText, "Get ready…");
             SetText(resultBannerText, string.Empty);
 
