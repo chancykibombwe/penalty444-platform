@@ -23,11 +23,14 @@ No other Unity event is added.
 
 ## Final-score presentation classification
 
-`getUnityMatchEndPresentation(scores)` is a pure helper that reads **only** the
-final authoritative score snapshot the server already produced:
+`getUnityMatchEndPresentation(scores)` is a pure helper (typed `scores: unknown`)
+that reads **only** the final authoritative score snapshot the server already
+produced:
 
-- keeps only finite numeric entries; requires **≥ 2** valid entries or returns
-  `null`;
+- rejects (`null`) a null value, a non-object, or an **array** (e.g. `[2, 1]`,
+  which would otherwise masquerade as player ids `"0"`/`"1"`);
+- keeps only entries with a non-empty player id and a finite numeric value;
+  requires **≥ 2** valid entries or returns `null`;
 - one player with the highest score → `{ winnerId, isDraw: false }`;
 - a tie for the highest score → `{ winnerId: null, isDraw: true }`.
 

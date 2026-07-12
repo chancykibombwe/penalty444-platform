@@ -256,7 +256,9 @@ function assertAuthoritativeResultIntegrity(payload: MatchResultPayload): void {
  * banner. It never decides whether the match ends and never mutates scores.
  *
  * Returns null (→ no Unity match_end sent, React unaffected) for a malformed
- * snapshot or fewer than two valid numeric entries.
+ * snapshot: null, a non-object, an ARRAY (e.g. `[2, 1]`, which would otherwise
+ * masquerade as player ids "0"/"1"), an empty player id, or fewer than two
+ * valid finite-number entries.
  */
 type UnityMatchEndPresentation = {
   winnerId: string | null;
@@ -264,17 +266,23 @@ type UnityMatchEndPresentation = {
 };
 
 function getUnityMatchEndPresentation(
-  scores: Record<string, number>
+  scores: unknown
 ): UnityMatchEndPresentation | null {
-  if (!scores || typeof scores !== "object") return null;
+  if (!scores || typeof scores !== "object" || Array.isArray(scores)) {
+    return null;
+  }
 
-  const entries = Object.entries(scores).filter(
-    ([, value]) => typeof value === "number" && Number.isFinite(value)
+  const entries = Object.entries(scores as Record<string, unknown>).filter(
+    ([playerId, value]) =>
+      playerId.trim().length > 0 &&
+      typeof value === "number" &&
+      Number.isFinite(value)
   );
   if (entries.length < 2) return null;
 
-  const highest = Math.max(...entries.map(([, value]) => value));
-  const leaders = entries.filter(([, value]) => value === highest);
+  // Values are guaranteed finite numbers by the filter above; cast for typing.
+  const highest = Math.max(...entries.map(([, value]) => value as number));
+  const leaders = entries.filter(([, value]) => (value as number) === highest);
 
   if (leaders.length === 1) {
     return { winnerId: leaders[0][0], isDraw: false };
