@@ -213,8 +213,15 @@ B2 is complete only when **all** of the following hold:
     presentation banner only; a malformed snapshot fails open (no send). No new
     timer, no `animation_complete`, no Unity source change → no WebGL rebuild.
     See `docs/unity-b5b2-match-end-rematch-reset.md`.
-  - **B5B3+** — further live integration and any path toward a production visual
-    mode. *(Future only.)*
+  - **B5B3 (PR #202) — shadow readiness + fail-open fallback.** Hardens the
+    `MatchRenderer3D` lifecycle: a visible "loading" state until Unity emits
+    `ready`, a presentation-only 15s readiness timeout, and a fail-open
+    "unavailable" card (iframe unmounted) when Unity does not ready in time, the
+    iframe fails to load, Unity emits `error`, or a `postMessage` throws. The
+    timeout never gates React; no auto-retry; queue/dedup/same-origin+source
+    validation unchanged. No `animation_complete`, no Unity source change, no
+    WebGL rebuild. See `docs/unity-b5b3-shadow-readiness-fallback.md`.
+  - **B6** — production renderer replacement. *(Future only.)*
 - **B6** — Production-ready Unity 3D Penalty444 with fallback to the normal web
   renderer. *(Future only.)*
 

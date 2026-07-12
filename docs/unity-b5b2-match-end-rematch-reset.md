@@ -4,6 +4,11 @@
 > of the Unity live shadow preview by adding exactly two React→Unity events on top
 > of B5A/B5B1. React and the Node realtime server remain the sole authority; Unity
 > is presentation-only and never controls, delays, or gates React.
+>
+> **Hardened by B5B3 (`docs/unity-b5b3-shadow-readiness-fallback.md`, PR #202):**
+> adds a loading state, a presentation-only 15s readiness timeout, and a
+> fail-open "unavailable" card so a broken/slow 3D preview never affects the
+> React match.
 
 ## What B5B2 adds
 
