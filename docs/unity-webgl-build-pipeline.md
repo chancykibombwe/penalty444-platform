@@ -180,3 +180,21 @@ The passive viewer at `/dev/unity/penalty444` (PR #196) is unchanged.
 
 B5 (live match page optional visual mode behind a feature flag) remains future
 work and is not started here.
+
+## 7. Production-readiness boundary
+
+> B5 (live shadow preview) is complete on `master` (PRs #199–#202), but that does
+> **not** make Unity production-ready. This section marks the boundary; the full
+> gate is `docs/unity-b6a-production-readiness-audit.md` (PR #203).
+
+- The current WebGL output remains **local and git-ignored** — it is never
+  committed and is not present on a fresh clone or a normal Vercel deploy.
+- The current build process is a successful **prototype dry run**, not a
+  production release pipeline.
+- **No normal CI build or artifact publication exists** — CI (`ci.yml`) runs only
+  web + realtime typecheck/build.
+- **Production artifact delivery and versioning remain unresolved** (no selected
+  storage/CDN, no immutable versioned URL, no manifest/checksums).
+- Do **not** commit generated WebGL output. See
+  `docs/unity-b6a-production-readiness-audit.md` for the go/no-go gates and the
+  proposed B6B–B6G sequence.
