@@ -221,8 +221,17 @@ B2 is complete only when **all** of the following hold:
     timeout never gates React; no auto-retry; queue/dedup/same-origin+source
     validation unchanged. No `animation_complete`, no Unity source change, no
     WebGL rebuild. See `docs/unity-b5b3-shadow-readiness-fallback.md`.
-  - **B6** — production renderer replacement. *(Future only.)*
+  - **B5A–B5B3 — completed and locked** (PRs #199–#202): live shadow mode,
+    React-timed staging→result, match-end + rematch reset, and the readiness +
+    fail-open lifecycle.
+  - **B6A (PR #203) — production-readiness audit** is the next gate
+    (`docs/unity-b6a-production-readiness-audit.md`). **B6 implementation remains
+    blocked until the audit gates are addressed; no production renderer is
+    currently authorized.**
+  - **B6B–B6G** — production build/delivery/qualification/rollout. *(Future only;
+    each a separate scoped PR gated on B6A.)*
 - **B6** — Production-ready Unity 3D Penalty444 with fallback to the normal web
   renderer. *(Future only.)*
 
-**B5 and B6 are future phases only and are not implemented in this PR.**
+**B5A–B5B3 are completed and locked. B6A is documentation-only; B6B–B6G remain
+future work and are not authorized by this PR.**
