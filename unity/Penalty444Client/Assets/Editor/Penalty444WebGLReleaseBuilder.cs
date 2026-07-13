@@ -82,18 +82,18 @@ namespace Penalty444.Editor
             string releaseNotesB64 = GetArg("-penalty444ReleaseNotesBase64");
 
             // ── 2/3. Validate required inputs ────────────────────────────────
-            if (string.IsNullOrEmpty(releaseVersion) || !VersionPattern.IsMatch(releaseVersion))
+            if (!IsValidVersion(releaseVersion))
                 throw new Exception(
-                    "Invalid -penalty444ReleaseVersion. Must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$.");
+                    "Invalid -penalty444ReleaseVersion. Must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ and contain no '..'.");
 
             if (string.IsNullOrEmpty(sourceCommit) || !CommitPattern.IsMatch(sourceCommit))
                 throw new Exception(
                     "Invalid -penalty444SourceCommit. Must be a full 40-character hex Git SHA.");
             sourceCommit = sourceCommit.ToLowerInvariant();
 
-            if (!string.IsNullOrEmpty(previousVersion) && !VersionPattern.IsMatch(previousVersion))
+            if (!string.IsNullOrEmpty(previousVersion) && !IsValidVersion(previousVersion))
                 throw new Exception(
-                    "Invalid -penalty444PreviousVersion. Must match the release-version pattern or be empty.");
+                    "Invalid -penalty444PreviousVersion. Must match the release-version pattern (no '..') or be empty.");
 
             string releaseNotes = DecodeReleaseNotes(releaseNotesB64);
             if (string.IsNullOrEmpty(releaseNotes.Trim()))
@@ -316,12 +316,34 @@ namespace Penalty444.Editor
 
         // ── Helpers ──────────────────────────────────────────────────────────
 
+        // Version validity: keep the committed character-set regex, and
+        // additionally reject any "escape" segment ("..") the regex would allow.
+        private static bool IsValidVersion(string value)
+        {
+            return !string.IsNullOrEmpty(value)
+                && VersionPattern.IsMatch(value)
+                && value.IndexOf("..", StringComparison.Ordinal) < 0;
+        }
+
+        // Returns null when the option is absent (so an omitted, optional
+        // -penalty444PreviousVersion is allowed). Fails clearly when the option
+        // is present but has no value — either because it is the last token or
+        // because the next token is another -penalty444* option that would
+        // otherwise be silently consumed as the value.
         private static string GetArg(string name)
         {
             string[] args = Environment.GetCommandLineArgs();
-            for (int i = 0; i < args.Length - 1; i++)
-                if (string.Equals(args[i], name, StringComparison.Ordinal))
-                    return args[i + 1];
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (!string.Equals(args[i], name, StringComparison.Ordinal))
+                    continue;
+                if (i + 1 >= args.Length)
+                    throw new Exception($"Missing value for {name}.");
+                string value = args[i + 1];
+                if (value != null && value.StartsWith("-penalty444", StringComparison.Ordinal))
+                    throw new Exception($"Missing value for {name} (followed by another option).");
+                return value;
+            }
             return null;
         }
 

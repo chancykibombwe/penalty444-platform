@@ -96,15 +96,29 @@ install is not at the default Hub location.
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/unity/build-penalty444-webgl-release.ps1 -Version "b6b-validation" -ReleaseNotes "B6B configuration validation only." -ValidateOnly
 ```
 
-`-ValidateOnly` runs the full preflight (project present, editor version read,
-version pattern, editor executable resolvable, clean tracked tree, target
-release directory free) and prints the planned `-executeMethod`, then exits
-**without** launching Unity and **without** creating any output directory.
+`-ValidateOnly` reads the pinned project version from `ProjectVersion.txt`,
+confirms the expected/`-UnityEditorPath` editor executable path exists, and
+validates the Git / source-commit / version / output-directory preflight (clean
+tracked tree, valid version pattern, target release directory free). It prints
+the planned `-executeMethod`, then exits **without** launching Unity and
+**without** creating any output directory.
+
+`-ValidateOnly` does **not** prove a custom `-UnityEditorPath` executable's exact
+runtime version (it only checks the file exists). The real Unity build entry
+point enforces `Application.unityVersion == ProjectVersion.txt` before building
+(see §2), so a wrong editor is rejected at build time.
 
 **Real local release build:**
 
+Compute a short commit SHA first, then pass it into `-Version`:
+
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/unity/build-penalty444-webgl-release.ps1 -Version "b6b-local-<short-sha>-a" -ReleaseNotes "B6B local release validation."
+$shortSha = (git rev-parse --short=8 HEAD).Trim()
+
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File scripts/unity/build-penalty444-webgl-release.ps1 `
+  -Version "b6b-local-$shortSha-a" `
+  -ReleaseNotes "B6B local release validation."
 ```
 
 This launches Unity in batchmode

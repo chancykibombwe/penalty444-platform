@@ -22,9 +22,10 @@
     -Version "b6b-validation" -ReleaseNotes "B6B configuration validation only." -ValidateOnly
 
 .EXAMPLE
+  $shortSha = (git rev-parse --short=8 HEAD).Trim()
   powershell -NoProfile -ExecutionPolicy Bypass `
     -File scripts/unity/build-penalty444-webgl-release.ps1 `
-    -Version "b6b-local-<short-sha>-a" -ReleaseNotes "B6B local release validation."
+    -Version "b6b-local-$shortSha-a" -ReleaseNotes "B6B local release validation."
 #>
 
 [CmdletBinding()]
@@ -47,6 +48,14 @@ function Fail([string] $message) {
 $VersionPattern = '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
 $ExecuteMethod = "Penalty444.Editor.Penalty444WebGLReleaseBuilder.BuildFromCommandLine"
 
+# Version validity: keep the committed character-set regex, and additionally
+# reject any "escape" segment ("..") the regex would allow.
+function Test-ReleaseVersion([string] $value) {
+    return (-not [string]::IsNullOrEmpty($value)) `
+        -and ($value -match $VersionPattern) `
+        -and (-not $value.Contains(".."))
+}
+
 # ── Locate repo root from the script location (scripts/unity/ -> repo root) ────
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $UnityProject = Join-Path $RepoRoot "unity\Penalty444Client"
@@ -68,11 +77,11 @@ foreach ($line in Get-Content -LiteralPath $ProjectVersionTxt) {
 if ([string]::IsNullOrWhiteSpace($ProjectUnityVersion)) { Fail "m_EditorVersion not found in ProjectVersion.txt." }
 
 # ── Validate release version(s) ───────────────────────────────────────────────
-if ($Version -notmatch $VersionPattern) {
-    Fail "Invalid -Version '$Version'. Must match $VersionPattern (no slash/backslash/'..'/traversal)."
+if (-not (Test-ReleaseVersion $Version)) {
+    Fail "Invalid -Version '$Version'. Must match $VersionPattern and contain no '..' (no slash/backslash/traversal)."
 }
-if (-not [string]::IsNullOrEmpty($PreviousVersion) -and ($PreviousVersion -notmatch $VersionPattern)) {
-    Fail "Invalid -PreviousVersion '$PreviousVersion'. Must match $VersionPattern or be empty."
+if (-not [string]::IsNullOrEmpty($PreviousVersion) -and -not (Test-ReleaseVersion $PreviousVersion)) {
+    Fail "Invalid -PreviousVersion '$PreviousVersion'. Must match $VersionPattern with no '..', or be empty."
 }
 if ([string]::IsNullOrWhiteSpace($ReleaseNotes)) { Fail "Release notes must not be empty." }
 
@@ -130,21 +139,28 @@ Write-Host "  Execute method    : $ExecuteMethod"
 
 if ($ValidateOnly) {
     Write-Host ""
-    Write-Host "ValidateOnly: preflight passed. Unity was NOT launched and no output was created." -ForegroundColor Green
+    Write-Host ("ValidateOnly: preflight passed (project version read, editor executable path exists, " +
+                "Git/source/version/output checks OK). Unity was NOT launched and no output was created.") -ForegroundColor Green
+    Write-Host ("Note: ValidateOnly does not prove a custom -UnityEditorPath executable's exact runtime version. " +
+                "The Unity entry point enforces Application.unityVersion == ProjectVersion.txt before building.") -ForegroundColor Yellow
     exit 0
 }
 
 # ── Launch Unity (batchmode) ──────────────────────────────────────────────────
+# Base args never include -penalty444PreviousVersion; append it only when a
+# value is supplied, then append the release-notes argument last.
 $unityArgs = @(
     "-batchmode", "-quit", "-nographics",
     "-projectPath", $UnityProject,
     "-executeMethod", $ExecuteMethod,
     "-logFile", "-",
     "-penalty444ReleaseVersion", $Version,
-    "-penalty444SourceCommit", $HeadSha,
-    "-penalty444PreviousVersion", $PreviousVersion,
-    "-penalty444ReleaseNotesBase64", $ReleaseNotesB64
+    "-penalty444SourceCommit", $HeadSha
 )
+if (-not [string]::IsNullOrEmpty($PreviousVersion)) {
+    $unityArgs += @("-penalty444PreviousVersion", $PreviousVersion)
+}
+$unityArgs += @("-penalty444ReleaseNotesBase64", $ReleaseNotesB64)
 
 Write-Host ""
 Write-Host "Launching Unity build..."
@@ -166,9 +182,28 @@ if ($manifest.releaseVersion -ne $Version) { Fail "Manifest releaseVersion misma
 if ($manifest.sourceCommit -ne $HeadSha) { Fail "Manifest sourceCommit does not match pre-build HEAD." }
 if ($manifest.unityVersion -ne $ProjectUnityVersion) { Fail "Manifest unityVersion does not match ProjectVersion.txt." }
 
+# Canonical release prefix (ends in a directory separator) to confine every
+# manifest entry to the release folder.
+$canonicalReleaseDir = [System.IO.Path]::GetFullPath($ReleaseDir)
+if (-not $canonicalReleaseDir.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+    $canonicalReleaseDir += [System.IO.Path]::DirectorySeparatorChar
+}
+
 foreach ($f in $manifest.files) {
-    $rel = $f.path -replace '/', '\'
-    $abs = Join-Path $ReleaseDir $rel
+    $relPath = $f.path
+    if ([string]::IsNullOrEmpty($relPath)) { Fail "Manifest contains an empty file path." }
+    if ($relPath.Contains('\')) { Fail "Manifest path must use '/', not backslash: $relPath" }
+    if ([System.IO.Path]::IsPathRooted($relPath)) { Fail "Manifest path must be relative (not rooted/absolute): $relPath" }
+    foreach ($seg in ($relPath -split '/')) {
+        if ([string]::IsNullOrEmpty($seg) -or $seg -eq '.' -or $seg -eq '..') {
+            Fail "Manifest path has an invalid segment ('', '.', or '..'): $relPath"
+        }
+    }
+    $candidate = [System.IO.Path]::GetFullPath((Join-Path $ReleaseDir ($relPath -replace '/', '\')))
+    if (-not $candidate.StartsWith($canonicalReleaseDir, [System.StringComparison]::OrdinalIgnoreCase)) {
+        Fail "Manifest path escapes the release directory: $relPath"
+    }
+    $abs = $candidate
     if (-not (Test-Path -LiteralPath $abs)) { Fail "Manifest file missing on disk: $($f.path)" }
     $actualBytes = (Get-Item -LiteralPath $abs).Length
     if ($actualBytes -ne [long]$f.bytes) { Fail "Byte count mismatch for $($f.path): manifest=$($f.bytes) actual=$actualBytes" }
