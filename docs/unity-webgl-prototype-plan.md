@@ -233,4 +233,5 @@ B2 is complete only when **all** of the following hold:
 - **B6** — Production-ready Unity 3D Penalty444 with fallback to the normal web
   renderer. *(Future only.)*
 
-**B5 and B6 are future phases only and are not implemented in this PR.**
+**B5A–B5B3 are completed and locked. B6A is documentation-only; B6B–B6G remain
+future work and are not authorized by this PR.**

@@ -26,7 +26,14 @@ Split by how each was proven.
 - Same-origin `postMessage` bridge (`MatchRenderer3D.tsx`): `event.origin ===
   window.location.origin` **and** `event.source === iframe.contentWindow`, no
   wildcard `postMessage` target.
-- Strict inbound event/schema validation (`validateUnityMessage`).
+- Allowlisted inbound message validation with event-specific payload validation
+  and normalization (`validateUnityMessage`). Specifically: the message `type`
+  and supported event names are allowlisted; `animation_complete` validates a
+  finite numeric `round`; `ready` is normalized to `payload: null`; `error`
+  normalizes a missing/invalid message to "Unknown Unity error". This is
+  presentation-timing input only — it is **not** yet production-grade strict
+  payload-schema validation, which remains part of the B6 security-review gate
+  (§7/§11) and must **not** be marked production-passed.
 - Presentation-only authority boundary — no socket, no auth/JWT, no Supabase, no
   wallet/economy, no pick submission, no result derivation.
 - Live bridge events: `staging_begin`, `round_result`, `match_end`, `reset`
@@ -248,13 +255,14 @@ commit; analytics implementation.
 
 ## Appendix — Local artifact observation
 
-**Local artifact measurement not available in this worktree.** The WebGL output
+Local artifact measurement was not available in this worktree. The WebGL output
 (`apps/web/public/unity/penalty444/`) is git-ignored and is produced only on the
-operator's machine; it is absent from this clone, so file count, byte size, and
-filenames could not be measured here.
+operator's machine; it is absent from this clone, so the current ignored artifact
+was **not** inspected here (no file count, byte size, or filenames were measured).
 
-Operator-recorded (from the B5 runtime validations, **not** repo-verified and
-**not** a production measurement): the last local build was approximately
-**10.6 MB across ~17 generated files**. Unity editor version documented in the
-repo: **6000.4.2f1** (`ProjectSettings/ProjectVersion.txt`). The current build is
-a successful prototype dry run, not a reproducible or production-approved release.
+The tracked build-pipeline document (`docs/unity-webgl-build-pipeline.md` §6)
+records a previous **B3 local WebGL dry run** using Unity **6000.4.2f1** that
+produced **17 files totaling approximately 10.6 MB**. This historical measurement
+was **not** re-measured here and is **not** a production delivery, performance, or
+reproducibility result. The current build remains a successful prototype dry run,
+not a reproducible or production-approved release.
