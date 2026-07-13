@@ -181,6 +181,36 @@ The passive viewer at `/dev/unity/penalty444` (PR #196) is unchanged.
 B5 (live match page optional visual mode behind a feature flag) remains future
 work and is not started here.
 
+## 6.11 B6B — committed local release build entry point (PR #204)
+
+B6B adds a committed, repeatable **local** release-build entry point on top of
+the B3 dry run. The B3 flow above remains **historical**: a temporary
+`-executeMethod` helper that was deleted before commit. B6B replaces that
+throwaway helper with a permanent, reviewed build command — but changes nothing
+about publishing or production delivery.
+
+- **Editor build entry point:**
+  `unity/Penalty444Client/Assets/Editor/Penalty444WebGLReleaseBuilder.cs`
+  (`Penalty444.Editor.Penalty444WebGLReleaseBuilder.BuildFromCommandLine`).
+- **Operator wrapper:** `scripts/unity/build-penalty444-webgl-release.ps1`
+  (Windows PowerShell; `-ValidateOnly` runs preflight without launching Unity).
+- **Versioned output:** each release builds into a **new immutable** folder
+  `apps/web/public/unity/penalty444/releases/<version>/`. This is under the
+  existing git-ignored `apps/web/public/unity/penalty444/` rule, so **no
+  generated output is committed** — `git ls-files` for that tree stays empty.
+- **Manifest + checksums:** every release writes `manifest.json`
+  (schemaVersion 1, per-file SHA-256, Unity version, source commit, sizes,
+  compression mode) plus a `manifest.sha256` self-checksum. The wrapper then
+  **independently** re-verifies the manifest and every file hash.
+- **Pinned editor + clean source:** the build requires the `ProjectVersion.txt`
+  editor version (`6000.4.2f1`) and a clean **tracked** working tree.
+
+B6B does **not** publish or upload artifacts, configure storage/CDN/Vercel,
+add a Unity build to CI, or activate Unity in production. It is local tooling
+only. See `docs/unity-b6b-local-release-build.md` for the full contract, the
+exact commands, the manifest schema, failure/partial-output behavior, and the
+required local runtime test.
+
 ## 7. Production-readiness boundary
 
 > B5 (live shadow preview) is complete on `master` (PRs #199–#202), but that does

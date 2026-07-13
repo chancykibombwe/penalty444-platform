@@ -234,7 +234,9 @@ Statuses are honest; localhost success does **not** mark a production gate passe
 ## 12. Proposed B6 implementation sequence
 
 - **B6A** — Production readiness audit (this documentation PR).
-- **B6B** — Reproducible local release build + artifact manifest. *(Future. No production activation.)*
+- **B6B** — Reproducible local release build + artifact manifest. *(Implemented
+  as local tooling — PR #204; see below and `docs/unity-b6b-local-release-build.md`.
+  No production activation.)*
 - **B6C** — Versioned staging artifact delivery. *(Future. Staging only.)*
 - **B6D** — Device, browser, and performance qualification. *(Future. Measurements + fixes only.)*
 - **B6E** — Production shadow rollout controls + observability. *(Future. Still secondary to React.)*
@@ -243,6 +245,28 @@ Statuses are honest; localhost success does **not** mark a production gate passe
 
 **Merging B6A does not authorize B6B automatically.** Each step requires a
 separate, scoped PR and review.
+
+### 12.1 B6B status update (PR #204) — local tooling only
+
+B6B (`docs/unity-b6b-local-release-build.md`) adds a committed **local** Unity
+WebGL release-build entry point, an immutable versioned local output folder, an
+artifact `manifest.json` with per-file SHA-256 checksums + a `manifest.sha256`
+self-checksum, and independent post-build verification in the operator wrapper.
+
+- B6B addresses **only** the local side of two blockers from §3: item 2 (a
+  committed, repeatable Unity build command) and item 7 (an artifact
+  manifest/checksum tooling shape) — and even those only as **local** tooling
+  pending a local runtime test.
+- **No production gate in §11 is marked PASS by B6B.** In particular the
+  **Reproducible build** gate stays open: B6B provides local repeatability, not
+  proven cross-environment/bit-for-bit reproducibility.
+- Blockers for publishing, storage/CDN selection, same-origin hosted delivery,
+  immutable **URLs**, staging, payload/performance, compatibility, security
+  sign-off, telemetry, rollout controls, kill switch, rollback rehearsal, asset
+  licensing, and product/UX approval all remain **unresolved**.
+- **B6B does not authorize B6C.** B6C (versioned staging artifact delivery)
+  remains a separate, future, independently-gated PR.
+- The overall B6 decision remains **NO-GO** (§1).
 
 ## 13. Explicit non-goals
 
