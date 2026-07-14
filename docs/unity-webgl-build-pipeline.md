@@ -223,6 +223,34 @@ decompressed-payload comparison for `.gz`), **not** as raw
 `path|bytes|sha256` manifest strings. The production **reproducibility gate
 remains BLOCKED**.
 
+## 6.12 B6C — provider-specific staging delivery candidate (PR #205)
+
+B6C adds a **staging-only** delivery candidate on top of the B6B local builder:
+it deploys **one** existing, locally-built and verified B6B release to a
+**separate Vercel preview artifact deployment** and serves it at a verified,
+immutable, versioned hosted path — consumed **same-origin** through the main app.
+
+- **Deploy tooling:** `scripts/unity/deploy-penalty444-webgl-staging.ps1`
+  (Windows PowerShell; `-ValidateOnly` runs full source verification without any
+  workspace/copy/link/deploy/network) + a committed Vercel header template
+  `scripts/unity/vercel/penalty444-webgl-staging.vercel.json`.
+- **Separate artifact project:** a pre-existing, manually-created Vercel project
+  (e.g. `penalty444-unity-staging`); the script never creates it and never uses
+  `--prod` or an alias.
+- **Immutable hosted path:** `/releases/<version>/index.html` on the artifact
+  origin, exposed same-origin via a validated server-only rewrite
+  (`UNITY_STAGING_ARTIFACT_ORIGIN`) at
+  `/unity/penalty444/staging/releases/<version>/index.html`.
+- **No production delivery, no automatic publishing, no CI Unity build, no
+  production activation, no committed WebGL output.** The legacy B3 dry run and
+  the B6B local builder remain as documented above; B6C changes nothing about
+  them.
+
+See `docs/unity-b6c-versioned-staging-delivery.md` for scope, the full
+verification contract, headers, `-ValidateOnly`, rollback selection, and the
+required Windows/Vercel runtime test. B6C is **staging only**; the production
+decision remains **NO-GO** and B6C does not authorize B6D.
+
 ## 7. Production-readiness boundary
 
 > B5 (live shadow preview) is complete on `master` (PRs #199–#202), but that does

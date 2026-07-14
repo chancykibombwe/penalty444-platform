@@ -57,6 +57,98 @@ const PRODUCTION_HEADERS = [
   },
 ];
 
+/**
+ * B6C — versioned STAGING artifact delivery (docs/unity-b6c-versioned-staging-delivery.md).
+ *
+ * `UNITY_STAGING_ARTIFACT_ORIGIN` is a SERVER-ONLY variable (never NEXT_PUBLIC_)
+ * naming an immutable Vercel PREVIEW deployment of a locally-built, verified B6B
+ * WebGL release — e.g. `https://penalty444-unity-staging-abc123.vercel.app`.
+ *
+ * When it is absent, NO staging rewrite is added and local/production behavior is
+ * unchanged (CI and `next dev` build normally). When it is set, it is strictly
+ * validated so the rewrite can never become an open proxy: the destination
+ * hostname is fixed to this validated origin and can never be chosen by a request.
+ * A non-empty but invalid value FAILS the build with a clear error.
+ *
+ * Returns the normalized origin (no trailing slash) or `null` when unconfigured.
+ */
+function resolveStagingArtifactOrigin(): string | null {
+  const raw = process.env.UNITY_STAGING_ARTIFACT_ORIGIN;
+  if (raw === undefined || raw.trim() === "") return null;
+
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(
+      `UNITY_STAGING_ARTIFACT_ORIGIN is not a valid URL: ${JSON.stringify(raw)}`,
+    );
+  }
+
+  const problems: string[] = [];
+  if (url.protocol !== "https:") problems.push("protocol must be https:");
+  if (url.username !== "" || url.password !== "")
+    problems.push("must not contain credentials");
+  if (url.search !== "") problems.push("must not contain a query string");
+  if (url.hash !== "") problems.push("must not contain a fragment");
+  if (url.pathname !== "/") problems.push("pathname must be '/'");
+  if (!url.hostname.endsWith(".vercel.app"))
+    problems.push("hostname must end with .vercel.app");
+
+  if (problems.length > 0) {
+    throw new Error(
+      `UNITY_STAGING_ARTIFACT_ORIGIN is invalid (${problems.join("; ")}): ${JSON.stringify(raw)}`,
+    );
+  }
+
+  // Normalize to scheme + host, no trailing slash.
+  return url.origin;
+}
+
+// Staging header blocks are inert unless the staging route is actually reachable
+// (they only match /unity/penalty444/staging/**). They never weaken the global
+// headers and never touch the existing local /unity/penalty444/ prototype paths.
+const STAGING_HEADER_RULES = [
+  {
+    source:
+      "/unity/penalty444/staging/releases/:version/Build/:path*.framework.js.gz",
+    headers: [
+      { key: "Content-Type", value: "application/javascript" },
+      { key: "Content-Encoding", value: "gzip" },
+    ],
+  },
+  {
+    source: "/unity/penalty444/staging/releases/:version/Build/:path*.wasm.gz",
+    headers: [
+      { key: "Content-Type", value: "application/wasm" },
+      { key: "Content-Encoding", value: "gzip" },
+    ],
+  },
+  {
+    source: "/unity/penalty444/staging/releases/:version/Build/:path*.data.gz",
+    headers: [
+      { key: "Content-Type", value: "application/octet-stream" },
+      { key: "Content-Encoding", value: "gzip" },
+    ],
+  },
+  {
+    source: "/unity/penalty444/staging/releases/:version/:path*",
+    headers: [
+      { key: "X-Frame-Options", value: "SAMEORIGIN" },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      {
+        key: "Cache-Control",
+        value: "public, max-age=31536000, immutable",
+      },
+      {
+        key: "CDN-Cache-Control",
+        value: "public, max-age=31536000, immutable",
+      },
+      { key: "x-vercel-enable-rewrite-caching", value: "1" },
+    ],
+  },
+];
+
 const nextConfig: NextConfig = {
   // Monorepo has lockfiles at repo root and apps/web — pin Turbopack to
   // this app so `next dev` does not infer the wrong workspace root.
@@ -109,6 +201,28 @@ const nextConfig: NextConfig = {
       {
         source: "/unity/penalty444/:path*",
         headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }],
+      },
+      // ── B6C staging artifact headers (see STAGING_HEADER_RULES) ──────────
+      // Scoped strictly to /unity/penalty444/staging/**. Correct WebGL MIME +
+      // gzip for the proxied gz payloads, and same-origin framing + immutable
+      // cache for the versioned release path. Inert unless the staging rewrite
+      // is configured and reached.
+      ...STAGING_HEADER_RULES,
+    ];
+  },
+  // ── B6C server-only external rewrite ──────────────────────────────────────
+  // Only added when UNITY_STAGING_ARTIFACT_ORIGIN is configured and valid. The
+  // browser-visible URL stays same-origin (/unity/penalty444/staging/...), which
+  // preserves the existing same-origin postMessage checks; the destination host
+  // is the fixed validated origin and can NOT be chosen by the request, so this
+  // is not an open proxy. When unconfigured, no rewrite exists.
+  async rewrites() {
+    const origin = resolveStagingArtifactOrigin();
+    if (!origin) return [];
+    return [
+      {
+        source: "/unity/penalty444/staging/:path*",
+        destination: `${origin}/:path*`,
       },
     ];
   },
