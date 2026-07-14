@@ -34,6 +34,12 @@ export default async function UnityStagingPage({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
+  // B6C is staging only — never reachable on a Vercel production deployment.
+  // (VERCEL_ENV, not NODE_ENV: Vercel previews also run with NODE_ENV=production.)
+  if (process.env.VERCEL_ENV === "production") {
+    notFound();
+  }
+
   const routeEnabled = process.env.UNITY_STAGING_ROUTE_ENABLED === "true";
   const originConfigured =
     (process.env.UNITY_STAGING_ARTIFACT_ORIGIN ?? "").trim() !== "";

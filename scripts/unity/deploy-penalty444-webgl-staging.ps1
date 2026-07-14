@@ -21,10 +21,10 @@
     -File scripts/unity/deploy-penalty444-webgl-staging.ps1 `
     -ReleaseVersion "b6b-local-fb840878-d" `
     -VercelProject "penalty444-unity-staging" `
-    -VercelTeam "<team-slug>" `
     -ValidateOnly
 
 .EXAMPLE
+  # Personal scope (no team). Add -VercelTeam "my-vercel-team" for a team scope.
   powershell -NoProfile -ExecutionPolicy Bypass `
     -File scripts/unity/deploy-penalty444-webgl-staging.ps1 `
     -ReleaseVersion "b6b-local-fb840878-d" `
@@ -144,6 +144,10 @@ function Test-SourceRelease([string] $dir, [string] $expectedVersion) {
     if ([string]::IsNullOrWhiteSpace($m.unityVersion)) { Fail "manifest unityVersion is empty." }
     if ($m.sourceCommit -notmatch $CommitPattern) { Fail "manifest sourceCommit is not a 40-char hex SHA." }
     if ($m.scene -ne $BuildScene) { Fail "manifest scene is not '$BuildScene'." }
+    # B6C's committed Vercel template ships gzip rules only.
+    if ($m.compressionMode -ne "gzip") {
+        Fail "B6C staging delivery currently supports gzip B6B releases only. (manifest compressionMode='$($m.compressionMode)')"
+    }
 
     # Source commit must exist in this repository.
     & git -C $RepoRoot cat-file -e ("{0}^{{commit}}" -f $m.sourceCommit) 2>$null | Out-Null
@@ -160,7 +164,8 @@ function Test-SourceRelease([string] $dir, [string] $expectedVersion) {
     $seen = New-Object 'System.Collections.Generic.HashSet[string]'
     $declared = New-Object 'System.Collections.Generic.HashSet[string]'
     $loaderCount = 0
-    $hasFramework = $false; $hasData = $false; $hasWasm = $false
+    # B6C is gzip-only: require exactly one gzip artifact per category.
+    $frameworkGzCount = 0; $dataGzCount = 0; $wasmGzCount = 0
 
     foreach ($f in $m.files) {
         $rel = $f.path
@@ -186,16 +191,17 @@ function Test-SourceRelease([string] $dir, [string] $expectedVersion) {
 
         $null = $seen.Add($candidate.ToLowerInvariant())
 
-        if ($rel -match '^Build/[^/]+\.loader\.js$') { $loaderCount++ }
-        if ($rel -match '^Build/.*\.framework\.js(\.gz|\.br)?$') { $hasFramework = $true }
-        if ($rel -match '^Build/.*\.data(\.gz|\.br)?$')          { $hasData = $true }
-        if ($rel -match '^Build/.*\.wasm(\.gz|\.br)?$')          { $hasWasm = $true }
+        if ($rel -match '^Build/[^/]+\.loader\.js$')        { $loaderCount++ }
+        if ($rel -match '^Build/[^/]+\.framework\.js\.gz$') { $frameworkGzCount++ }
+        if ($rel -match '^Build/[^/]+\.data\.gz$')          { $dataGzCount++ }
+        if ($rel -match '^Build/[^/]+\.wasm\.gz$')          { $wasmGzCount++ }
     }
 
     if ($loaderCount -ne 1) { Fail "Expected exactly one Build/*.loader.js, found $loaderCount." }
-    if (-not $hasFramework) { Fail "Missing Build/*.framework artifact." }
-    if (-not $hasData) { Fail "Missing Build/*.data artifact." }
-    if (-not $hasWasm) { Fail "Missing Build/*.wasm artifact." }
+    $gzMsg = "B6C staging delivery currently supports gzip B6B releases only."
+    if ($frameworkGzCount -ne 1) { Fail "Expected exactly one Build/*.framework.js.gz, found $frameworkGzCount. $gzMsg" }
+    if ($dataGzCount -ne 1)      { Fail "Expected exactly one Build/*.data.gz, found $dataGzCount. $gzMsg" }
+    if ($wasmGzCount -ne 1)      { Fail "Expected exactly one Build/*.wasm.gz, found $wasmGzCount. $gzMsg" }
 
     $templateDir = Join-Path $dir "TemplateData"
     if (-not (Test-Path -LiteralPath $templateDir) -or
@@ -272,11 +278,17 @@ if ($LASTEXITCODE -ne 0) { Fail "Not authenticated with Vercel. Run 'vercel logi
 if (Test-Path -LiteralPath $workspaceDir) { Fail "Workspace already exists (refusing to overwrite): $workspaceDir" }
 New-Item -ItemType Directory -Path $workspaceDir -Force | Out-Null
 
-# Copy the source release into <workspace>/releases/<version>/ (source untouched).
+# Copy the source release CONTENTS into <workspace>/releases/<version>/ (source
+# untouched, and without an extra nesting level). Enumerate with -LiteralPath so
+# the release path is treated literally (no wildcard expansion).
 $workspaceReleaseParent = Join-Path $workspaceDir "releases"
 $workspaceReleaseDir    = Join-Path $workspaceReleaseParent $ReleaseVersion
 New-Item -ItemType Directory -Path $workspaceReleaseDir -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $ReleaseDir '*') -Destination $workspaceReleaseDir -Recurse -Force
+$sourceItems = @(Get-ChildItem -LiteralPath $ReleaseDir -Force)
+if ($sourceItems.Count -eq 0) { Fail "Verified source release unexpectedly has no items: $ReleaseDir" }
+foreach ($item in $sourceItems) {
+    Copy-Item -LiteralPath $item.FullName -Destination $workspaceReleaseDir -Recurse -Force
+}
 
 # Copy the committed Vercel header template to <workspace>/vercel.json.
 Copy-Item -LiteralPath $TemplatePath -Destination (Join-Path $workspaceDir "vercel.json") -Force
@@ -319,11 +331,20 @@ $urlMatches = @(
 if ($urlMatches.Count -ne 1) {
     Fail "Expected exactly one https://*.vercel.app deployment URL in vercel output, found $($urlMatches.Count)."
 }
-$deploymentUrl = $urlMatches[0].TrimEnd('/')
-$deployedHost = ([System.Uri]$deploymentUrl).Host
-if (($deploymentUrl -notlike 'https://*') -or (-not $deployedHost.EndsWith(".vercel.app"))) {
-    Fail "Deployment URL is not an HTTPS *.vercel.app origin: $deploymentUrl"
+$rawUrl = $urlMatches[0]
+$uri = $null
+if (-not [System.Uri]::TryCreate($rawUrl, [System.UriKind]::Absolute, [ref]$uri)) {
+    Fail "Vercel deployment URL is not a valid absolute URL: $rawUrl"
 }
+if ($uri.Scheme -ne 'https') { Fail "Deployment URL scheme must be https: $rawUrl" }
+if (-not $uri.Host.EndsWith(".vercel.app")) { Fail "Deployment URL host must end with .vercel.app: $rawUrl" }
+if (-not [string]::IsNullOrEmpty($uri.UserInfo)) { Fail "Deployment URL must not contain credentials: $rawUrl" }
+if (-not [string]::IsNullOrEmpty($uri.Query)) { Fail "Deployment URL must not contain a query: $rawUrl" }
+if (-not [string]::IsNullOrEmpty($uri.Fragment)) { Fail "Deployment URL must not contain a fragment: $rawUrl" }
+if ($uri.AbsolutePath -ne '/') { Fail "Deployment URL path must be '/': $rawUrl" }
+if (-not $uri.IsDefaultPort) { Fail "Deployment URL must use the default HTTPS port: $rawUrl" }
+# Normalize to scheme + authority (no path/query/fragment, no trailing slash).
+$deploymentUrl = ("{0}://{1}" -f $uri.Scheme, $uri.Authority)
 Write-Host "Deployment URL: $deploymentUrl" -ForegroundColor Green
 
 # ── Independent post-deployment HTTP verification ─────────────────────────────
@@ -371,10 +392,12 @@ function Find-ManifestPath([string] $pattern) {
     if (-not $hit) { Fail "No manifest file matched $pattern for HTTP verification." }
     return $hit.path
 }
+# B6C is gzip-only, so resolve the exact gzip artifact roles (Test-SourceRelease
+# already guaranteed exactly one of each).
 $loaderPath    = Find-ManifestPath '^Build/[^/]+\.loader\.js$'
-$frameworkPath = Find-ManifestPath '^Build/.*\.framework\.js(\.gz|\.br)?$'
-$dataPath      = Find-ManifestPath '^Build/.*\.data(\.gz|\.br)?$'
-$wasmPath      = Find-ManifestPath '^Build/.*\.wasm(\.gz|\.br)?$'
+$frameworkPath = Find-ManifestPath '^Build/[^/]+\.framework\.js\.gz$'
+$dataPath      = Find-ManifestPath '^Build/[^/]+\.data\.gz$'
+$wasmPath      = Find-ManifestPath '^Build/[^/]+\.wasm\.gz$'
 $templatePath1 = Find-ManifestPath '^TemplateData/.+'
 
 Write-Host "Verifying hosted artifact over HTTP..."
@@ -387,19 +410,13 @@ $dataProbe      = Require-200 $dataPath
 $wasmProbe      = Require-200 $wasmPath
 $null = Require-200 $templatePath1
 
-# gzip payload headers (only assert Content-Encoding when the artifact is .gz).
-if ($frameworkPath.EndsWith(".gz")) {
-    Require-Header $frameworkProbe "Content-Type" "application/javascript" $frameworkPath
-    Require-Header $frameworkProbe "Content-Encoding" "gzip" $frameworkPath
-}
-if ($wasmPath.EndsWith(".gz")) {
-    Require-Header $wasmProbe "Content-Type" "application/wasm" $wasmPath
-    Require-Header $wasmProbe "Content-Encoding" "gzip" $wasmPath
-}
-if ($dataPath.EndsWith(".gz")) {
-    Require-Header $dataProbe "Content-Type" "application/octet-stream" $dataPath
-    Require-Header $dataProbe "Content-Encoding" "gzip" $dataPath
-}
+# gzip payload headers (always gzip in B6C).
+Require-Header $frameworkProbe "Content-Type" "application/javascript" $frameworkPath
+Require-Header $frameworkProbe "Content-Encoding" "gzip" $frameworkPath
+Require-Header $wasmProbe "Content-Type" "application/wasm" $wasmPath
+Require-Header $wasmProbe "Content-Encoding" "gzip" $wasmPath
+Require-Header $dataProbe "Content-Type" "application/octet-stream" $dataPath
+Require-Header $dataProbe "Content-Encoding" "gzip" $dataPath
 
 # Security/immutability headers on the general release path (index.html).
 $indexProbe = Invoke-HttpProbe "$artifactBaseUrl/index.html"

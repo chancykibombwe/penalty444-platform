@@ -241,6 +241,13 @@ immutable, versioned hosted path — consumed **same-origin** through the main a
   origin, exposed same-origin via a validated server-only rewrite
   (`UNITY_STAGING_ARTIFACT_ORIGIN`) at
   `/unity/penalty444/staging/releases/<version>/index.html`.
+- **Gzip-only.** The committed template ships gzip rules only, so B6C accepts
+  gzip B6B releases only (`compressionMode == "gzip"`, exactly one of
+  `Build/*.{framework.js,data,wasm}.gz`); Brotli/identity releases are rejected.
+- **Staging-only enforced in code.** A non-empty `UNITY_STAGING_ARTIFACT_ORIGIN`
+  on `VERCEL_ENV === "production"` fails the web build, and `/dev/unity-staging`
+  is `notFound()` in production — the staging rewrite can never reach a Vercel
+  production deployment.
 - **No production delivery, no automatic publishing, no CI Unity build, no
   production activation, no committed WebGL output.** The legacy B3 dry run and
   the B6B local builder remain as documented above; B6C changes nothing about

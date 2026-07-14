@@ -76,6 +76,16 @@ function resolveStagingArtifactOrigin(): string | null {
   const raw = process.env.UNITY_STAGING_ARTIFACT_ORIGIN;
   if (raw === undefined || raw.trim() === "") return null;
 
+  // B6C is staging only. A Vercel PRODUCTION deployment must never carry the
+  // staging origin or its rewrite. (VERCEL_ENV — not NODE_ENV — because Vercel
+  // previews also build with NODE_ENV=production.)
+  if (process.env.VERCEL_ENV === "production") {
+    throw new Error(
+      "UNITY_STAGING_ARTIFACT_ORIGIN must not be set on a Vercel production deployment — " +
+        "B6C is staging only. Configure it on preview deployments only.",
+    );
+  }
+
   let url: URL;
   try {
     url = new URL(raw);

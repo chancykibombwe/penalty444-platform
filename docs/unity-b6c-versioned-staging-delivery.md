@@ -119,6 +119,13 @@ set**: the only allowed non-manifest files are `manifest.json` and
 `manifest.sha256` — any other undeclared file (logs, tokens, `.env`, `.vercel`)
 blocks the deploy. The source release is never modified.
 
+**Gzip-only.** The committed Vercel template ships **gzip** rules only, so B6C
+accepts gzip B6B releases only: it requires `manifest.compressionMode == "gzip"`
+and exactly one each of `Build/*.framework.js.gz`, `Build/*.data.gz`,
+`Build/*.wasm.gz` (plus exactly one loader). A Brotli or identity release is
+rejected with: *"B6C staging delivery currently supports gzip B6B releases only."*
+Brotli support is intentionally out of scope for this PR; B6B output is unchanged.
+
 ## 5. Deployment workspace
 
 Created only at runtime (never during implementation/review) under the ignored
@@ -157,14 +164,18 @@ Run from the repository root on Windows.
 **Validate only (no workspace, no copy, no link, no deploy, no network):**
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/unity/deploy-penalty444-webgl-staging.ps1 -ReleaseVersion "b6b-local-fb840878-d" -VercelProject "penalty444-unity-staging" -VercelTeam "<team-slug>" -ValidateOnly
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/unity/deploy-penalty444-webgl-staging.ps1 -ReleaseVersion "b6b-local-fb840878-d" -VercelProject "penalty444-unity-staging" -ValidateOnly
 ```
 
-**Real staging deploy (requires Vercel CLI + `vercel login`; team optional):**
+**Real staging deploy (requires Vercel CLI + `vercel login`):**
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/unity/deploy-penalty444-webgl-staging.ps1 -ReleaseVersion "b6b-local-fb840878-d" -VercelProject "penalty444-unity-staging"
 ```
+
+`-VercelTeam` is optional; when supplied it must match the same
+`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$` shape (e.g. `-VercelTeam "my-vercel-team"`)
+and is passed to Vercel as `--scope`.
 
 `-ReleaseVersion` uses the same B6B contract (`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`
 plus an explicit `..` rejection). `-ValidateOnly` performs the full source
@@ -217,6 +228,14 @@ is **not** an open proxy.
 
 There are **no production environment variables** in B6C. The staging origin is
 set on the main **preview** deployment only.
+
+**Staging-only is enforced in code.** If `VERCEL_ENV === "production"` and
+`UNITY_STAGING_ARTIFACT_ORIGIN` is non-empty, the web build **fails** with a
+clear B6C staging-only error, so a Vercel production deployment can never contain
+the staging rewrite. `VERCEL_ENV` (not `NODE_ENV`) is used because Vercel preview
+builds also run with `NODE_ENV=production`. The `/dev/unity-staging` page
+additionally returns `notFound()` whenever `VERCEL_ENV === "production"`. Unset,
+local, CI, and preview behavior are unchanged.
 
 ## 12. Guarded staging viewer
 

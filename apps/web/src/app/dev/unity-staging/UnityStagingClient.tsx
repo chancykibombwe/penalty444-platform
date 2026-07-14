@@ -163,8 +163,15 @@ export default function UnityStagingClient({
         setUnityError(null);
         pushLog({ direction: "in", event: "ready", payload: null, ts: Date.now() });
       } else if (data.event === "error") {
-        setUnityError(data.payload?.message ?? "Unknown Unity error");
-        pushLog({ direction: "in", event: "error", payload: data.payload, ts: Date.now() });
+        // Validate/normalize the message to a bounded string; never store the
+        // raw inbound payload object in the log.
+        const rawMsg = data.payload?.message;
+        const message =
+          typeof rawMsg === "string" && rawMsg.trim() !== ""
+            ? rawMsg.slice(0, 300)
+            : "Unknown Unity error";
+        setUnityError(message);
+        pushLog({ direction: "in", event: "error", payload: { message }, ts: Date.now() });
       } else if (process.env.NODE_ENV !== "production") {
         console.debug("[unity-staging] ignored inbound event", data);
       }
@@ -221,7 +228,11 @@ export default function UnityStagingClient({
     send({ type: "PENALTY444_MATCH_EVENT", event: "reset", payload: null });
   }, [send]);
 
-  const controlsDisabled = indexStatus !== "ok" || !unityReady;
+  // A validated manifest is a hard precondition for loading Unity: the iframe
+  // only mounts when the manifest passed AND index.html is reachable.
+  const manifestOk = manifest !== null && manifestError === null;
+  const canLoadUnity = manifestOk && indexStatus === "ok";
+  const controlsDisabled = !canLoadUnity || !unityReady || unityError !== null;
 
   const metaRows = useMemo(
     () =>
@@ -280,9 +291,25 @@ export default function UnityStagingClient({
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
           {/* Unity iframe / status */}
           <div className="aspect-video">
-            {indexStatus === "checking" ? (
+            {manifestError ? (
+              <div className="flex h-full w-full items-center justify-center rounded-xl border-2 border-dashed border-red-700/60 bg-red-950/20 p-6">
+                <div>
+                  <p className="text-sm font-black uppercase tracking-[0.2em] text-red-300">
+                    Manifest verification failed
+                  </p>
+                  <p className="mt-3 text-sm text-zinc-300">
+                    Unity was not loaded because the release manifest did not
+                    validate: <span className="text-red-300">{manifestError}</span>.
+                    Confirm the deployed release version matches{" "}
+                    <code className="text-zinc-100">{version}</code>.
+                  </p>
+                </div>
+              </div>
+            ) : !manifestOk || indexStatus === "checking" ? (
               <div className="flex h-full w-full items-center justify-center rounded-xl border border-zinc-800/60 bg-black/60">
-                <p className="font-mono text-sm text-zinc-500">Checking hosted release…</p>
+                <p className="font-mono text-sm text-zinc-500">
+                  {manifestOk ? "Checking hosted release…" : "Validating manifest…"}
+                </p>
               </div>
             ) : indexStatus === "missing" ? (
               <div className="flex h-full w-full items-center justify-center rounded-xl border-2 border-dashed border-amber-700/60 bg-amber-950/20 p-6">
