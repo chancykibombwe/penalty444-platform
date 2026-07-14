@@ -258,8 +258,13 @@ self-checksum, and independent post-build verification in the operator wrapper.
   manifest/checksum tooling shape) — and even those only as **local** tooling
   pending a local runtime test.
 - **No production gate in §11 is marked PASS by B6B.** In particular the
-  **Reproducible build** gate stays open: B6B provides local repeatability, not
-  proven cross-environment/bit-for-bit reproducibility.
+  **Reproducible build** gate stays **BLOCKED**: a first Windows runtime run on
+  Unity **6000.4.2f1** produced two same-source releases that were **not**
+  bit-for-bit identical (both 17 files/gzip; loader and normalized `index.html`
+  matched; framework/wasm decompressed payloads matched but compressed bytes
+  differed; the data artifact's decompressed payload also differed). B6B provides
+  a repeatable local invocation with verified manifests/checksums — it does
+  **not** prove bit-for-bit or cross-environment reproducibility.
 - Blockers for publishing, storage/CDN selection, same-origin hosted delivery,
   immutable **URLs**, staging, payload/performance, compatibility, security
   sign-off, telemetry, rollout controls, kill switch, rollback rehearsal, asset

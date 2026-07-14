@@ -106,12 +106,37 @@ if ($LASTEXITCODE -ne 0 -or ($HeadSha -notmatch '^[0-9a-fA-F]{40}$')) {
 $HeadSha = $HeadSha.ToLowerInvariant()
 
 # ── Require a clean TRACKED working tree (ignored WebGL output does not count) ─
+# Returns the paths with ACTUAL tracked content/index changes. A porcelain "M"
+# that carries no content diff (e.g. a CRLF/LF or stat/index-only anomaly) is
+# treated as content-clean. This function never alters Git content or index
+# state (no add/reset/restore/checkout/renormalize/update-index).
 function Get-TrackedDirty {
-    $out = & git -C $RepoRoot status --porcelain --untracked-files=no 2>$null
+    $porcelain = @(& git -C $RepoRoot status --porcelain --untracked-files=no 2>$null |
+        Where-Object { $_ -and $_.Trim().Length -gt 0 })
     if ($LASTEXITCODE -ne 0) { Fail "git status failed." }
-    return @($out | Where-Object { $_ -and $_.Trim().Length -gt 0 })
+    if ($porcelain.Count -eq 0) { return @() }
+
+    # Porcelain reported path(s); confirm real tracked content/index changes.
+    $unstaged = @(& git -C $RepoRoot diff --name-only 2>$null |
+        Where-Object { $_ -and $_.Trim().Length -gt 0 })
+    if ($LASTEXITCODE -ne 0) { Fail "git diff failed." }
+    $staged = @(& git -C $RepoRoot diff --cached --name-only 2>$null |
+        Where-Object { $_ -and $_.Trim().Length -gt 0 })
+    if ($LASTEXITCODE -ne 0) { Fail "git diff --cached failed." }
+    $unmerged = @(& git -C $RepoRoot diff --name-only --diff-filter=U 2>$null |
+        Where-Object { $_ -and $_.Trim().Length -gt 0 })
+    if ($LASTEXITCODE -ne 0) { Fail "git diff --diff-filter=U failed." }
+
+    $union = @($unstaged + $staged + $unmerged | Sort-Object -Unique)
+    if ($union.Count -eq 0) {
+        Write-Host ("Note: Git reported status metadata (e.g. line-ending/index state) for " +
+                    "$($porcelain.Count) path(s) with no tracked content diff; treating as content-clean. " +
+                    "No Git content/index state was modified.") -ForegroundColor Yellow
+        return @()
+    }
+    return $union
 }
-$dirty = Get-TrackedDirty
+$dirty = @(Get-TrackedDirty)
 if ($dirty.Count -gt 0) {
     Write-Host "Tracked working tree is not clean. Commit/stash these before building:" -ForegroundColor Yellow
     $dirty | ForEach-Object { Write-Host "  $_" }
@@ -149,9 +174,15 @@ if ($ValidateOnly) {
 # ── Launch Unity (batchmode) ──────────────────────────────────────────────────
 # Base args never include -penalty444PreviousVersion; append it only when a
 # value is supplied, then append the release-notes argument last.
+#
+# Start-Process joins ArgumentList into one native command-line string, so the
+# project path (which may contain spaces, e.g. "C:\Users\EL GADO\...") is wrapped
+# in literal double quotes. All other values are constrained (version pattern),
+# hex, a fixed method name, or Base64 — none contains spaces — so they are passed
+# unquoted with their current values and ordering preserved.
 $unityArgs = @(
     "-batchmode", "-quit", "-nographics",
-    "-projectPath", $UnityProject,
+    "-projectPath", "`"$UnityProject`"",
     "-executeMethod", $ExecuteMethod,
     "-logFile", "-",
     "-penalty444ReleaseVersion", $Version,
@@ -164,8 +195,12 @@ $unityArgs += @("-penalty444ReleaseNotesBase64", $ReleaseNotesB64)
 
 Write-Host ""
 Write-Host "Launching Unity build..."
-& $UnityEditorPath @unityArgs
-$unityExit = $LASTEXITCODE
+# -Wait ensures the FULL Unity process tree has exited before we continue;
+# -PassThru returns the process object so we can read the real ExitCode;
+# -NoNewWindow keeps Unity's -logFile - output on this console.
+$unityProcess = Start-Process -FilePath $UnityEditorPath -ArgumentList $unityArgs `
+    -Wait -PassThru -NoNewWindow
+$unityExit = $unityProcess.ExitCode
 if ($unityExit -ne 0) {
     Fail "Unity build process failed (exit $unityExit). Inspect the partial output at $ReleaseDir if present; use a NEW -Version for the next attempt (releases are immutable)."
 }
@@ -173,8 +208,19 @@ if ($unityExit -ne 0) {
 # ── Independent post-build verification ───────────────────────────────────────
 $manifestPath = Join-Path $ReleaseDir "manifest.json"
 $manifestShaPath = Join-Path $ReleaseDir "manifest.sha256"
-if (-not (Test-Path -LiteralPath $manifestPath)) { Fail "manifest.json missing after build." }
-if (-not (Test-Path -LiteralPath $manifestShaPath)) { Fail "manifest.sha256 missing after build." }
+
+# Defensive filesystem/process synchronization: after Unity exits, briefly wait
+# for the manifest pair to appear (bounded to 10s, polled at 250ms). This never
+# waits indefinitely, never fabricates, and never creates a manifest here — the
+# Unity entry point is the only writer. Continue as soon as both exist.
+$manifestDeadline = (Get-Date).AddSeconds(10)
+while ($true) {
+    if ((Test-Path -LiteralPath $manifestPath) -and (Test-Path -LiteralPath $manifestShaPath)) { break }
+    if ((Get-Date) -ge $manifestDeadline) { break }
+    Start-Sleep -Milliseconds 250
+}
+if (-not (Test-Path -LiteralPath $manifestPath)) { Fail "manifest.json missing after build (waited 10s)." }
+if (-not (Test-Path -LiteralPath $manifestShaPath)) { Fail "manifest.sha256 missing after build (waited 10s)." }
 
 $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 
@@ -236,8 +282,10 @@ if (-not (Test-Path (Join-Path $ReleaseDir "TemplateData")) -or
     Fail "TemplateData/ missing or empty."
 }
 
-# Tracked tree must STILL be clean (Unity must not modify tracked project files)
-$dirtyAfter = Get-TrackedDirty
+# Tracked tree must STILL be clean (Unity must not modify tracked project files).
+# Get-TrackedDirty reports only real content/index changes; a status-only anomaly
+# (e.g. a CRLF/LF ProjectSettings.asset with no content diff) is not a failure.
+$dirtyAfter = @(Get-TrackedDirty)
 if ($dirtyAfter.Count -gt 0) {
     Write-Host "Unity modified tracked project files (NOT staged/reset by this script):" -ForegroundColor Yellow
     $dirtyAfter | ForEach-Object { Write-Host "  $_" }

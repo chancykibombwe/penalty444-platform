@@ -211,6 +211,18 @@ only. See `docs/unity-b6b-local-release-build.md` for the full contract, the
 exact commands, the manifest schema, failure/partial-output behavior, and the
 required local runtime test.
 
+**Repeatability (observed).** A first Windows run on Unity **6000.4.2f1**
+produced two complete releases from the same source commit (both 17 files, gzip;
+loader exact-match; `index.html` match after version-filename normalization;
+framework/wasm decompressed payloads matched though compressed bytes differed;
+the data artifact's decompressed payload differed). So B6B provides a repeatable
+local invocation with verified manifests/checksums but **does not** promise
+bit-for-bit-identical artifacts across runs. Two same-source builds must be
+compared by **equivalent artifact role** (version-filename normalization,
+decompressed-payload comparison for `.gz`), **not** as raw
+`path|bytes|sha256` manifest strings. The production **reproducibility gate
+remains BLOCKED**.
+
 ## 7. Production-readiness boundary
 
 > B5 (live shadow preview) is complete on `master` (PRs #199–#202), but that does

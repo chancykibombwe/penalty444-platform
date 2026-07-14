@@ -226,13 +226,62 @@ regression and file-scope hygiene. Before this tooling is relied upon:
    WebGL Build Support and confirm a clean success + green wrapper verification.
 2. To sanity-check **local repeatability**, run the build twice from the **same**
    clean source commit (into two different `-Version` directories) and compare
-   the per-file SHA-256 values in the two manifests. Matching checksums indicate
-   local repeatability on that machine.
+   **equivalent artifact roles** across the two releases (see §10.2). The
+   `-Version` value is intentionally embedded in some generated artifact
+   filenames, and Unity WebGL output is **not** guaranteed to be bit-for-bit
+   identical between runs, so a raw `path|bytes|sha256` comparison of the two
+   `files[]` arrays is expected to differ and is **not** the correct test.
 
-**Local repeatability is not production reproducibility.** Identical checksums
-across two runs on one machine do not prove bit-for-bit determinism across
-machines, OS versions, or Unity patch levels. Cross-environment reproducibility
-remains an open B6A gate and is **not** claimed here.
+### 10.1 Observed runtime evidence (first Windows run)
+
+A first Windows run on Unity **6000.4.2f1** produced two complete WebGL releases
+from the **same** source commit (`b6b-local-bdb4cd9b-a` and `-b`). Observed:
+
+- Both Unity builds completed successfully; both manifests were written and every
+  listed file checksum independently verified afterward.
+- Both manifests listed **17** files and used **gzip** compression.
+- The loader (`Build/*.loader.js`) content matched exactly.
+- `index.html` matched after normalizing the release-version-derived filename.
+- The framework and wasm **compressed** bytes differed between runs, but their
+  **decompressed** payload hashes matched.
+- The data artifact's compressed bytes differed **and** its decompressed payload
+  hashes also differed.
+
+**Therefore exact local bit-for-bit determinism is not proven.** B6B establishes
+a repeatable local invocation, traceable source metadata, immutable local output
+directories, and verified manifests/checksums — it does **not** promise identical
+artifacts across repeated runs.
+
+> The first run also surfaced two wrapper orchestration defects (a `Set-StrictMode`
+> empty-pipeline `.Count` failure on a clean tree, and continuing before the full
+> Unity process tree had finished / the manifest existed). Both are corrected in
+> this PR; a corrected-head Windows rerun is still required. The run additionally
+> reported `ProjectSettings.asset` as `M` in `git status` with **no content diff**
+> (a CRLF/LF/status-only anomaly) — the wrapper now distinguishes real tracked
+> content/index changes from status-only anomalies and never alters Git state.
+
+### 10.2 How to compare two same-source builds
+
+Do **not** compare the two `files[]` arrays as raw `path|bytes|sha256` strings.
+Instead compare **equivalent artifact roles**, applying:
+
+- release-version filename normalization (strip/normalize the version-derived
+  portion of artifact names before matching roles);
+- **decompressed** payload comparison for `.gz` (and `.br`) files, not compressed
+  bytes;
+- **exact** comparison of the loader;
+- **normalized** comparison of `index.html`.
+
+Matching decompressed payloads across roles indicates local repeatability of
+those payloads; differing payloads (as observed for the data artifact) are
+**evidence to report**, not a defect to auto-fix. Do not modify the Unity C#
+builder to force matching artifacts.
+
+**Local repeatability is not production reproducibility.** The observed evidence
+above already shows non-identical artifacts across two runs on one machine, so
+bit-for-bit determinism across runs — let alone across machines, OS versions, or
+Unity patch levels — is **not** established. The production reproducibility gate
+remains **BLOCKED** and is **not** claimed here.
 
 ## 11. Relationship to B6A and B6C
 
