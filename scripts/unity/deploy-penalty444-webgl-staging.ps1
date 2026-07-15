@@ -86,6 +86,98 @@ function Invoke-Native {
     }
 }
 
+# StrictMode-safe property existence check (missing property -> $false, no throw).
+function Test-PSProp($obj, [string] $name) {
+    if ($null -eq $obj) { return $false }
+    return ($null -ne $obj.PSObject.Properties[$name])
+}
+
+# ── Dedicated Vercel deployment-URL parser ────────────────────────────────────
+# Resolves the immutable preview deployment origin from the captured `vercel
+# deploy` stdout, supporting exactly two strict contracts and nothing else:
+#   1. The structured JSON form (Vercel CLI 56.2.0): the URL comes ONLY from
+#      deployment.url, gated on status=ok, deployment.id (dpl_…), readyState=READY,
+#      and target being null/empty (preview / non-prod). inspectorUrl,
+#      deploymentApiUrl, message and next[] are ignored — never a source of a URL.
+#   2. The documented plain-URL form: exactly one non-empty stdout line that IS a
+#      bare https://*.vercel.app URL.
+# It never scans prose for embedded URLs and never reads stderr for a URL. The
+# single candidate is then run through full System.Uri validation, the exact
+# project/production alias is rejected, and the result is normalized to
+# scheme + authority. Does not modify deployment-url.txt.
+function Resolve-VercelDeploymentUrl {
+    param(
+        [Parameter(Mandatory = $true)] [AllowEmptyCollection()] [string[]] $StdoutLines,
+        [Parameter(Mandatory = $true)] [string] $ExpectedProject
+    )
+    $trimmed = (($StdoutLines -join "`n")).Trim()
+    if ([string]::IsNullOrEmpty($trimmed)) {
+        Fail "vercel deploy produced no stdout to parse for a deployment URL."
+    }
+
+    $candidate = $null
+    if ($trimmed.StartsWith("{")) {
+        # ── Strict JSON form. No regex/plain fallback if JSON parsing fails. ──
+        $obj = $null
+        try {
+            $obj = $trimmed | ConvertFrom-Json
+        } catch {
+            Fail "vercel deploy stdout began with '{' but is not valid JSON; refusing any regex/plain fallback."
+        }
+        if (-not (Test-PSProp $obj 'status')) { Fail "Vercel JSON output missing 'status'." }
+        if ($obj.status -ne 'ok') { Fail "Vercel JSON 'status' is not 'ok' (got '$($obj.status)')." }
+        if (-not (Test-PSProp $obj 'deployment')) { Fail "Vercel JSON output missing 'deployment'." }
+        $dep = $obj.deployment
+        if ($null -eq $dep) { Fail "Vercel JSON 'deployment' is null." }
+        if (-not (Test-PSProp $dep 'id')) { Fail "Vercel JSON 'deployment.id' missing." }
+        $depId = [string]$dep.id
+        if ([string]::IsNullOrEmpty($depId) -or ($depId -notmatch '^dpl_[A-Za-z0-9]+$')) {
+            Fail "Vercel JSON 'deployment.id' is not a valid 'dpl_' identifier."
+        }
+        if (-not (Test-PSProp $dep 'url')) { Fail "Vercel JSON 'deployment.url' missing." }
+        if ([string]::IsNullOrEmpty([string]$dep.url)) { Fail "Vercel JSON 'deployment.url' is empty." }
+        if (-not (Test-PSProp $dep 'readyState')) { Fail "Vercel JSON 'deployment.readyState' missing." }
+        if ($dep.readyState -ne 'READY') { Fail "Vercel JSON 'deployment.readyState' is not READY (got '$($dep.readyState)')." }
+        if (-not (Test-PSProp $dep 'target')) { Fail "Vercel JSON 'deployment.target' property missing." }
+        if (-not [string]::IsNullOrEmpty([string]$dep.target)) {
+            Fail "Vercel JSON 'deployment.target' is '$($dep.target)'; expected null/empty (preview, non-prod)."
+        }
+        $candidate = [string]$dep.url
+    } else {
+        # ── Strict plain-URL form: exactly one bare https://*.vercel.app line. ──
+        $lines = @($StdoutLines | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
+        if ($lines.Count -ne 1) {
+            Fail "Expected exactly one non-empty plain stdout line with the deployment URL, found $($lines.Count)."
+        }
+        if ($lines[0] -notmatch '^https://[A-Za-z0-9.-]+\.vercel\.app/?$') {
+            Fail "Plain vercel stdout line is not a bare https://*.vercel.app URL."
+        }
+        $candidate = $lines[0]
+    }
+
+    # ── Retained System.Uri validation for the single candidate. ──
+    $u = $null
+    if (-not [System.Uri]::TryCreate($candidate, [System.UriKind]::Absolute, [ref]$u)) {
+        Fail "Vercel deployment URL is not a valid absolute URL: $candidate"
+    }
+    if ($u.Scheme -ne 'https') { Fail "Deployment URL scheme must be https: $candidate" }
+    if (-not $u.Host.EndsWith(".vercel.app")) { Fail "Deployment URL host must end with .vercel.app: $candidate" }
+    if (-not [string]::IsNullOrEmpty($u.UserInfo)) { Fail "Deployment URL must not contain credentials: $candidate" }
+    if (-not [string]::IsNullOrEmpty($u.Query)) { Fail "Deployment URL must not contain a query: $candidate" }
+    if (-not [string]::IsNullOrEmpty($u.Fragment)) { Fail "Deployment URL must not contain a fragment: $candidate" }
+    if ($u.AbsolutePath -ne '/') { Fail "Deployment URL path must be '/': $candidate" }
+    if (-not $u.IsDefaultPort) { Fail "Deployment URL must use the default HTTPS port: $candidate" }
+
+    # Explicitly reject the exact project/production alias.
+    if ($u.Host -eq ("{0}.vercel.app" -f $ExpectedProject)) {
+        Fail ("Deployment URL is the project/production alias ($candidate). B6C requires the GENERATED " +
+              "immutable preview deployment URL, not the project/production alias.")
+    }
+
+    # Normalize to scheme + authority (no path/query/fragment, no trailing slash).
+    return ("{0}://{1}" -f $u.Scheme, $u.Authority)
+}
+
 $VersionPattern = '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
 $ProjectPattern = '^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$'
 $CommitPattern  = '^[0-9a-fA-F]{40}$'
@@ -378,34 +470,10 @@ if ($deploy.ExitCode -ne 0) {
     Fail "Staging deployment failed."
 }
 
-# Extract the deployment URL from the OFFICIAL plain-URL stdout form: the CLI
-# prints the immutable deployment URL on its own line (observed with Vercel CLI
-# 56.2.0). Match only full-line https://*.vercel.app URLs — never an arbitrary
-# URL embedded in prose — and require exactly one. Never select a project alias;
-# only the generated immutable deployment URL is used.
-$urlCandidates = @(
-    $deploy.StdOut |
-    ForEach-Object { $_.Trim() } |
-    Where-Object { $_ -match '^https://[A-Za-z0-9.-]+\.vercel\.app/?$' }
-) | Sort-Object -Unique
-if ($urlCandidates.Count -ne 1) {
-    Fail ("Expected exactly one plain https://*.vercel.app deployment URL on vercel stdout, " +
-          "found $($urlCandidates.Count). See $urlFile.")
-}
-$rawUrl = $urlCandidates[0]
-$uri = $null
-if (-not [System.Uri]::TryCreate($rawUrl, [System.UriKind]::Absolute, [ref]$uri)) {
-    Fail "Vercel deployment URL is not a valid absolute URL: $rawUrl"
-}
-if ($uri.Scheme -ne 'https') { Fail "Deployment URL scheme must be https: $rawUrl" }
-if (-not $uri.Host.EndsWith(".vercel.app")) { Fail "Deployment URL host must end with .vercel.app: $rawUrl" }
-if (-not [string]::IsNullOrEmpty($uri.UserInfo)) { Fail "Deployment URL must not contain credentials: $rawUrl" }
-if (-not [string]::IsNullOrEmpty($uri.Query)) { Fail "Deployment URL must not contain a query: $rawUrl" }
-if (-not [string]::IsNullOrEmpty($uri.Fragment)) { Fail "Deployment URL must not contain a fragment: $rawUrl" }
-if ($uri.AbsolutePath -ne '/') { Fail "Deployment URL path must be '/': $rawUrl" }
-if (-not $uri.IsDefaultPort) { Fail "Deployment URL must use the default HTTPS port: $rawUrl" }
-# Normalize to scheme + authority (no path/query/fragment, no trailing slash).
-$deploymentUrl = ("{0}://{1}" -f $uri.Scheme, $uri.Authority)
+# Resolve the immutable preview deployment origin from the captured stdout via the
+# dedicated parser (strict JSON form from Vercel CLI 56.2.0, or the plain-URL
+# form). deployment-url.txt already holds the complete unmodified stdout above.
+$deploymentUrl = Resolve-VercelDeploymentUrl -StdoutLines $deploy.StdOut -ExpectedProject $VercelProject
 Write-Host "Deployment URL: $deploymentUrl" -ForegroundColor Green
 
 # ── Independent post-deployment HTTP verification ─────────────────────────────

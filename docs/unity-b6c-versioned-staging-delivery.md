@@ -191,9 +191,39 @@ copying files, linking, deploying, or making any network request.
   never printed/inspected), verifies the **pre-existing** artifact project via
   `vercel project inspect <project> [--scope <team>]` (failing clearly if it does
   not exist — never auto-creating a project), creates the workspace, links, runs
-  `vercel deploy` **without `--prod`**, captures stdout/stderr/exit code, extracts
-  exactly one plain `https://*.vercel.app` deployment URL (never a project alias),
-  then runs HTTP verification and writes the local record.
+  `vercel deploy` **without `--prod`**, captures stdout/stderr/exit code, resolves
+  exactly one immutable preview deployment URL via the dedicated parser (see
+  §8.1), then runs HTTP verification and writes the local record.
+
+### 8.1 Deployment-URL parsing (Vercel CLI 56.2.0)
+
+Vercel CLI **56.2.0** emitted **structured JSON** on stdout during the first
+runtime. `Resolve-VercelDeploymentUrl` supports exactly two strict contracts:
+
+- **JSON form** — when trimmed stdout begins with `{`, the whole stdout is parsed
+  with `ConvertFrom-Json` (no regex/plain fallback on failure). It requires
+  top-level `status == "ok"`, a `deployment` object with `id` matching
+  `^dpl_[A-Za-z0-9]+$`, a non-empty `deployment.url`, `deployment.readyState ==
+  "READY"`, and a `deployment.target` property that is **null/empty** (confirming
+  a preview / non-prod deployment). The immutable origin is taken **only** from
+  `deployment.url`. `inspectorUrl`, `deploymentApiUrl`, `message`, and `next[]`
+  (including any suggested `vercel deploy --prod`) are **ignored** and are never a
+  URL source. Property reads are guarded (`PSObject.Properties`) so a missing
+  field fails cleanly rather than throwing under `Set-StrictMode`.
+- **Plain-URL form** — when stdout does not begin with `{`, it requires **exactly
+  one** non-empty line that IS a bare `^https://[A-Za-z0-9.-]+\.vercel\.app/?$`
+  URL. No prose scanning, no embedded-URL extraction, no reading stderr for a URL.
+
+The single candidate then passes the retained `System.Uri` validation (https,
+`*.vercel.app` host, no credentials/query/fragment, path `/`, default port) and is
+normalized to scheme + authority. The **exact project/production alias**
+(`https://<VercelProject>.vercel.app`, i.e.
+`https://penalty444-unity-staging.vercel.app`) is explicitly **rejected** with a
+message that B6C requires the *generated immutable preview* URL, not the
+project/production alias. The random generated hostname is **not** required to
+have any particular hash length or team-suffix format — `deployment.url` plus the
+URL constraints are the source of truth. `deployment-url.txt` retains the
+complete unmodified stdout; the extracted URL never replaces it.
 
 ### Windows PowerShell 5.1 native-process discipline
 
@@ -303,9 +333,13 @@ A first authorized Windows runtime was executed. Honest record:
 - **ValidateOnly: PASS**.
 - **Build D** (`b6b-local-fb840878-d`) source verification: **PASS**.
 - Release **copy + copied-release re-verification: PASS**.
-- `vercel link` / `vercel deploy` created a preview **successfully**, generating
-  the immutable preview URL
-  `https://penalty444-unity-staging-m0901fode-chancykibombwes-projects.vercel.app`.
+- `vercel link` / `vercel deploy` created a preview **successfully**. Vercel CLI
+  **56.2.0** emitted **structured JSON** on stdout; the immutable preview origin
+  is taken **only** from `deployment.url`
+  (`https://penalty444-unity-staging-m0901fode-chancykibombwes-projects.vercel.app`),
+  gated on `status=ok`, `readyState=READY`, and `target=null` (see §8.1). The
+  plain-URL stdout form remains supported as a separate strict format; arbitrary
+  embedded-URL extraction is prohibited and the project alias is rejected.
 - The wrapper then **exited 1 during HTTP verification**: the artifact request
   returned **HTTP 302 to Vercel SSO** — the dedicated preview is protected by
   Vercel Authentication and is not anonymously reachable.

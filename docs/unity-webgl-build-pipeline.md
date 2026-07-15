@@ -260,11 +260,17 @@ preview must permit **anonymous** artifact access (main-app project protection
 unchanged), and a corrected committed-head rerun is required. **B6C remains
 YELLOW.**
 
+The deployment URL is resolved by a dedicated parser supporting the Vercel CLI
+**56.2.0** structured-JSON stdout (immutable origin taken only from
+`deployment.url`, gated on `status=ok` / `readyState=READY` / `target=null`) and
+the plain-URL stdout form; arbitrary embedded-URL extraction is prohibited and the
+project alias is rejected.
+
 See `docs/unity-b6c-versioned-staging-delivery.md` for scope, the full
 verification contract, headers, `-ValidateOnly`, the PS 5.1 native-process
-discipline, protected-preview detection, rollback selection, and the required
-Windows/Vercel runtime test. B6C is **staging only**; the production decision
-remains **NO-GO** and B6C does not authorize B6D.
+discipline, deployment-URL parsing, protected-preview detection, rollback
+selection, and the required Windows/Vercel runtime test. B6C is **staging only**;
+the production decision remains **NO-GO** and B6C does not authorize B6D.
 
 ## 7. Production-readiness boundary
 
