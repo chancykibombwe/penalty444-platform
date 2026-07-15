@@ -47,6 +47,45 @@ function Fail([string] $message) {
     exit 1
 }
 
+# ── Single reviewed native-process helper (Windows PowerShell 5.1 safe) ────────
+# Runs a native command (git, vercel.cmd, …) capturing stdout, stderr and the
+# real exit code SEPARATELY. Under Set-StrictMode + ErrorActionPreference=Stop,
+# PS 5.1 turns harmless native stderr (e.g. Git CRLF/line-ending warnings, Vercel
+# progress) into a terminating NativeCommandError. Redirecting stderr to a temp
+# file with ErrorActionPreference temporarily relaxed avoids that WITHOUT hiding
+# genuine failures — callers still branch on ExitCode. stderr text is never mixed
+# into the parsed stdout lines. No shell string evaluation; args pass through the
+# call operator so quoting (incl. paths with spaces) is handled by PowerShell.
+function Invoke-Native {
+    param(
+        [Parameter(Mandatory = $true)] [string] $Exe,
+        [string[]] $NativeArgs = @()
+    )
+    $errFile = [System.IO.Path]::GetTempFileName()
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $stdout = @()
+    $code = $null
+    try {
+        $stdout = @(& $Exe @NativeArgs 2> $errFile)
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
+    $stderr = ""
+    if (Test-Path -LiteralPath $errFile) {
+        $raw = Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue
+        if ($null -ne $raw) { $stderr = $raw }
+        Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
+    }
+    if ($null -eq $code) { $code = 1 }
+    return [pscustomobject]@{
+        StdOut   = $stdout            # array of stdout lines (no stderr mixed in)
+        StdErr   = $stderr            # captured stderr text (warnings/progress)
+        ExitCode = [int]$code
+    }
+}
+
 $VersionPattern = '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
 $ProjectPattern = '^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$'
 $CommitPattern  = '^[0-9a-fA-F]{40}$'
@@ -92,21 +131,21 @@ try {
 }
 
 # ── Tracked content hygiene (B6B content-clean logic; never alters Git state) ──
+function Invoke-Git([string[]] $GitArgs, [string] $what) {
+    $r = Invoke-Native "git" (@("-C", $RepoRoot) + $GitArgs)
+    # Non-zero exit is a real failure; harmless stderr (CRLF/line-ending warnings)
+    # on a zero exit is ignored and never mixed into the returned path lines.
+    if ($r.ExitCode -ne 0) { Fail "$what failed (exit $($r.ExitCode)): $($r.StdErr.Trim())" }
+    return @($r.StdOut | Where-Object { $_ -and $_.Trim().Length -gt 0 })
+}
+
 function Get-TrackedDirty {
-    $porcelain = @(& git -C $RepoRoot status --porcelain --untracked-files=no 2>$null |
-        Where-Object { $_ -and $_.Trim().Length -gt 0 })
-    if ($LASTEXITCODE -ne 0) { Fail "git status failed." }
+    $porcelain = @(Invoke-Git @("status", "--porcelain", "--untracked-files=no") "git status")
     if ($porcelain.Count -eq 0) { return @() }
 
-    $unstaged = @(& git -C $RepoRoot diff --name-only 2>$null |
-        Where-Object { $_ -and $_.Trim().Length -gt 0 })
-    if ($LASTEXITCODE -ne 0) { Fail "git diff failed." }
-    $staged = @(& git -C $RepoRoot diff --cached --name-only 2>$null |
-        Where-Object { $_ -and $_.Trim().Length -gt 0 })
-    if ($LASTEXITCODE -ne 0) { Fail "git diff --cached failed." }
-    $unmerged = @(& git -C $RepoRoot diff --name-only --diff-filter=U 2>$null |
-        Where-Object { $_ -and $_.Trim().Length -gt 0 })
-    if ($LASTEXITCODE -ne 0) { Fail "git diff --diff-filter=U failed." }
+    $unstaged = @(Invoke-Git @("diff", "--name-only") "git diff")
+    $staged   = @(Invoke-Git @("diff", "--cached", "--name-only") "git diff --cached")
+    $unmerged = @(Invoke-Git @("diff", "--name-only", "--diff-filter=U") "git diff --diff-filter=U")
 
     $union = @($unstaged + $staged + $unmerged | Sort-Object -Unique)
     if ($union.Count -eq 0) {
@@ -149,9 +188,9 @@ function Test-SourceRelease([string] $dir, [string] $expectedVersion) {
         Fail "B6C staging delivery currently supports gzip B6B releases only. (manifest compressionMode='$($m.compressionMode)')"
     }
 
-    # Source commit must exist in this repository.
-    & git -C $RepoRoot cat-file -e ("{0}^{{commit}}" -f $m.sourceCommit) 2>$null | Out-Null
-    if ($LASTEXITCODE -ne 0) { Fail "manifest sourceCommit $($m.sourceCommit) is not a known Git commit." }
+    # Source commit must exist in this repository (PS 5.1-safe native call).
+    $cf = Invoke-Native "git" @("-C", $RepoRoot, "cat-file", "-e", ("{0}^{{commit}}" -f $m.sourceCommit))
+    if ($cf.ExitCode -ne 0) { Fail "manifest sourceCommit $($m.sourceCommit) is not a known Git commit." }
 
     if ($null -eq $m.files -or @($m.files).Count -eq 0) { Fail "manifest files[] is empty." }
 
@@ -270,10 +309,27 @@ if ($ValidateOnly) {
 
 # ── Real staging deployment ───────────────────────────────────────────────────
 if (-not $vercelCmd) { Fail "Vercel CLI ('vercel') not found on PATH. Install it before deploying." }
+$VercelExe = $vercelCmd.Source
 
-# Confirm authentication without printing/inspecting tokens.
-& vercel whoami 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0) { Fail "Not authenticated with Vercel. Run 'vercel login' first." }
+# Optional --scope <team> suffix, added only when a team was supplied.
+$scopeArgs = @()
+if (-not [string]::IsNullOrEmpty($VercelTeam)) { $scopeArgs = @("--scope", $VercelTeam) }
+
+# Confirm authentication without printing/inspecting tokens (PS 5.1-safe).
+$who = Invoke-Native $VercelExe (@("whoami") + $scopeArgs)
+if ($who.ExitCode -ne 0) {
+    Fail "Not authenticated with Vercel (vercel whoami exit $($who.ExitCode)). Run 'vercel login' first."
+}
+
+# The dedicated artifact project MUST already exist. Verify before linking; never
+# create a project. (Uses the same native discipline; progress on stderr is fine.)
+$inspect = Invoke-Native $VercelExe (@("project", "inspect", $VercelProject) + $scopeArgs)
+if ($inspect.ExitCode -ne 0) {
+    Fail ("Vercel project '$VercelProject' was not found or is not accessible" +
+          $(if ($scopeArgs.Count) { " for scope '$VercelTeam'" } else { "" }) +
+          ". Create the dedicated artifact project manually in the Vercel dashboard first; " +
+          "this script never creates a project.")
+}
 
 if (Test-Path -LiteralPath $workspaceDir) { Fail "Workspace already exists (refusing to overwrite): $workspaceDir" }
 New-Item -ItemType Directory -Path $workspaceDir -Force | Out-Null
@@ -296,42 +352,47 @@ Copy-Item -LiteralPath $TemplatePath -Destination (Join-Path $workspaceDir "verc
 # Re-verify the COPIED release before deploying.
 $null = Test-SourceRelease $workspaceReleaseDir $ReleaseVersion
 
-# Link the workspace to the pre-existing dedicated artifact project.
-$linkArgs = @("link", "--cwd", $workspaceDir, "--yes", "--project", $VercelProject)
-if (-not [string]::IsNullOrEmpty($VercelTeam)) { $linkArgs += @("--scope", $VercelTeam) }
+# Link the workspace to the pre-existing dedicated artifact project (PS 5.1-safe).
+$linkArgs = @("link", "--cwd", $workspaceDir, "--yes", "--project", $VercelProject) + $scopeArgs
 Write-Host ""
 Write-Host "Linking workspace to Vercel project '$VercelProject'..."
-& vercel @linkArgs
-if ($LASTEXITCODE -ne 0) {
-    Fail ("vercel link failed. If the project does not exist, create '$VercelProject' manually in the " +
-          "Vercel dashboard first (this script never creates a project). Then re-run.")
+$link = Invoke-Native $VercelExe $linkArgs
+if ($link.ExitCode -ne 0) {
+    Fail ("vercel link failed (exit $($link.ExitCode)). Confirm '$VercelProject' exists" +
+          $(if ($scopeArgs.Count) { " under scope '$VercelTeam'" } else { "" }) +
+          " (this script never creates a project). Details: $($link.StdErr.Trim())")
 }
 
-# Deploy a PREVIEW only (never --prod). Capture stdout/stderr/exit code.
-$urlFile   = Join-Path $workspaceDir "deployment-url.txt"
-$errFile   = Join-Path $workspaceDir "vercel-deploy-error.txt"
-$deployArgs = @("deploy", "--cwd", $workspaceDir, "--yes")
-if (-not [string]::IsNullOrEmpty($VercelTeam)) { $deployArgs += @("--scope", $VercelTeam) }
+# Deploy a PREVIEW only (never --prod). Capture stdout/stderr/exit separately.
+$urlFile    = Join-Path $workspaceDir "deployment-url.txt"
+$errFile    = Join-Path $workspaceDir "vercel-deploy-error.txt"
+$deployArgs = @("deploy", "--cwd", $workspaceDir, "--yes") + $scopeArgs
 
 Write-Host "Creating Vercel PREVIEW deployment (no --prod)..."
-& vercel @deployArgs 1> $urlFile 2> $errFile
-$deployExit = $LASTEXITCODE
-if ($deployExit -ne 0) {
-    Write-Host "vercel deploy failed (exit $deployExit). See:" -ForegroundColor Yellow
+$deploy = Invoke-Native $VercelExe $deployArgs
+Set-Content -LiteralPath $urlFile -Value ($deploy.StdOut -join "`n") -Encoding UTF8
+Set-Content -LiteralPath $errFile -Value $deploy.StdErr -Encoding UTF8
+if ($deploy.ExitCode -ne 0) {
+    Write-Host "vercel deploy failed (exit $($deploy.ExitCode)). See:" -ForegroundColor Yellow
     Write-Host "  $errFile"
     Fail "Staging deployment failed."
 }
 
-# stdout must resolve to exactly one HTTPS *.vercel.app deployment URL.
-$urlMatches = @(
-    (Get-Content -LiteralPath $urlFile -Raw) |
-    Select-String -Pattern 'https://[A-Za-z0-9._-]+\.vercel\.app[^\s]*' -AllMatches |
-    ForEach-Object { $_.Matches } | ForEach-Object { $_.Value }
+# Extract the deployment URL from the OFFICIAL plain-URL stdout form: the CLI
+# prints the immutable deployment URL on its own line (observed with Vercel CLI
+# 56.2.0). Match only full-line https://*.vercel.app URLs — never an arbitrary
+# URL embedded in prose — and require exactly one. Never select a project alias;
+# only the generated immutable deployment URL is used.
+$urlCandidates = @(
+    $deploy.StdOut |
+    ForEach-Object { $_.Trim() } |
+    Where-Object { $_ -match '^https://[A-Za-z0-9.-]+\.vercel\.app/?$' }
 ) | Sort-Object -Unique
-if ($urlMatches.Count -ne 1) {
-    Fail "Expected exactly one https://*.vercel.app deployment URL in vercel output, found $($urlMatches.Count)."
+if ($urlCandidates.Count -ne 1) {
+    Fail ("Expected exactly one plain https://*.vercel.app deployment URL on vercel stdout, " +
+          "found $($urlCandidates.Count). See $urlFile.")
 }
-$rawUrl = $urlMatches[0]
+$rawUrl = $urlCandidates[0]
 $uri = $null
 if (-not [System.Uri]::TryCreate($rawUrl, [System.UriKind]::Absolute, [ref]$uri)) {
     Fail "Vercel deployment URL is not a valid absolute URL: $rawUrl"
@@ -374,6 +435,27 @@ function Invoke-HttpProbe([string] $url, [int] $timeoutSec = 30) {
 function Require-200([string] $relPath) {
     $u = "$artifactBaseUrl/$relPath"
     $p = Invoke-HttpProbe $u
+    # Redirects stay disabled. A 3xx to Vercel authentication / sso-api means the
+    # dedicated artifact preview is protected by Vercel Authentication — which
+    # blocks the main app's server-side rewrite from fetching it anonymously.
+    if (@(301, 302, 307, 308) -contains $p.Status) {
+        $loc = $p.Headers["Location"]
+        if ($loc -and ($loc -match '(?i)sso-api|/sso|vercel\.com/sso|vercel\.com/login|authenticate')) {
+            Fail (
+                "Artifact request for $relPath returned HTTP $($p.Status) redirecting to Vercel " +
+                "Authentication ($loc).`n" +
+                "  - The immutable preview is protected by Vercel Authentication.`n" +
+                "  - B6C requires the dedicated artifact preview to be ANONYMOUSLY reachable so the " +
+                "main app's server-side rewrite can fetch it.`n" +
+                "  - Change deployment protection ONLY on the dedicated artifact project " +
+                "'penalty444-unity-staging'.`n" +
+                "  - Do NOT change protection on the main application project 'penalty444-platform-at1y'.`n" +
+                "  - Do NOT use the production/project alias; use only the generated immutable deployment URL.`n" +
+                "  - Re-run this script after adjusting the artifact project's protection."
+            )
+        }
+        Fail "Unexpected HTTP $($p.Status) redirect for ${relPath} -> $loc"
+    }
     if ($p.Status -ne 200) { Fail "Expected HTTP 200 for $relPath, got $($p.Status)." }
     return $p
 }

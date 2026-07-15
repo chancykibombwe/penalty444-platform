@@ -188,21 +188,46 @@ copying files, linking, deploying, or making any network request.
 
 - **ValidateOnly:** verification + configuration summary only. No side effects.
 - **Real deploy:** requires the Vercel CLI, confirms `vercel whoami` (tokens are
-  never printed/inspected), creates the workspace, links to the **pre-existing**
-  project (failing with a clear message if it does not exist — never
-  auto-creating a project), runs `vercel deploy` **without `--prod`**, captures
-  stdout/stderr/exit code, requires exactly one `https://*.vercel.app` URL, then
-  runs HTTP verification and writes the local record.
+  never printed/inspected), verifies the **pre-existing** artifact project via
+  `vercel project inspect <project> [--scope <team>]` (failing clearly if it does
+  not exist — never auto-creating a project), creates the workspace, links, runs
+  `vercel deploy` **without `--prod`**, captures stdout/stderr/exit code, extracts
+  exactly one plain `https://*.vercel.app` deployment URL (never a project alias),
+  then runs HTTP verification and writes the local record.
+
+### Windows PowerShell 5.1 native-process discipline
+
+All `git` and `vercel` calls go through a **single reviewed helper**
+(`Invoke-Native`) that captures stdout, stderr, and the real exit code
+**separately**. Under `Set-StrictMode` + `ErrorActionPreference=Stop`, PS 5.1
+otherwise turns harmless native stderr — Git CRLF/line-ending warnings, Vercel
+progress — into a terminating `NativeCommandError`. The helper redirects stderr
+to a temp file with the preference temporarily relaxed, so a **zero exit with
+warnings succeeds** and a **non-zero exit still fails**, and stderr text is never
+mixed into parsed stdout path lists. The operator does **not** need
+`git update-index --assume-unchanged` (or any `reset`/`restore`/`checkout`/`add`/
+renormalize/global-config change) to run the script — the content-clean vs.
+status-metadata-only policy is unchanged and the wrapper never alters Git state.
 
 ## 9. Post-deployment HTTP verification
 
 Independently checks HTTP 200 for `index.html`, `manifest.json`,
-`manifest.sha256`, the loader, the framework/data/wasm artifacts, and at least
-one `TemplateData` file; asserts gzip `Content-Type`/`Content-Encoding` on the
-`.gz` payloads and `X-Content-Type-Options: nosniff` / `X-Frame-Options:
+`manifest.sha256`, the loader, the gzip framework/data/wasm artifacts, and at
+least one `TemplateData` file; asserts gzip `Content-Type`/`Content-Encoding` on
+the `.gz` payloads and `X-Content-Type-Options: nosniff` / `X-Frame-Options:
 SAMEORIGIN` / immutable `Cache-Control` on the release path. Requests use bounded
-timeouts, do not retry indefinitely, do not follow redirects to unrelated
-origins, and never download/execute remote scripts.
+timeouts, do not retry indefinitely, keep redirects **disabled**, and never
+download/execute remote scripts.
+
+**Protected-preview detection.** If an artifact request returns a
+`301/302/307/308` whose `Location` points at Vercel Authentication (`sso-api`,
+`/sso`, `vercel.com/sso`, `vercel.com/login`, `authenticate`), the wrapper fails
+with a targeted message: the immutable preview is protected by Vercel
+Authentication; B6C requires the dedicated artifact preview to be **anonymously
+reachable** for the main app's server-side rewrite; change protection **only** on
+`penalty444-unity-staging`, **not** on the main application project
+`penalty444-platform-at1y`; do **not** use the production/project alias; and
+re-run after adjusting protection. (No bypass secret is implemented here.)
 
 ## 10. Local deployment record
 
@@ -265,10 +290,44 @@ reviewed scope.
 The PowerShell deploy + real Vercel preview deployment and HTTP verification
 **cannot** run in the review sandbox (no Windows PowerShell, no Vercel CLI/auth,
 no network deploy). Pre-PR validation covers only file-scope hygiene, JSON
-template parse, and web/realtime typecheck+build (including an unset build, a
-valid-origin build, and an invalid-origin negative build). A Windows + Vercel
-operator run is required before this tooling is trusted, and the artifact project
-must be created manually first.
+template parse, and web/realtime typecheck+build (unset, valid-preview-origin,
+invalid-origin, and forbidden-production scenarios). A Windows + Vercel operator
+run is required before this tooling is trusted, and the artifact project must be
+created manually first.
+
+### 14.1 First runtime (Windows) — evidence and outcome (B6C remains YELLOW)
+
+A first authorized Windows runtime was executed. Honest record:
+
+- PowerShell **parser: PASS**.
+- **ValidateOnly: PASS**.
+- **Build D** (`b6b-local-fb840878-d`) source verification: **PASS**.
+- Release **copy + copied-release re-verification: PASS**.
+- `vercel link` / `vercel deploy` created a preview **successfully**, generating
+  the immutable preview URL
+  `https://penalty444-unity-staging-m0901fode-chancykibombwes-projects.vercel.app`.
+- The wrapper then **exited 1 during HTTP verification**: the artifact request
+  returned **HTTP 302 to Vercel SSO** — the dedicated preview is protected by
+  Vercel Authentication and is not anonymously reachable.
+- A production/project **alias returning 200 is *not* acceptable evidence**;
+  verification must pass against the generated **immutable** deployment URL.
+- The run also required **local PS 5.1 fixes** (native stderr handling and URL
+  parsing) that were **not** part of the committed head; those fixes are now
+  rewritten cleanly into the committed script (see §8 native-process discipline
+  and §9 protected-preview detection).
+- A **corrected committed-head rerun remains required**. **B6C remains YELLOW**;
+  the production decision remains **NO-GO**; **B6D remains unauthorized**. No
+  runtime gate is marked PASS.
+
+### 14.2 Configuration prerequisite (anonymous artifact access)
+
+The dedicated `penalty444-unity-staging` artifact project's **preview**
+deployments must permit **anonymous** artifact access, so the main app's
+server-side rewrite can fetch `/releases/<version>/…` without a Vercel
+Authentication redirect. Adjust deployment protection **only** on that dedicated
+artifact project. Protection on the **main application project**
+(`penalty444-platform-at1y`) must remain **unchanged**. Do not use the
+production/project alias, and do not add a protection-bypass secret in this scope.
 
 ## 15. Relationship to B6A/B6B and B6D
 

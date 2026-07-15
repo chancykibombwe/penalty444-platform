@@ -253,10 +253,18 @@ immutable, versioned hosted path — consumed **same-origin** through the main a
   the B6B local builder remain as documented above; B6C changes nothing about
   them.
 
+The first Windows runtime built + deployed a preview successfully but **exited 1
+during HTTP verification** because the dedicated artifact preview was protected by
+Vercel Authentication (HTTP 302 → SSO); the dedicated `penalty444-unity-staging`
+preview must permit **anonymous** artifact access (main-app project protection
+unchanged), and a corrected committed-head rerun is required. **B6C remains
+YELLOW.**
+
 See `docs/unity-b6c-versioned-staging-delivery.md` for scope, the full
-verification contract, headers, `-ValidateOnly`, rollback selection, and the
-required Windows/Vercel runtime test. B6C is **staging only**; the production
-decision remains **NO-GO** and B6C does not authorize B6D.
+verification contract, headers, `-ValidateOnly`, the PS 5.1 native-process
+discipline, protected-preview detection, rollback selection, and the required
+Windows/Vercel runtime test. B6C is **staging only**; the production decision
+remains **NO-GO** and B6C does not authorize B6D.
 
 ## 7. Production-readiness boundary
 
