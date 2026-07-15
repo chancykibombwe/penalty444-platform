@@ -480,52 +480,107 @@ Write-Host "Deployment URL: $deploymentUrl" -ForegroundColor Green
 $artifactBaseUrl = "$deploymentUrl/releases/$ReleaseVersion"
 
 # Raw header probe (no auto-redirect, no auto-decompression) so Content-Encoding
-# survives for gzip payloads. Bounded timeout; no indefinite retry.
-function Invoke-HttpProbe([string] $url, [int] $timeoutSec = 30) {
+# survives for gzip payloads. Bounded per-request timeout. A network failure with
+# NO HTTP response (DNS/name-resolution, connect, timeout, transport) returns
+# Status 0 + NetworkError so the caller can treat it as a transient propagation
+# condition rather than crashing; any actual HTTP response (incl. 3xx/4xx/5xx) is
+# returned with its status.
+function Invoke-HttpProbe([string] $url, [int] $timeoutSec = 20) {
     $req = [System.Net.HttpWebRequest]::Create($url)
     $req.Method = "GET"
     $req.AllowAutoRedirect = $false
     $req.AutomaticDecompression = [System.Net.DecompressionMethods]::None
     $req.Timeout = $timeoutSec * 1000
     $req.ReadWriteTimeout = $timeoutSec * 1000
+    $resp = $null
     try {
         $resp = $req.GetResponse()
     } catch [System.Net.WebException] {
-        if ($_.Exception.Response) { $resp = $_.Exception.Response } else { throw }
+        if ($_.Exception.Response) {
+            $resp = $_.Exception.Response
+        } else {
+            return [pscustomobject]@{ Status = 0; Headers = @{}; NetworkError = $_.Exception.Message }
+        }
     }
     $status = [int]$resp.StatusCode
     $headers = @{}
     foreach ($key in $resp.Headers.AllKeys) { $headers[$key] = $resp.Headers[$key] }
     $resp.Close()
-    return [pscustomobject]@{ Status = $status; Headers = $headers }
+    return [pscustomobject]@{ Status = $status; Headers = $headers; NetworkError = $null }
 }
 
-function Require-200([string] $relPath) {
-    $u = "$artifactBaseUrl/$relPath"
-    $p = Invoke-HttpProbe $u
-    # Redirects stay disabled. A 3xx to Vercel authentication / sso-api means the
-    # dedicated artifact preview is protected by Vercel Authentication — which
-    # blocks the main app's server-side rewrite from fetching it anonymously.
-    if (@(301, 302, 307, 308) -contains $p.Status) {
-        $loc = $p.Headers["Location"]
-        if ($loc -and ($loc -match '(?i)sso-api|/sso|vercel\.com/sso|vercel\.com/login|authenticate')) {
+# Transient conditions that can occur while a brand-new deployment's hostname is
+# still propagating (DNS/readiness). These are retried until the SHARED deadline.
+$TransientHttpStatuses = @(404, 408, 425, 429, 500, 502, 503, 504)
+$PollIntervalSec = 2
+
+# Poll one artifact path until HTTP 200 or the SHARED $VerifyDeadline. Transient
+# network failures (Status 0) and transient HTTP statuses are retried (~2s);
+# non-transient conditions (SSO/auth redirects, other redirects, 400/401/403,
+# other non-transient 4xx, unexpected statuses) FAIL FAST. Never retries the
+# deployment itself — only HTTP readiness requests. Returns the 200 probe.
+function Wait-For200([string] $relPath) {
+    $url = "$artifactBaseUrl/$relPath"
+    $attempt = 0
+    $lastCondition = "(none)"
+    while ($true) {
+        $attempt++
+        $p = Invoke-HttpProbe $url
+
+        if ($p.Status -eq 200) { return $p }
+
+        # ── Fail-fast: redirect to Vercel Authentication / SSO (protection). ──
+        if (@(301, 302, 307, 308) -contains $p.Status) {
+            $loc = $p.Headers["Location"]
+            if ($loc -and ($loc -match '(?i)sso-api|/sso|vercel\.com/sso|vercel\.com/login|authenticate')) {
+                Fail (
+                    "Artifact request for $relPath returned HTTP $($p.Status) redirecting to Vercel " +
+                    "Authentication ($loc).`n" +
+                    "  - The immutable preview is protected by Vercel Authentication.`n" +
+                    "  - B6C requires the dedicated artifact preview to be ANONYMOUSLY reachable so the " +
+                    "main app's server-side rewrite can fetch it.`n" +
+                    "  - Change deployment protection ONLY on the dedicated artifact project " +
+                    "'penalty444-unity-staging'.`n" +
+                    "  - Do NOT change protection on the main application project 'penalty444-platform-at1y'.`n" +
+                    "  - Do NOT use the production/project alias; use only the generated immutable deployment URL.`n" +
+                    "  - Re-run this script after adjusting the artifact project's protection."
+                )
+            }
+            Fail "Unexpected HTTP $($p.Status) redirect for ${relPath} -> $loc"
+        }
+        # ── Fail-fast: auth/permission/bad-request and other non-transient 4xx. ──
+        if (@(400, 401, 403) -contains $p.Status) {
+            Fail "Non-transient HTTP $($p.Status) for ${relPath} (bad request / auth / permission) — not a propagation delay."
+        }
+        if ($p.Status -ge 400 -and $p.Status -lt 500 -and (-not ($TransientHttpStatuses -contains $p.Status))) {
+            Fail "Non-transient HTTP $($p.Status) for ${relPath}."
+        }
+
+        # ── Transient: network failure (no response) or a transient HTTP status. ──
+        if ($p.Status -eq 0) {
+            $lastCondition = "network: $($p.NetworkError)"
+        } elseif ($TransientHttpStatuses -contains $p.Status) {
+            $lastCondition = "HTTP $($p.Status)"
+        } else {
+            # Anything else (unexpected 3xx/5xx not classified above) fails fast.
+            Fail "Unexpected HTTP $($p.Status) for ${relPath}."
+        }
+
+        if ((Get-Date) -ge $VerifyDeadline) {
             Fail (
-                "Artifact request for $relPath returned HTTP $($p.Status) redirecting to Vercel " +
-                "Authentication ($loc).`n" +
-                "  - The immutable preview is protected by Vercel Authentication.`n" +
-                "  - B6C requires the dedicated artifact preview to be ANONYMOUSLY reachable so the " +
-                "main app's server-side rewrite can fetch it.`n" +
-                "  - Change deployment protection ONLY on the dedicated artifact project " +
-                "'penalty444-unity-staging'.`n" +
-                "  - Do NOT change protection on the main application project 'penalty444-platform-at1y'.`n" +
-                "  - Do NOT use the production/project alias; use only the generated immutable deployment URL.`n" +
-                "  - Re-run this script after adjusting the artifact project's protection."
+                "Artifact readiness/verification deadline (90s) expired before $relPath was reachable.`n" +
+                "  - Deployment URL : $deploymentUrl`n" +
+                "  - Last path      : $relPath`n" +
+                "  - Attempts       : $attempt`n" +
+                "  - Last condition : $lastCondition`n" +
+                "  - The deployment itself may exist; the workspace is preserved for inspection.`n" +
+                "  - This script never creates another deployment — inspect the preserved workspace and " +
+                "the deployment before rerunning."
             )
         }
-        Fail "Unexpected HTTP $($p.Status) redirect for ${relPath} -> $loc"
+        Write-Host "  waiting for $relPath (attempt $attempt, last: $lastCondition)…" -ForegroundColor DarkGray
+        Start-Sleep -Seconds $PollIntervalSec
     }
-    if ($p.Status -ne 200) { Fail "Expected HTTP 200 for $relPath, got $($p.Status)." }
-    return $p
 }
 
 function Require-Header($probe, [string] $name, [string] $mustContain, [string] $rel) {
@@ -550,17 +605,24 @@ $dataPath      = Find-ManifestPath '^Build/[^/]+\.data\.gz$'
 $wasmPath      = Find-ManifestPath '^Build/[^/]+\.wasm\.gz$'
 $templatePath1 = Find-ManifestPath '^TemplateData/.+'
 
-Write-Host "Verifying hosted artifact over HTTP..."
-$null = Require-200 "index.html"
-$null = Require-200 "manifest.json"
-$null = Require-200 "manifest.sha256"
-$null = Require-200 $loaderPath
-$frameworkProbe = Require-200 $frameworkPath
-$dataProbe      = Require-200 $dataPath
-$wasmProbe      = Require-200 $wasmPath
-$null = Require-200 $templatePath1
+# ONE shared, bounded readiness/verification deadline (90s total) — not a fresh
+# 90s window per file. Tolerates immediate post-deploy DNS/readiness propagation
+# (the generated hostname can take ~15s to resolve) without ever redeploying.
+$VerifyDeadline = (Get-Date).AddSeconds(90)
 
-# gzip payload headers (always gzip in B6C).
+Write-Host "Verifying hosted artifact over HTTP (shared 90s readiness window, ~2s polling)..."
+# index.html first: this is the propagation gate for the whole deployment.
+$indexProbe     = Wait-For200 "index.html"
+$null           = Wait-For200 "manifest.json"
+$null           = Wait-For200 "manifest.sha256"
+$null           = Wait-For200 $loaderPath
+$frameworkProbe = Wait-For200 $frameworkPath
+$dataProbe      = Wait-For200 $dataPath
+$wasmProbe      = Wait-For200 $wasmPath
+$null           = Wait-For200 $templatePath1
+
+# gzip payload headers (always gzip in B6C). Header mismatches after a 200 fail
+# immediately — they are not a propagation condition.
 Require-Header $frameworkProbe "Content-Type" "application/javascript" $frameworkPath
 Require-Header $frameworkProbe "Content-Encoding" "gzip" $frameworkPath
 Require-Header $wasmProbe "Content-Type" "application/wasm" $wasmPath
@@ -568,8 +630,8 @@ Require-Header $wasmProbe "Content-Encoding" "gzip" $wasmPath
 Require-Header $dataProbe "Content-Type" "application/octet-stream" $dataPath
 Require-Header $dataProbe "Content-Encoding" "gzip" $dataPath
 
-# Security/immutability headers on the general release path (index.html).
-$indexProbe = Invoke-HttpProbe "$artifactBaseUrl/index.html"
+# Security/immutability headers on the general release path (reuse the index probe
+# already confirmed 200 — no extra fetch, no race).
 Require-Header $indexProbe "X-Content-Type-Options" "nosniff" "index.html"
 Require-Header $indexProbe "X-Frame-Options" "SAMEORIGIN" "index.html"
 Require-Header $indexProbe "Cache-Control" "immutable" "index.html"

@@ -249,15 +249,39 @@ SAMEORIGIN` / immutable `Cache-Control` on the release path. Requests use bounde
 timeouts, do not retry indefinitely, keep redirects **disabled**, and never
 download/execute remote scripts.
 
-**Protected-preview detection.** If an artifact request returns a
-`301/302/307/308` whose `Location` points at Vercel Authentication (`sso-api`,
-`/sso`, `vercel.com/sso`, `vercel.com/login`, `authenticate`), the wrapper fails
-with a targeted message: the immutable preview is protected by Vercel
-Authentication; B6C requires the dedicated artifact preview to be **anonymously
-reachable** for the main app's server-side rewrite; change protection **only** on
-`penalty444-unity-staging`, **not** on the main application project
-`penalty444-platform-at1y`; do **not** use the production/project alias; and
-re-run after adjusting protection. (No bypass secret is implemented here.)
+**Bounded readiness polling.** A brand-new deployment's generated hostname can
+take ~15 s to resolve, so verification runs under **one shared, bounded 90-second
+deadline** (not a fresh window per file), polling roughly every **2 seconds**.
+`index.html` is the propagation gate; the remaining files are then verified under
+the same shared deadline. **Transient** conditions are retried until the deadline:
+network failures with **no** HTTP response (DNS/name-resolution, connect, timeout,
+transport) and transient HTTP statuses **404, 408, 425, 429, 500, 502, 503, 504**.
+Each retry prints a concise wait message with the attempt number and last
+condition. If the shared deadline expires, the wrapper fails with the deployment
+URL, last path, attempt count, and final condition, notes that the deployment may
+exist and the workspace is preserved, and **never** creates another deployment.
+Only HTTP readiness requests retry — deployment creation is never retried.
+
+**Fail-fast (non-transient).** The wrapper fails **immediately**, without
+retrying, for: a `301/302/307/308` redirect to Vercel Authentication
+(`sso-api` / `/sso` / `vercel.com/sso` / `vercel.com/login` / `authenticate`,
+using the targeted protection message below); any other unexpected redirect;
+**400 / 401 / 403** and any other non-transient 4xx; malformed URLs; the project
+alias; and header mismatches after an HTTP 200. Authentication/permission failures
+are never treated as propagation delays.
+
+**Protected-preview message.** On a redirect to Vercel Authentication the message
+states: the immutable preview is protected by Vercel Authentication; B6C requires
+the dedicated artifact preview to be **anonymously reachable** for the main app's
+server-side rewrite; change protection **only** on `penalty444-unity-staging`,
+**not** on the main application project `penalty444-platform-at1y`; do **not** use
+the production/project alias; and re-run after adjusting protection. (No bypass
+secret is implemented here.)
+
+**No duplicate deployment on verification failure.** If verification fails after
+Vercel reports a `READY` deployment, the operator must inspect the preserved
+workspace and the deployment before rerunning. The script cannot automatically
+delete, replace, promote, or redeploy, and adds no automatic deployment retries.
 
 ## 10. Local deployment record
 
@@ -352,6 +376,38 @@ A first authorized Windows runtime was executed. Honest record:
 - A **corrected committed-head rerun remains required**. **B6C remains YELLOW**;
   the production decision remains **NO-GO**; **B6D remains unauthorized**. No
   runtime gate is marked PASS.
+
+### 14.1a Corrected-head rerun — DNS/readiness propagation (still YELLOW)
+
+A corrected-head rerun was executed after disabling protection **only** on
+`penalty444-unity-staging`:
+
+- Parser **PASS**; ValidateOnly **PASS, exit 0**; **no `assume-unchanged` flag
+  used**; the original immutable preview became anonymously reachable (HTTP 200).
+- The rerun exposed a final orchestration defect: two deployments both **created
+  successfully**, but the **first** (`dpl_A3B6DGY3Qh53ScHZv3UQ1KmH1ibv`) failed
+  verification with **exit 1 only because its generated hostname did not resolve
+  immediately** — it became reachable ~**15 s** later — forcing the operator to
+  rerun the entire deployment purely for propagation.
+- The **second** deployment passed **all** artifact HTTP/MIME/gzip/header
+  verification, wrote `staging-deployment.json`, and exited **0**:
+  - deployment ID `dpl_4yEsG8YSFzdg9sFyuLAxMuqLzxyV`
+  - immutable URL
+    `https://penalty444-unity-staging-42qkvl348-chancykibombwes-projects.vercel.app`
+  - `target=null`, no production deployment, no alias, tracked tree clean,
+    generated WebGL + audit workspaces untracked.
+- **This proves the artifact path and headers work.** The wrapper is now hardened
+  with the **bounded 90-second readiness polling** described in §9 so a fresh
+  deployment's DNS/readiness delay no longer forces a needless redeploy.
+  **Deployment creation itself is never automatically retried** — only HTTP
+  readiness/verification requests retry.
+- The successful immutable preview remains
+  `https://penalty444-unity-staging-42qkvl348-chancykibombwes-projects.vercel.app`.
+  Artifact-project preview protection is disabled **only** on
+  `penalty444-unity-staging`; main-app preview integration has **not** begun.
+- The polling correction still needs a Windows rerun to confirm. **B6C remains
+  YELLOW**; production remains **NO-GO**; **B6D remains unauthorized**; no runtime
+  gate is marked final PASS.
 
 ### 14.2 Configuration prerequisite (anonymous artifact access)
 

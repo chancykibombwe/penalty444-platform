@@ -257,8 +257,16 @@ The first Windows runtime built + deployed a preview successfully but **exited 1
 during HTTP verification** because the dedicated artifact preview was protected by
 Vercel Authentication (HTTP 302 → SSO); the dedicated `penalty444-unity-staging`
 preview must permit **anonymous** artifact access (main-app project protection
-unchanged), and a corrected committed-head rerun is required. **B6C remains
-YELLOW.**
+unchanged). After disabling that protection, a corrected-head rerun deployed and
+**fully verified** an immutable preview
+(`…-42qkvl348-…vercel.app`, `dpl_4yEsG8YSFzdg9sFyuLAxMuqLzxyV`, exit 0) — proving
+the artifact path and headers work — but a preceding deployment had failed
+verification **only** because its generated hostname took ~15 s to resolve. The
+wrapper is now hardened with a **shared, bounded 90-second readiness poll**
+(~2 s interval) tolerating transient DNS/connection/timeout failures and transient
+HTTP statuses (404/408/425/429/500/502/503/504) while failing fast on
+auth/redirect/other-4xx; **deployment creation is never auto-retried**. A rerun to
+confirm the polling fix is still required. **B6C remains YELLOW.**
 
 The deployment URL is resolved by a dedicated parser supporting the Vercel CLI
 **56.2.0** structured-JSON stdout (immutable origin taken only from
