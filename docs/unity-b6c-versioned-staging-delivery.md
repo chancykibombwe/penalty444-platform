@@ -250,17 +250,24 @@ timeouts, do not retry indefinitely, keep redirects **disabled**, and never
 download/execute remote scripts.
 
 **Bounded readiness polling.** A brand-new deployment's generated hostname can
-take ~15 s to resolve, so verification runs under **one shared, bounded 90-second
-deadline** (not a fresh window per file), polling roughly every **2 seconds**.
-`index.html` is the propagation gate; the remaining files are then verified under
-the same shared deadline. **Transient** conditions are retried until the deadline:
-network failures with **no** HTTP response (DNS/name-resolution, connect, timeout,
-transport) and transient HTTP statuses **404, 408, 425, 429, 500, 502, 503, 504**.
-Each retry prints a concise wait message with the attempt number and last
-condition. If the shared deadline expires, the wrapper fails with the deployment
-URL, last path, attempt count, and final condition, notes that the deployment may
-exist and the workspace is preserved, and **never** creates another deployment.
-Only HTTP readiness requests retry — deployment creation is never retried.
+take ~15 s to resolve, so verification runs under **one shared, monotonic,
+strictly-bounded 90-second window** (a single `System.Diagnostics.Stopwatch`, not
+wall-clock, covering **all** hosted verification — never a fresh window per file),
+polling roughly every **2 seconds**. `index.html` is the propagation gate; the
+remaining files are verified under the **same** window. The window is enforced
+strictly: **every request timeout is clamped to the remaining shared time**
+(`min(20 s, remaining)`), the elapsed clock is **re-checked after every request**
+so a **late HTTP 200 arriving after the window is not accepted**, and the poll
+**sleep is clamped to the remaining time** (`min(2 s, remaining)`) so no wait
+overshoots the window. **Transient** conditions are retried until the window
+elapses: network failures with **no** HTTP response (DNS/name-resolution, connect,
+timeout, transport) and transient HTTP statuses **404, 408, 425, 429, 500, 502,
+503, 504**. Each retry prints a concise wait message with the attempt number and
+last condition. On expiry a **single centralized deadline-failure helper** reports
+the deployment URL, last path, attempt count, final condition, and the configured
+total window, notes the deployment may exist and the workspace is preserved, and
+**never** deletes/redeploys/promotes/aliases. Only HTTP readiness requests retry —
+deployment creation is never automatically retried.
 
 **Fail-fast (non-transient).** The wrapper fails **immediately**, without
 retrying, for: a `301/302/307/308` redirect to Vercel Authentication

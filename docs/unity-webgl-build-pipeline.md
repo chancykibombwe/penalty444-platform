@@ -262,11 +262,15 @@ unchanged). After disabling that protection, a corrected-head rerun deployed and
 (`…-42qkvl348-…vercel.app`, `dpl_4yEsG8YSFzdg9sFyuLAxMuqLzxyV`, exit 0) — proving
 the artifact path and headers work — but a preceding deployment had failed
 verification **only** because its generated hostname took ~15 s to resolve. The
-wrapper is now hardened with a **shared, bounded 90-second readiness poll**
-(~2 s interval) tolerating transient DNS/connection/timeout failures and transient
-HTTP statuses (404/408/425/429/500/502/503/504) while failing fast on
-auth/redirect/other-4xx; **deployment creation is never auto-retried**. A rerun to
-confirm the polling fix is still required. **B6C remains YELLOW.**
+wrapper is now hardened with a **shared, monotonic, strictly-bounded 90-second
+readiness poll** (single `Stopwatch`, ~2 s interval) covering all hosted
+verification: every request timeout is clamped to the remaining shared time, the
+clock is re-checked after each request (a **late 200 past the window is
+rejected**), and the poll sleep is clamped to remaining time. It tolerates
+transient DNS/connection/timeout failures and transient HTTP statuses
+(404/408/425/429/500/502/503/504) while failing fast on auth/redirect/other-4xx;
+**deployment creation is never auto-retried**. A rerun to confirm the polling fix
+is still required. **B6C remains YELLOW.**
 
 The deployment URL is resolved by a dedicated parser supporting the Vercel CLI
 **56.2.0** structured-JSON stdout (immutable origin taken only from

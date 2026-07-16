@@ -485,13 +485,14 @@ $artifactBaseUrl = "$deploymentUrl/releases/$ReleaseVersion"
 # Status 0 + NetworkError so the caller can treat it as a transient propagation
 # condition rather than crashing; any actual HTTP response (incl. 3xx/4xx/5xx) is
 # returned with its status.
-function Invoke-HttpProbe([string] $url, [int] $timeoutSec = 20) {
+function Invoke-HttpProbe([string] $url, [int] $timeoutMs) {
+    if ($timeoutMs -lt 1) { $timeoutMs = 1 }   # HttpWebRequest requires a positive timeout.
     $req = [System.Net.HttpWebRequest]::Create($url)
     $req.Method = "GET"
     $req.AllowAutoRedirect = $false
     $req.AutomaticDecompression = [System.Net.DecompressionMethods]::None
-    $req.Timeout = $timeoutSec * 1000
-    $req.ReadWriteTimeout = $timeoutSec * 1000
+    $req.Timeout = $timeoutMs
+    $req.ReadWriteTimeout = $timeoutMs
     $resp = $null
     try {
         $resp = $req.GetResponse()
@@ -510,22 +511,53 @@ function Invoke-HttpProbe([string] $url, [int] $timeoutSec = 20) {
 }
 
 # Transient conditions that can occur while a brand-new deployment's hostname is
-# still propagating (DNS/readiness). These are retried until the SHARED deadline.
+# still propagating (DNS/readiness). These are retried until the SHARED window.
 $TransientHttpStatuses = @(404, 408, 425, 429, 500, 502, 503, 504)
-$PollIntervalSec = 2
+# ONE monotonic verification window shared by every artifact (see §9). The clock
+# is started once, immediately before verification begins.
+$VerifyWindowMs = 90000
 
-# Poll one artifact path until HTTP 200 or the SHARED $VerifyDeadline. Transient
-# network failures (Status 0) and transient HTTP statuses are retried (~2s);
-# non-transient conditions (SSO/auth redirects, other redirects, 400/401/403,
-# other non-transient 4xx, unexpected statuses) FAIL FAST. Never retries the
-# deployment itself — only HTTP readiness requests. Returns the 200 probe.
+# Centralized deadline-expiry failure so every expiry path reports identically.
+# Never deletes, redeploys, promotes, aliases, or alters the deployment.
+function Invoke-DeadlineFailure([string] $relPath, [int] $attempt, [string] $lastCondition) {
+    Fail (
+        "Artifact readiness/verification window ($([int]($VerifyWindowMs / 1000))s total) expired before " +
+        "$relPath was reachable.`n" +
+        "  - Deployment URL : $deploymentUrl`n" +
+        "  - Last path      : $relPath`n" +
+        "  - Attempts       : $attempt`n" +
+        "  - Last condition : $lastCondition`n" +
+        "  - The deployment itself may exist; the workspace is preserved for inspection.`n" +
+        "  - This script never creates another deployment — inspect the preserved workspace and " +
+        "the deployment before rerunning."
+    )
+}
+
+# Poll one artifact path until HTTP 200 or the SHARED monotonic window elapses.
+# Every request timeout is clamped to the remaining shared time; the clock is
+# re-checked after each request (a late 200 past the window is NOT accepted); the
+# poll sleep is clamped to remaining time. Transient network failures (Status 0)
+# and transient HTTP statuses are retried; non-transient conditions FAIL FAST.
+# Never retries the deployment itself — only HTTP readiness requests.
 function Wait-For200([string] $relPath) {
     $url = "$artifactBaseUrl/$relPath"
     $attempt = 0
     $lastCondition = "(none)"
     while ($true) {
+        # Do not START a request after the shared window has expired.
+        $remainingMs = $VerifyWindowMs - $VerifyClock.ElapsedMilliseconds
+        if ($remainingMs -le 0) { Invoke-DeadlineFailure $relPath $attempt $lastCondition }
+
         $attempt++
-        $p = Invoke-HttpProbe $url
+        $timeoutMs = [Math]::Min(20000, $remainingMs)   # cap per-request at 20s, clamp to remaining
+        $p = Invoke-HttpProbe $url $timeoutMs
+
+        # Re-check the shared clock AFTER the request. Never accept a late HTTP 200
+        # (or anything else) once the total window has elapsed.
+        if (($VerifyWindowMs - $VerifyClock.ElapsedMilliseconds) -le 0) {
+            $cond = if ($p.Status -eq 0) { "network: $($p.NetworkError)" } else { "HTTP $($p.Status)" }
+            Invoke-DeadlineFailure $relPath $attempt $cond
+        }
 
         if ($p.Status -eq 200) { return $p }
 
@@ -566,20 +598,13 @@ function Wait-For200([string] $relPath) {
             Fail "Unexpected HTTP $($p.Status) for ${relPath}."
         }
 
-        if ((Get-Date) -ge $VerifyDeadline) {
-            Fail (
-                "Artifact readiness/verification deadline (90s) expired before $relPath was reachable.`n" +
-                "  - Deployment URL : $deploymentUrl`n" +
-                "  - Last path      : $relPath`n" +
-                "  - Attempts       : $attempt`n" +
-                "  - Last condition : $lastCondition`n" +
-                "  - The deployment itself may exist; the workspace is preserved for inspection.`n" +
-                "  - This script never creates another deployment — inspect the preserved workspace and " +
-                "the deployment before rerunning."
-            )
-        }
+        # Clamp the poll sleep to the remaining shared time; never overshoot.
+        $remainingMs = $VerifyWindowMs - $VerifyClock.ElapsedMilliseconds
+        if ($remainingMs -le 0) { Invoke-DeadlineFailure $relPath $attempt $lastCondition }
+        $sleepMs = [Math]::Min(2000, $remainingMs)
+        if ($sleepMs -lt 1) { $sleepMs = 1 }
         Write-Host "  waiting for $relPath (attempt $attempt, last: $lastCondition)…" -ForegroundColor DarkGray
-        Start-Sleep -Seconds $PollIntervalSec
+        Start-Sleep -Milliseconds $sleepMs
     }
 }
 
@@ -605,12 +630,17 @@ $dataPath      = Find-ManifestPath '^Build/[^/]+\.data\.gz$'
 $wasmPath      = Find-ManifestPath '^Build/[^/]+\.wasm\.gz$'
 $templatePath1 = Find-ManifestPath '^TemplateData/.+'
 
-# ONE shared, bounded readiness/verification deadline (90s total) — not a fresh
-# 90s window per file. Tolerates immediate post-deploy DNS/readiness propagation
-# (the generated hostname can take ~15s to resolve) without ever redeploying.
-$VerifyDeadline = (Get-Date).AddSeconds(90)
+# ONE shared, monotonic, bounded readiness/verification window ($VerifyWindowMs
+# total) — not a fresh window per file. Started once, here, immediately before
+# verification. A monotonic Stopwatch (not wall-clock) so the total window is
+# strictly enforced: every request timeout is clamped to the remaining time, the
+# clock is re-checked after each request (a late 200 is rejected), and the poll
+# sleep is clamped to the remaining time. Tolerates immediate post-deploy
+# DNS/readiness propagation (the hostname can take ~15s to resolve) without ever
+# redeploying.
+$VerifyClock = [System.Diagnostics.Stopwatch]::StartNew()
 
-Write-Host "Verifying hosted artifact over HTTP (shared 90s readiness window, ~2s polling)..."
+Write-Host "Verifying hosted artifact over HTTP (shared $([int]($VerifyWindowMs / 1000))s monotonic window, ~2s polling)..."
 # index.html first: this is the propagation gate for the whole deployment.
 $indexProbe     = Wait-For200 "index.html"
 $null           = Wait-For200 "manifest.json"
