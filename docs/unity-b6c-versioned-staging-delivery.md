@@ -416,6 +416,34 @@ A corrected-head rerun was executed after disabling protection **only** on
   YELLOW**; production remains **NO-GO**; **B6D remains unauthorized**; no runtime
   gate is marked final PASS.
 
+### 14.1b Windows PowerShell 5.1 source-encoding fix (ASCII-only)
+
+A pristine checkout of committed head `453eb9ac` **failed** the Windows
+PowerShell **5.1** parser (e.g. `Line 531: Unexpected token 'inspect'` /
+`Missing closing ')'`, with cascading missing-brace errors). The cause was
+**non-ASCII punctuation inside executable strings** — Unicode em dashes (`U+2014`)
+in messages such as `"…never creates another deployment — inspect…"` and
+`"…(bad request / auth / permission) — not a propagation delay."` — which PS 5.1
+mis-tokenizes when the file has no UTF-8 BOM. Replacing those em dashes with ASCII
+hyphens locally allowed the parser to pass.
+
+To remove the dependence on UTF-8-without-BOM handling entirely, the **whole
+wrapper is now ASCII-only** (every character is `U+0000`–`U+007F`): em/en dashes
+`-> -`, ellipsis `-> ...`, section sign `-> "section"`, and the decorative
+box-drawing comment separators `-> ASCII hyphen separators`. This is a
+**source-encoding-only** change — the substitution was verified to reproduce the
+prior file byte-for-byte apart from those characters, so polling logic,
+transient-status handling, deployment parsing, and MIME/security checks are
+**unchanged**. A repo-local check asserts no character exceeds `U+007F`.
+
+**Important:** the earlier ValidateOnly "exit 0" (§14.1a) was produced with a
+**locally modified** wrapper temporarily hidden via `git update-index
+--skip-worktree`, so it does **not** count as pristine committed-head validation.
+A clean Windows **parser + ValidateOnly + final deployment** rerun against the
+ASCII-only committed head is **still required**. The monotonic-window
+implementation has **not** yet passed a Windows runtime. **B6C remains YELLOW**;
+production remains **NO-GO**; **B6D remains unauthorized**.
+
 ### 14.2 Configuration prerequisite (anonymous artifact access)
 
 The dedicated `penalty444-unity-staging` artifact project's **preview**

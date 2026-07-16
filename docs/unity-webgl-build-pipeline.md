@@ -269,8 +269,16 @@ clock is re-checked after each request (a **late 200 past the window is
 rejected**), and the poll sleep is clamped to remaining time. It tolerates
 transient DNS/connection/timeout failures and transient HTTP statuses
 (404/408/425/429/500/502/503/504) while failing fast on auth/redirect/other-4xx;
-**deployment creation is never auto-retried**. A rerun to confirm the polling fix
-is still required. **B6C remains YELLOW.**
+**deployment creation is never auto-retried**.
+
+A pristine checkout of head `453eb9ac` then **failed the Windows PowerShell 5.1
+parser** because of non-ASCII em dashes inside executable strings (PS 5.1
+mis-tokenizes them without a UTF-8 BOM); the wrapper is now **ASCII-only**
+(source-encoding change only, verified byte-for-byte identical apart from the
+substituted punctuation). The earlier ValidateOnly "exit 0" used a locally
+modified file (skip-worktree) and is **not** accepted as pristine committed-head
+proof — a clean Windows parser + ValidateOnly + final deployment rerun is still
+required. **B6C remains YELLOW.**
 
 The deployment URL is resolved by a dedicated parser supporting the Vercel CLI
 **56.2.0** structured-JSON stdout (immutable origin taken only from

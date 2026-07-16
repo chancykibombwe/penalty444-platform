@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  B6C — local Unity WebGL STAGING artifact deployment wrapper (Windows PowerShell).
+  B6C - local Unity WebGL STAGING artifact deployment wrapper (Windows PowerShell).
 
 .DESCRIPTION
   LOCAL TOOLING ONLY. Independently re-verifies one existing, locally-generated
@@ -47,13 +47,13 @@ function Fail([string] $message) {
     exit 1
 }
 
-# ── Single reviewed native-process helper (Windows PowerShell 5.1 safe) ────────
-# Runs a native command (git, vercel.cmd, …) capturing stdout, stderr and the
+# -- Single reviewed native-process helper (Windows PowerShell 5.1 safe) --------
+# Runs a native command (git, vercel.cmd, ...) capturing stdout, stderr and the
 # real exit code SEPARATELY. Under Set-StrictMode + ErrorActionPreference=Stop,
 # PS 5.1 turns harmless native stderr (e.g. Git CRLF/line-ending warnings, Vercel
 # progress) into a terminating NativeCommandError. Redirecting stderr to a temp
 # file with ErrorActionPreference temporarily relaxed avoids that WITHOUT hiding
-# genuine failures — callers still branch on ExitCode. stderr text is never mixed
+# genuine failures - callers still branch on ExitCode. stderr text is never mixed
 # into the parsed stdout lines. No shell string evaluation; args pass through the
 # call operator so quoting (incl. paths with spaces) is handled by PowerShell.
 function Invoke-Native {
@@ -92,13 +92,13 @@ function Test-PSProp($obj, [string] $name) {
     return ($null -ne $obj.PSObject.Properties[$name])
 }
 
-# ── Dedicated Vercel deployment-URL parser ────────────────────────────────────
+# -- Dedicated Vercel deployment-URL parser ------------------------------------
 # Resolves the immutable preview deployment origin from the captured `vercel
 # deploy` stdout, supporting exactly two strict contracts and nothing else:
 #   1. The structured JSON form (Vercel CLI 56.2.0): the URL comes ONLY from
-#      deployment.url, gated on status=ok, deployment.id (dpl_…), readyState=READY,
+#      deployment.url, gated on status=ok, deployment.id (dpl_...), readyState=READY,
 #      and target being null/empty (preview / non-prod). inspectorUrl,
-#      deploymentApiUrl, message and next[] are ignored — never a source of a URL.
+#      deploymentApiUrl, message and next[] are ignored - never a source of a URL.
 #   2. The documented plain-URL form: exactly one non-empty stdout line that IS a
 #      bare https://*.vercel.app URL.
 # It never scans prose for embedded URLs and never reads stderr for a URL. The
@@ -117,7 +117,7 @@ function Resolve-VercelDeploymentUrl {
 
     $candidate = $null
     if ($trimmed.StartsWith("{")) {
-        # ── Strict JSON form. No regex/plain fallback if JSON parsing fails. ──
+        # -- Strict JSON form. No regex/plain fallback if JSON parsing fails. --
         $obj = $null
         try {
             $obj = $trimmed | ConvertFrom-Json
@@ -144,7 +144,7 @@ function Resolve-VercelDeploymentUrl {
         }
         $candidate = [string]$dep.url
     } else {
-        # ── Strict plain-URL form: exactly one bare https://*.vercel.app line. ──
+        # -- Strict plain-URL form: exactly one bare https://*.vercel.app line. --
         $lines = @($StdoutLines | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
         if ($lines.Count -ne 1) {
             Fail "Expected exactly one non-empty plain stdout line with the deployment URL, found $($lines.Count)."
@@ -155,7 +155,7 @@ function Resolve-VercelDeploymentUrl {
         $candidate = $lines[0]
     }
 
-    # ── Retained System.Uri validation for the single candidate. ──
+    # -- Retained System.Uri validation for the single candidate. --
     $u = $null
     if (-not [System.Uri]::TryCreate($candidate, [System.UriKind]::Absolute, [ref]$u)) {
         Fail "Vercel deployment URL is not a valid absolute URL: $candidate"
@@ -195,7 +195,7 @@ function Get-Sha256Lower([string] $path) {
     return (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
-# ── Locate repo root from the script location (scripts/unity/ -> repo root) ────
+# -- Locate repo root from the script location (scripts/unity/ -> repo root) ----
 $RepoRoot        = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $ReleaseRoot     = Join-Path $RepoRoot "apps\web\public\unity\penalty444\releases"
 $ReleaseDir      = Join-Path $ReleaseRoot $ReleaseVersion
@@ -203,7 +203,7 @@ $TemplatePath    = Join-Path $RepoRoot "scripts\unity\vercel\penalty444-webgl-st
 $StagingRootRel  = "audit-artifacts\unity-staging"
 $StagingRoot     = Join-Path $RepoRoot $StagingRootRel
 
-# ── Parameter-shape validation ────────────────────────────────────────────────
+# -- Parameter-shape validation ------------------------------------------------
 if (-not (Test-ReleaseVersion $ReleaseVersion)) {
     Fail "Invalid -ReleaseVersion '$ReleaseVersion'. Must match $VersionPattern and contain no '..'."
 }
@@ -214,7 +214,7 @@ if (-not [string]::IsNullOrEmpty($VercelTeam) -and ($VercelTeam -notmatch $Proje
     Fail "Invalid -VercelTeam '$VercelTeam'. Must match $ProjectPattern or be empty."
 }
 
-# ── Committed Vercel template must exist and be valid JSON ─────────────────────
+# -- Committed Vercel template must exist and be valid JSON ---------------------
 if (-not (Test-Path -LiteralPath $TemplatePath)) { Fail "Vercel template not found: $TemplatePath" }
 try {
     $null = Get-Content -LiteralPath $TemplatePath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -222,7 +222,7 @@ try {
     Fail "Vercel template is not valid JSON: $TemplatePath"
 }
 
-# ── Tracked content hygiene (B6B content-clean logic; never alters Git state) ──
+# -- Tracked content hygiene (B6B content-clean logic; never alters Git state) --
 function Invoke-Git([string[]] $GitArgs, [string] $what) {
     $r = Invoke-Native "git" (@("-C", $RepoRoot) + $GitArgs)
     # Non-zero exit is a real failure; harmless stderr (CRLF/line-ending warnings)
@@ -249,7 +249,7 @@ function Get-TrackedDirty {
     return $union
 }
 
-# ── Independent source-release verification ───────────────────────────────────
+# -- Independent source-release verification -----------------------------------
 # Returns the parsed manifest object. Verifies manifest integrity, source-commit
 # existence, every listed file's bytes+SHA-256, path safety, artifact categories,
 # and that no undeclared extra file is present. Never modifies the release.
@@ -357,7 +357,7 @@ function Test-SourceRelease([string] $dir, [string] $expectedVersion) {
     return $m
 }
 
-# ── Preflight (always) ────────────────────────────────────────────────────────
+# -- Preflight (always) --------------------------------------------------------
 $dirty = @(Get-TrackedDirty)
 if ($dirty.Count -gt 0) {
     Write-Host "Tracked working tree has content/index changes; commit/stash before deploying:" -ForegroundColor Yellow
@@ -399,7 +399,7 @@ if ($ValidateOnly) {
     exit 0
 }
 
-# ── Real staging deployment ───────────────────────────────────────────────────
+# -- Real staging deployment ---------------------------------------------------
 if (-not $vercelCmd) { Fail "Vercel CLI ('vercel') not found on PATH. Install it before deploying." }
 $VercelExe = $vercelCmd.Source
 
@@ -476,7 +476,7 @@ if ($deploy.ExitCode -ne 0) {
 $deploymentUrl = Resolve-VercelDeploymentUrl -StdoutLines $deploy.StdOut -ExpectedProject $VercelProject
 Write-Host "Deployment URL: $deploymentUrl" -ForegroundColor Green
 
-# ── Independent post-deployment HTTP verification ─────────────────────────────
+# -- Independent post-deployment HTTP verification -----------------------------
 $artifactBaseUrl = "$deploymentUrl/releases/$ReleaseVersion"
 
 # Raw header probe (no auto-redirect, no auto-decompression) so Content-Encoding
@@ -513,7 +513,7 @@ function Invoke-HttpProbe([string] $url, [int] $timeoutMs) {
 # Transient conditions that can occur while a brand-new deployment's hostname is
 # still propagating (DNS/readiness). These are retried until the SHARED window.
 $TransientHttpStatuses = @(404, 408, 425, 429, 500, 502, 503, 504)
-# ONE monotonic verification window shared by every artifact (see §9). The clock
+# ONE monotonic verification window shared by every artifact (see section 9). The clock
 # is started once, immediately before verification begins.
 $VerifyWindowMs = 90000
 
@@ -528,7 +528,7 @@ function Invoke-DeadlineFailure([string] $relPath, [int] $attempt, [string] $las
         "  - Attempts       : $attempt`n" +
         "  - Last condition : $lastCondition`n" +
         "  - The deployment itself may exist; the workspace is preserved for inspection.`n" +
-        "  - This script never creates another deployment — inspect the preserved workspace and " +
+        "  - This script never creates another deployment - inspect the preserved workspace and " +
         "the deployment before rerunning."
     )
 }
@@ -538,7 +538,7 @@ function Invoke-DeadlineFailure([string] $relPath, [int] $attempt, [string] $las
 # re-checked after each request (a late 200 past the window is NOT accepted); the
 # poll sleep is clamped to remaining time. Transient network failures (Status 0)
 # and transient HTTP statuses are retried; non-transient conditions FAIL FAST.
-# Never retries the deployment itself — only HTTP readiness requests.
+# Never retries the deployment itself - only HTTP readiness requests.
 function Wait-For200([string] $relPath) {
     $url = "$artifactBaseUrl/$relPath"
     $attempt = 0
@@ -561,7 +561,7 @@ function Wait-For200([string] $relPath) {
 
         if ($p.Status -eq 200) { return $p }
 
-        # ── Fail-fast: redirect to Vercel Authentication / SSO (protection). ──
+        # -- Fail-fast: redirect to Vercel Authentication / SSO (protection). --
         if (@(301, 302, 307, 308) -contains $p.Status) {
             $loc = $p.Headers["Location"]
             if ($loc -and ($loc -match '(?i)sso-api|/sso|vercel\.com/sso|vercel\.com/login|authenticate')) {
@@ -580,15 +580,15 @@ function Wait-For200([string] $relPath) {
             }
             Fail "Unexpected HTTP $($p.Status) redirect for ${relPath} -> $loc"
         }
-        # ── Fail-fast: auth/permission/bad-request and other non-transient 4xx. ──
+        # -- Fail-fast: auth/permission/bad-request and other non-transient 4xx. --
         if (@(400, 401, 403) -contains $p.Status) {
-            Fail "Non-transient HTTP $($p.Status) for ${relPath} (bad request / auth / permission) — not a propagation delay."
+            Fail "Non-transient HTTP $($p.Status) for ${relPath} (bad request / auth / permission) - not a propagation delay."
         }
         if ($p.Status -ge 400 -and $p.Status -lt 500 -and (-not ($TransientHttpStatuses -contains $p.Status))) {
             Fail "Non-transient HTTP $($p.Status) for ${relPath}."
         }
 
-        # ── Transient: network failure (no response) or a transient HTTP status. ──
+        # -- Transient: network failure (no response) or a transient HTTP status. --
         if ($p.Status -eq 0) {
             $lastCondition = "network: $($p.NetworkError)"
         } elseif ($TransientHttpStatuses -contains $p.Status) {
@@ -603,7 +603,7 @@ function Wait-For200([string] $relPath) {
         if ($remainingMs -le 0) { Invoke-DeadlineFailure $relPath $attempt $lastCondition }
         $sleepMs = [Math]::Min(2000, $remainingMs)
         if ($sleepMs -lt 1) { $sleepMs = 1 }
-        Write-Host "  waiting for $relPath (attempt $attempt, last: $lastCondition)…" -ForegroundColor DarkGray
+        Write-Host "  waiting for $relPath (attempt $attempt, last: $lastCondition)..." -ForegroundColor DarkGray
         Start-Sleep -Milliseconds $sleepMs
     }
 }
@@ -631,7 +631,7 @@ $wasmPath      = Find-ManifestPath '^Build/[^/]+\.wasm\.gz$'
 $templatePath1 = Find-ManifestPath '^TemplateData/.+'
 
 # ONE shared, monotonic, bounded readiness/verification window ($VerifyWindowMs
-# total) — not a fresh window per file. Started once, here, immediately before
+# total) - not a fresh window per file. Started once, here, immediately before
 # verification. A monotonic Stopwatch (not wall-clock) so the total window is
 # strictly enforced: every request timeout is clamped to the remaining time, the
 # clock is re-checked after each request (a late 200 is rejected), and the poll
@@ -652,7 +652,7 @@ $wasmProbe      = Wait-For200 $wasmPath
 $null           = Wait-For200 $templatePath1
 
 # gzip payload headers (always gzip in B6C). Header mismatches after a 200 fail
-# immediately — they are not a propagation condition.
+# immediately - they are not a propagation condition.
 Require-Header $frameworkProbe "Content-Type" "application/javascript" $frameworkPath
 Require-Header $frameworkProbe "Content-Encoding" "gzip" $frameworkPath
 Require-Header $wasmProbe "Content-Type" "application/wasm" $wasmPath
@@ -661,14 +661,14 @@ Require-Header $dataProbe "Content-Type" "application/octet-stream" $dataPath
 Require-Header $dataProbe "Content-Encoding" "gzip" $dataPath
 
 # Security/immutability headers on the general release path (reuse the index probe
-# already confirmed 200 — no extra fetch, no race).
+# already confirmed 200 - no extra fetch, no race).
 Require-Header $indexProbe "X-Content-Type-Options" "nosniff" "index.html"
 Require-Header $indexProbe "X-Frame-Options" "SAMEORIGIN" "index.html"
 Require-Header $indexProbe "Cache-Control" "immutable" "index.html"
 
 Write-Host "HTTP verification passed." -ForegroundColor Green
 
-# ── Local deployment record (inside the ignored workspace only) ───────────────
+# -- Local deployment record (inside the ignored workspace only) ---------------
 $record = [ordered]@{
     schemaVersion          = 1
     game                   = $Game
