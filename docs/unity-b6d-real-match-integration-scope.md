@@ -133,12 +133,30 @@ the repo.** The "Proposed Unity message" column is **[Proposed B6D design]**.
   `packages/shared/src/types.ts` contains an **older** `RoundResult`/`MatchResult`
   that does **not** match the live events (its `RoundResult.result` is
   `"GOAL" | "SAVE"` with **no `DRAW`**) — do not use it as the B6D contract.
-- The authoritative round result event **`match:result`** carries **no scores /
-  no phase / no maxRounds** (`apps/realtime-server/src/index.ts:1614-1623`); the
-  client must **join** it with the latest **`match:update`**
-  (`index.ts:720-739`) to build a full presentation payload. This join already
-  exists at `MatchRoomPanel.tsx:1470-1482` (using `liveScoresRef`,
-  `liveMaxRoundsRef`, `livePhaseRef`).
+- **Score atomicity — the round result is NOT self-scoring [Current verified
+  behavior].** The server increments `room.scores[pointWinnerId]`
+  (`apps/realtime-server/src/index.ts:1598`) **before** it emits `match:result`
+  (`:1624`), and **`match:result` carries no scores / no phase / no maxRounds**
+  (`index.ts:1614-1623`). The authoritative post-result scores arrive
+  **separately** on a later `match:update` (`index.ts:720-739`). The existing
+  Unity shadow copies `liveScoresRef.current` into its `round_result.scores`
+  (`MatchRoomPanel.tsx:1470-1482`), and the source there **explicitly warns** that
+  this snapshot "may be pre-result … no local score calc … Unity ignores scores".
+  Therefore:
+  - **The current shadow score field is NOT safe for a player-facing Unity
+    scoreboard** — at the moment `round_result` is built, `liveScoresRef` may
+    still hold the *pre-result* scores (the post-result `match:update` may not
+    have arrived yet).
+  - **B6D must never calculate the new score locally** from the result or lane
+    data — the server is the only place a score changes.
+  - **A `round_result` presentation must not claim a post-result score** unless a
+    **correlated authoritative state update** (a `match:update` / `match:end`
+    snapshot for that round) has actually been received.
+  - **The exact score-correlation rule is a B6D1 contract decision** (see §6, §7),
+    *not* something to be inferred from `match:result` alone. Merely "joining
+    `match:result` with the latest `match:update`" is **not** a sufficient
+    authoritative-score strategy, because the "latest" update may predate the
+    increment.
 - A **field-name mismatch** already exists and must be handled by the adapter:
   server sends `kickerPick` / `keeperPick`; the Unity `RoundResultPayload` uses
   `kickerLane` / `keeperLane` (mapped at `MatchRoomPanel.tsx:1471-1472`).
@@ -163,8 +181,8 @@ are *Not yet defined* and must be resolved in B6D1 review.
 | **kicker lane locked** — server `picksLocked.KICKER` on `match:update` (`index.ts`) | `picksLocked`, `opponentPicked` (`:541`) | *Not yet defined* (proposed `pick_locked` presentation-only, **no lane value revealed pre-reveal**) | role only, never the lane | the lane value, the identity of the pick | one per role per round | React lock indicator |
 | **keeper lane locked** — `picksLocked.KEEPER` on `match:update` | as above | as above | role only | lane value | one per role per round | React lock indicator |
 | **reveal beginning** — client-timed: `RevealStage` → `REVEALING` (`matchPresentation.ts:17`; `MatchRoomPanel` reveal logic) | `revealStage`, `revealStageRef` (`:505`, `:628`) | `staging_begin` is currently reused for reveal staging in shadow mode; proposed dedicated `reveal_begin` | `round` | all | idempotent per (matchInstanceId, round) | React reveal animation |
-| **authoritative round result GOAL/SAVE/DRAW** — `match:result` `{ round, kickerPick, keeperPick, result, statusMessage }` (`index.ts:1614-1623`) joined with `match:update` scores | built at `MatchRoomPanel.tsx:1470-1482` | `round_result` `RoundResultPayload` `{ kickerLane, keeperLane, result, scores, round, maxRounds, phase }` (`MatchRenderer3D.tsx:58-66`) | all seven | **result, scores, lanes** must come from server, never Unity | exactly once per (matchInstanceId, round); drop replays | React result overlay (`MatchResultOverlay`) |
-| **current authoritative scores** — `match:update.scores` / `match:end.scores` (`index.ts:720`, `:1347`) | `scores`, `displayScores`, `liveScoresRef` (`:493-494`) | embedded in `round_result.scores` / `match_end` | `scores: Record<playerId, number>` | scores | last-write-wins by sequence | React scoreboard |
+| **authoritative round result GOAL/SAVE/DRAW** — `match:result` `{ round, kickerPick, keeperPick, result, statusMessage }` (`index.ts:1614-1623`) | built at `MatchRoomPanel.tsx:1470-1482` | **Proposed split (§6):** immediate `round_result` `{ round, kickerLane, keeperLane, result, statusMessage? }` — **no scores** (drives the shot animation only) | round, lanes, result | **result, lanes** from server, never Unity; **no score field here** | exactly once per (matchInstanceId, round); drop replays | React result overlay (`MatchResultOverlay`) |
+| **current authoritative scores / phase** — `match:update.scores`/`phase`/`maxRounds` (`index.ts:720-739`), `match:end.scores` (`:1347`), `match:rejoinState` (`rooms.ts:464-484`) | `scores`, `displayScores`, `liveScoresRef` (`:493-494`) | **Proposed `match_state_sync` (§6)** `{ scores, round, maxRounds, phase, suddenDeathRound? }` — built **only** from an authoritative snapshot; drives the scoreboard/phase | `scores: Record<playerId,number>`, round, maxRounds, phase | scores/phase from server, never Unity; **React never infers a score increase** | last-write-wins by sequence per matchInstanceId; idempotent | React scoreboard |
 | **normal phase** — `phase: "NORMAL"` on `match:update`/`match:status` | `phase` (`:499`) | `phase` field on payloads | `phase` | phase | idempotent | React |
 | **sudden death phase** — `phase: "SUDDEN_DEATH"`, `match:status` sudden-death entry (`index.ts:1760`), `suddenDeathRound` | `phase`, `suddenDeathRound` (`:499-500`) | proposed `phase_change` + `phase` on `round_result` | `phase`, `suddenDeathRound` | phase | one per transition | React sudden-death UI |
 | **timeout outcome** — pick timeout server-side (`PICK_TIMEOUT_MS = 10000`, `config.ts:15`); result still emitted as `match:result` | `timer`, `result` (`:531`, `:502`) | folded into `round_result` (server decides) | as round_result | result | once per round | React |
@@ -184,12 +202,24 @@ are *Not yet defined* and must be resolved in B6D1 review.
 (`matchActions.ts:69`), `match:abortEarly`, `match:forfeit`, `match:rematch`,
 `match:rematch:decline`, `room:create/join/cancel/leave`, `player:present/leave`.
 
-**Also emitted by server, currently NOT handled by `MatchRoomPanel`
-[Current verified behavior]:** `match:rematch:still-finalizing` `{}`
-(`rematch.ts:217`), `match:opponentReady`, `match:waitingForOpponent` (waiting is
-handled; opponentReady mapping to Unity is *Not yet defined*),
-`match:rematch:finalizing`. B6D1 must decide which of these need a Unity
-presentation and which are React-only.
+**Current event-handler reality [Current verified behavior]** (corrected):
+
+- **Handled by `MatchRoomPanel`** (in its `socket.on` set, `MatchRoomPanel.tsx:2113-2130`):
+  `match:waitingForOpponent`, `match:stagingBegin`, `match:cancelled` (plus
+  `match:update`, `match:result`, `match:status`, `match:interRound`, `match:end`,
+  `match:aborted`, `match:rejoinState`, `match:rematch:update/accepted/declined`,
+  `error:message`, `room:update`, `connect`, `disconnect`).
+- **NOT registered by `MatchRoomPanel`:** `match:opponentReady`,
+  `match:rematch:finalizing`, `match:rematch:still-finalizing`.
+- **`match:opponentReady` is handled by the global readiness notification**
+  (`MatchReadyNotification.tsx:119`, `socket.on("match:opponentReady", …)`), **not**
+  by `MatchRoomPanel`, and it has **no** part in the Unity mapping.
+
+The Unity presentation mapping for `match:opponentReady`,
+`match:rematch:finalizing`, and `match:rematch:still-finalizing` is **Not yet
+defined**; B6D1 must decide which (if any) need a Unity presentation and which are
+React-only. (`match:rematch:still-finalizing` is emitted at `rematch.ts:217` but
+is not consumed anywhere on the client today.)
 
 ---
 
@@ -205,7 +235,7 @@ versioned, presentation-only envelope, extending the existing
   "protocolVersion": 1,
   "matchInstanceId": "<stable per-match presentation id>",
   "sequence": 1,
-  "event": "<round_result | match_end | staging_begin | reset | ...>",
+  "event": "<round_result | match_state_sync | match_end | staging_begin | reset | ...>",
   "emittedAt": 1730000000000,
   "payload": { }
 }
@@ -226,14 +256,49 @@ Field definitions **[Proposed]**:
   last it applied for that `matchInstanceId`. *New in B6D.*
 - **`event`** — one of the allowlisted presentation events (§5). Unknown events
   are ignored (as `validateUnityMessage` already does for inbound).
-- **`payload`** — **sanitized** presentation data only. For `round_result`:
-  `{ kickerLane, keeperLane, result, scores, round, maxRounds, phase }` — all
-  server-derived.
+- **`payload`** — **sanitized** presentation data only (see the split below).
 - **`emittedAt`** — optional epoch-ms timestamp for ordering diagnostics and
   stale detection.
 - **Explicitly absent, always:** no auth token, no Supabase token/session, no
   Socket.IO credentials, no wallet/economy data, no raw player PII beyond the
   display fields already shown in the React UI.
+
+### 6.1 Split presentation contract — result vs. state [Proposed; requires B6D1 review]
+
+Because scores are **not** atomic with `match:result` (§5 score-atomicity), the
+result animation and the scoreboard must be **decoupled** into two messages. This
+is a **proposed design requiring B6D1 review**, not a decision already made.
+
+**A. Immediate authoritative result — `event: "round_result"`**
+
+- payload: `{ round, kickerLane, keeperLane, result, statusMessage? }`
+- **Does NOT require or carry scores.** It drives the **shot animation** only.
+- `result` and the lanes come only from the server `match:result`.
+
+**B. Authoritative state snapshot — `event: "match_state_sync"`**
+
+- payload: `{ scores, round, maxRounds, phase, suddenDeathRound? }` (include
+  `suddenDeathRound` when `phase === "SUDDEN_DEATH"`).
+- **May only be built from an authoritative snapshot** — a `match:update`
+  (`index.ts:720-739`), a `match:rejoinState` (`rooms.ts:464-484`), or a
+  `match:end` (`index.ts:1347`). It drives the **scoreboard / phase** presentation.
+
+Both messages still carry **`protocolVersion`, `matchInstanceId`, and
+`sequence`** (and optional `emittedAt`). Contract rules:
+
+- **`round_result` drives the shot animation; `match_state_sync` drives the
+  scoreboard/phase presentation.**
+- **Unity must tolerate either message arriving first, or being repeated** (e.g.
+  a `match_state_sync` may arrive before or after the `round_result` for the same
+  round, and either may be re-sent).
+- **`sequence` and `matchInstanceId` protections still apply** to both messages
+  (drop stale/duplicate/foreign-instance messages).
+- **React must never infer a score increase for Unity** — a score only ever
+  reaches Unity by copying an authoritative server snapshot into
+  `match_state_sync`; it is never computed from `result`/lane data.
+- **The exact correlation rule** (when a `round_result` may be accompanied by, or
+  must wait for, a `match_state_sync`; how Unity reconciles a result animation
+  with a not-yet-updated scoreboard) is a **B6D1 deliverable** (see §7).
 
 **Why match-instance + sequence protection is required [Proposed rationale]:**
 Because the same iframe/tab survives across rounds, rematches, reconnects, and
@@ -268,14 +333,32 @@ subphases. **No subphase is authorized by this brief; each requires its own
 review/gate.**
 
 ### B6D1 — Contract and adapter tests
-- Define the **TypeScript event contract** (§6) as a shared, typed module (today
-  none exists — see §5 *Not yet defined*).
-- Create a **sanitizing adapter** that maps real events (`match:result` joined
-  with `match:update`, `match:end`, etc.) → the Unity envelope, stripping any
-  non-presentation field.
-- **Unit-test** the mapping and **prohibited-field** rejection (no token/scores-
-  from-Unity/wallet).
-- **No Unity activation** — pure TypeScript + tests.
+- Define the **TypeScript event contract** (§6, incl. the §6.1 split
+  `round_result` / `match_state_sync`) as a shared, typed module (today none
+  exists — see §5 *Not yet defined*).
+- Create a **sanitizing adapter** that maps real events → the Unity envelope,
+  stripping any non-presentation field: `match:result` → `round_result` (no
+  scores); an authoritative `match:update` / `match:rejoinState` / `match:end`
+  snapshot → `match_state_sync`.
+- **Unit-test** the mapping and **prohibited-field** rejection. Required test
+  cases (at minimum):
+  - `match:result` with **no** following state update (result animation only; no
+    score change presented);
+  - a state update arriving **after** `round_result` (score applied only then);
+  - **duplicate result** (`round_result` not animated twice);
+  - **duplicate state snapshot** (`match_state_sync` idempotent);
+  - a **stale pre-result score snapshot** (older `sequence`/pre-increment scores
+    must not be presented as the post-result score);
+  - a **reconnect full-state snapshot** (`match:rejoinState`) resyncs cleanly;
+  - **terminal `match:end` scores** applied as final;
+  - **no local score computation** (adapter never derives a score from
+    result/lane data);
+  - **no Unity-supplied score accepted** (inbound stays `ready`/`animation_complete`/`error` only);
+  - **no wallet / auth / socket fields** ever appear in any payload.
+- **B6D1 must resolve the exact score-correlation rule** (§5 score-atomicity,
+  §6.1) **before B6D2 is authorized.**
+- **No Unity activation** — pure TypeScript + tests. **No server change in this
+  planning PR or in B6D1's scope beyond the client-side adapter/contract.**
 
 ### B6D2 — Preview shadow mode
 - The live match **continues using the React renderer**.
@@ -333,6 +416,7 @@ estimates.
 | 18 | **Build non-determinism** | Known | Med | B6B two-build compare | Documented as BLOCKED; immutable versioned artifacts | Redeploy known-good version | B6D5 |
 | 19 | **Local-only generated files committed** | Low | Med | `git ls-files` of ignored trees | `.gitignore` for WebGL + audit-artifacts; path-limited staging | Revert commit | Every gate |
 | 20 | **Wallet/economy info leaking into Unity payloads** | Low | Critical | Adapter unit tests; payload schema | Envelope forbids economy fields; sanitizer strips them | Revert | B6D1 |
+| 21 | **Unity displays a stale pre-result score** (scores not atomic with `match:result`; §5 score-atomicity) | Med | High | Compare Unity score with the authoritative `match:update` / `match:end` snapshot | Split `round_result` (no scores) from `match_state_sync` (authoritative snapshot only); React never infers a score increase | Unity flag off / React renderer only | B6D1 and B6D2 |
 
 ---
 
@@ -377,7 +461,8 @@ is always **decided by the server and unchanged by Unity**.
 | iframe delayed ready | Normal | Flush queued on `ready` | React continues meanwhile | Log of queue flush |
 | iframe never ready | Normal | none | `markUnavailable` → React (15s) | Timeout log |
 | Unity error after ready | Normal | stops | `markUnavailable` → React | `error` capture |
-| Normal GOAL | `match:result result=GOAL` | GOAL animation, scores updated | React overlay | Round capture |
+| Normal GOAL | `match:result result=GOAL` | GOAL animation; score updates only from `match_state_sync` | React overlay | Round capture |
+| **`match:result` arrives BEFORE the authoritative post-result state snapshot** | Server has incremented `room.scores` (`index.ts:1598`) but the post-result `match:update` has not yet reached the client | result animation **may run**; Unity scoreboard **does not invent or prematurely change** the score; a later `match_state_sync` applies the authoritative score | React unaffected (React uses its own state) | Ordered capture of `round_result` then `match_state_sync`; scoreboard value before/after |
 | Normal SAVE | `result=SAVE` | SAVE animation | React overlay | Round capture |
 | DRAW / both timeout | `result=DRAW` | DRAW animation | React overlay | Round capture |
 | Kicker timeout | Server resolves round (PICK_TIMEOUT) | result animation | React | Timeout log |
