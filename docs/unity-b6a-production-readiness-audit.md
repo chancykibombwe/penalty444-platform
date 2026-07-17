@@ -273,6 +273,35 @@ self-checksum, and independent post-build verification in the operator wrapper.
   remains a separate, future, independently-gated PR.
 - The overall B6 decision remains **NO-GO** (§1).
 
+### 12.2 B6C status update (PR #205) — staging tooling only
+
+B6C (`docs/unity-b6c-versioned-staging-delivery.md`) proposes local tooling to
+deploy one existing, verified B6B release to a **dedicated Vercel preview
+artifact project**, expose it **same-origin** through the main app via a
+validated server-only rewrite, verify it over HTTP, and drive it with a guarded
+**mock** staging route.
+
+- B6C addresses, **at staging scope only**, these B6A blockers: artifact
+  **publishing tooling**, an **immutable hosted URL**, **same-origin delivery**,
+  **staging deployment**, and **MIME/compression verification**. The
+  Windows/Vercel staging runtime has now **succeeded** (real preview deploy + HTTP
+  verification + same-origin main-app integration + route isolation), so the
+  **B6C staging-runtime gate is PASS** — see
+  `docs/unity-b6c-versioned-staging-delivery.md` §14.3.
+- **No production gate in §11 is marked PASS by B6C.** The staging-runtime PASS is
+  **staging scope only** and flips no production gate.
+- The following remain **blocked**: **production reproducibility** (the Unity
+  build was not proven bit-for-bit deterministic), performance, mobile/desktop
+  qualification, security approval, telemetry, production rollout controls, kill
+  switch, rollback rehearsal, asset licensing, and product/UX approval.
+- B6C uses **no production environment variables**, **no `--prod`**, **no
+  alias**, **no CI Unity build**, and commits **no** WebGL output; it does not
+  change the live renderer, gameplay, realtime authority, or the postMessage
+  contract.
+- **B6C does not authorize B6D.** B6D remains a separate, future,
+  independently-gated PR.
+- The overall B6 decision remains **NO-GO** (§1).
+
 ## 13. Explicit non-goals
 
 This audit does **not** authorize: production Unity activation; React renderer

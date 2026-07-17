@@ -223,6 +223,98 @@ decompressed-payload comparison for `.gz`), **not** as raw
 `path|bytes|sha256` manifest strings. The production **reproducibility gate
 remains BLOCKED**.
 
+## 6.12 B6C — provider-specific staging delivery candidate (PR #205)
+
+B6C adds a **staging-only** delivery candidate on top of the B6B local builder:
+it deploys **one** existing, locally-built and verified B6B release to a
+**separate Vercel preview artifact deployment** and serves it at a verified,
+immutable, versioned hosted path — consumed **same-origin** through the main app.
+
+- **Deploy tooling:** `scripts/unity/deploy-penalty444-webgl-staging.ps1`
+  (Windows PowerShell; `-ValidateOnly` runs full source verification without any
+  workspace/copy/link/deploy/network) + a committed Vercel header template
+  `scripts/unity/vercel/penalty444-webgl-staging.vercel.json`.
+- **Separate artifact project:** a pre-existing, manually-created Vercel project
+  (e.g. `penalty444-unity-staging`); the script never creates it and never uses
+  `--prod` or an alias.
+- **Immutable hosted path:** `/releases/<version>/index.html` on the artifact
+  origin, exposed same-origin via a validated server-only rewrite
+  (`UNITY_STAGING_ARTIFACT_ORIGIN`) at
+  `/unity/penalty444/staging/releases/<version>/index.html`.
+- **Gzip-only.** The committed template ships gzip rules only, so B6C accepts
+  gzip B6B releases only (`compressionMode == "gzip"`, exactly one of
+  `Build/*.{framework.js,data,wasm}.gz`); Brotli/identity releases are rejected.
+- **Staging-only enforced in code.** A non-empty `UNITY_STAGING_ARTIFACT_ORIGIN`
+  on `VERCEL_ENV === "production"` fails the web build, and `/dev/unity-staging`
+  is `notFound()` in production — the staging rewrite can never reach a Vercel
+  production deployment.
+- **No production delivery, no automatic publishing, no CI Unity build, no
+  production activation, no committed WebGL output.** The legacy B3 dry run and
+  the B6B local builder remain as documented above; B6C changes nothing about
+  them.
+
+The first Windows runtime built + deployed a preview successfully but **exited 1
+during HTTP verification** because the dedicated artifact preview was protected by
+Vercel Authentication (HTTP 302 → SSO); the dedicated `penalty444-unity-staging`
+preview must permit **anonymous** artifact access (main-app project protection
+unchanged). After disabling that protection, a corrected-head rerun deployed and
+**fully verified** an immutable preview
+(`…-42qkvl348-…vercel.app`, `dpl_4yEsG8YSFzdg9sFyuLAxMuqLzxyV`, exit 0) — proving
+the artifact path and headers work — but a preceding deployment had failed
+verification **only** because its generated hostname took ~15 s to resolve. The
+wrapper is now hardened with a **shared, monotonic, strictly-bounded 90-second
+readiness poll** (single `Stopwatch`, ~2 s interval) covering all hosted
+verification: every request timeout is clamped to the remaining shared time, the
+clock is re-checked after each request (a **late 200 past the window is
+rejected**), and the poll sleep is clamped to remaining time. It tolerates
+transient DNS/connection/timeout failures and transient HTTP statuses
+(404/408/425/429/500/502/503/504) while failing fast on auth/redirect/other-4xx;
+**deployment creation is never auto-retried**.
+
+A pristine checkout of head `453eb9ac` then **failed the Windows PowerShell 5.1
+parser** because of non-ASCII em dashes inside executable strings (PS 5.1
+mis-tokenizes them without a UTF-8 BOM); the wrapper is now **ASCII-only**
+(source-encoding change only, verified byte-for-byte identical apart from the
+substituted punctuation). *(A pristine head then failed the Windows PS 5.1 parser
+on those em dashes; resolved by making the wrapper ASCII-only — commit
+`5091328f`.)*
+
+A main-app preview runtime test then found that although `/dev/unity-staging`
+loaded the artifact same-origin and the mock events worked, **live Socket.IO
+connections appeared on the staging route** — the root `layout.tsx` globally
+mounted `ActiveMatchRecovery` / `MatchReadyNotification` whose mount-time
+`getSocket()` binds realtime + Supabase auth, breaking the route's
+no-Socket.IO/no-Supabase isolation. Fixed with a route-aware shell
+(`RouteAwareAppShell`) that mounts **no** global runtime/chrome on
+`/dev/unity-staging` (all other routes unchanged; no `disconnectSocket()`
+workaround, no socket/auth-policy change).
+
+**Final staging runtime — PASS.** The full Windows + Vercel operator runtime then
+completed successfully: the artifact preview
+(`dpl_CrN11NEwGrwDAaxUErrksMuXZSWj`, `…-phs4cj38n-…vercel.app`, `target=null`,
+exit 0) passed all MIME/gzip/SAMEORIGIN/nosniff/immutable checks with DNS
+propagation absorbed by the bounded poll (no second deployment); the corrected
+main-app preview (`dpl_7Z6QwuuQXQk7pUeY3jJRyu3WZipW`, READY) loaded the route
+same-origin, Unity reached ready, and mock `staging_begin`/GOAL/SAVE/`match_end`/
+`reset` all passed; and the **route-isolation retest passed** (Socket Network
+filter empty, 0/34, no `socket.io`/WebSocket/Supabase traffic). **The B6C
+staging-runtime gate is PASS** (staging only; no Unity in live matches). See
+`docs/unity-b6c-versioned-staging-delivery.md` §14.3. **Production delivery
+remains NO-GO, production reproducibility remains BLOCKED, and B6D remains
+unauthorized.**
+
+The deployment URL is resolved by a dedicated parser supporting the Vercel CLI
+**56.2.0** structured-JSON stdout (immutable origin taken only from
+`deployment.url`, gated on `status=ok` / `readyState=READY` / `target=null`) and
+the plain-URL stdout form; arbitrary embedded-URL extraction is prohibited and the
+project alias is rejected.
+
+See `docs/unity-b6c-versioned-staging-delivery.md` for scope, the full
+verification contract, headers, `-ValidateOnly`, the PS 5.1 native-process
+discipline, deployment-URL parsing, protected-preview detection, rollback
+selection, and the required Windows/Vercel runtime test. B6C is **staging only**;
+the production decision remains **NO-GO** and B6C does not authorize B6D.
+
 ## 7. Production-readiness boundary
 
 > B5 (live shadow preview) is complete on `master` (PRs #199–#202), but that does
