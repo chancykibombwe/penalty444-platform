@@ -275,10 +275,9 @@ A pristine checkout of head `453eb9ac` then **failed the Windows PowerShell 5.1
 parser** because of non-ASCII em dashes inside executable strings (PS 5.1
 mis-tokenizes them without a UTF-8 BOM); the wrapper is now **ASCII-only**
 (source-encoding change only, verified byte-for-byte identical apart from the
-substituted punctuation). The earlier ValidateOnly "exit 0" used a locally
-modified file (skip-worktree) and is **not** accepted as pristine committed-head
-proof — a clean Windows parser + ValidateOnly + final deployment rerun is still
-required. **B6C remains YELLOW.**
+substituted punctuation). *(A pristine head then failed the Windows PS 5.1 parser
+on those em dashes; resolved by making the wrapper ASCII-only — commit
+`5091328f`.)*
 
 A main-app preview runtime test then found that although `/dev/unity-staging`
 loaded the artifact same-origin and the mock events worked, **live Socket.IO
@@ -288,8 +287,21 @@ mounted `ActiveMatchRecovery` / `MatchReadyNotification` whose mount-time
 no-Socket.IO/no-Supabase isolation. Fixed with a route-aware shell
 (`RouteAwareAppShell`) that mounts **no** global runtime/chrome on
 `/dev/unity-staging` (all other routes unchanged; no `disconnectSocket()`
-workaround, no socket/auth-policy change). Isolation is **not** claimed PASS until
-the corrected preview is retested. **B6C remains YELLOW.**
+workaround, no socket/auth-policy change).
+
+**Final staging runtime — PASS.** The full Windows + Vercel operator runtime then
+completed successfully: the artifact preview
+(`dpl_CrN11NEwGrwDAaxUErrksMuXZSWj`, `…-phs4cj38n-…vercel.app`, `target=null`,
+exit 0) passed all MIME/gzip/SAMEORIGIN/nosniff/immutable checks with DNS
+propagation absorbed by the bounded poll (no second deployment); the corrected
+main-app preview (`dpl_7Z6QwuuQXQk7pUeY3jJRyu3WZipW`, READY) loaded the route
+same-origin, Unity reached ready, and mock `staging_begin`/GOAL/SAVE/`match_end`/
+`reset` all passed; and the **route-isolation retest passed** (Socket Network
+filter empty, 0/34, no `socket.io`/WebSocket/Supabase traffic). **The B6C
+staging-runtime gate is PASS** (staging only; no Unity in live matches). See
+`docs/unity-b6c-versioned-staging-delivery.md` §14.3. **Production delivery
+remains NO-GO, production reproducibility remains BLOCKED, and B6D remains
+unauthorized.**
 
 The deployment URL is resolved by a dedicated parser supporting the Vercel CLI
 **56.2.0** structured-JSON stdout (immutable origin taken only from

@@ -281,16 +281,19 @@ artifact project**, expose it **same-origin** through the main app via a
 validated server-only rewrite, verify it over HTTP, and drive it with a guarded
 **mock** staging route.
 
-- B6C proposes to address, **at staging scope only**, these B6A blockers:
-  artifact **publishing tooling**, an **immutable hosted URL**, **same-origin
-  delivery**, **staging deployment**, and **MIME/compression verification**.
-- **No production gate in §11 is marked PASS by B6C.** These items stay open
-  until the Windows/Vercel runtime validation succeeds (real preview deploy +
-  HTTP verification), and even then only at staging scope.
-- The following remain **blocked**: production reproducibility, performance,
-  mobile/desktop qualification, security approval, telemetry, production rollout
-  controls, kill switch, rollback rehearsal, asset licensing, and product/UX
-  approval.
+- B6C addresses, **at staging scope only**, these B6A blockers: artifact
+  **publishing tooling**, an **immutable hosted URL**, **same-origin delivery**,
+  **staging deployment**, and **MIME/compression verification**. The
+  Windows/Vercel staging runtime has now **succeeded** (real preview deploy + HTTP
+  verification + same-origin main-app integration + route isolation), so the
+  **B6C staging-runtime gate is PASS** — see
+  `docs/unity-b6c-versioned-staging-delivery.md` §14.3.
+- **No production gate in §11 is marked PASS by B6C.** The staging-runtime PASS is
+  **staging scope only** and flips no production gate.
+- The following remain **blocked**: **production reproducibility** (the Unity
+  build was not proven bit-for-bit deterministic), performance, mobile/desktop
+  qualification, security approval, telemetry, production rollout controls, kill
+  switch, rollback rehearsal, asset licensing, and product/UX approval.
 - B6C uses **no production environment variables**, **no `--prod`**, **no
   alias**, **no CI Unity build**, and commits **no** WebGL output; it does not
   change the live renderer, gameplay, realtime authority, or the postMessage

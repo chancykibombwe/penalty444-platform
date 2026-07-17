@@ -346,17 +346,22 @@ on the **main preview** deployment only, then redeploy the main preview. No
 aliases, no production changes. Alias-based promotion/rollback belongs to a later
 reviewed scope.
 
-## 14. Runtime test required before merge
+## 14. Staging runtime evidence log — COMPLETED (B6C staging-runtime gate PASS)
 
 The PowerShell deploy + real Vercel preview deployment and HTTP verification
 **cannot** run in the review sandbox (no Windows PowerShell, no Vercel CLI/auth,
-no network deploy). Pre-PR validation covers only file-scope hygiene, JSON
-template parse, and web/realtime typecheck+build (unset, valid-preview-origin,
-invalid-origin, and forbidden-production scenarios). A Windows + Vercel operator
-run is required before this tooling is trusted, and the artifact project must be
-created manually first.
+no network deploy); the sandbox covers only file-scope hygiene, JSON template
+parse, ASCII-only wrapper check, and web/realtime typecheck+build. The required
+**Windows + Vercel operator runtime has now been completed successfully** — the
+final verified evidence is in **§14.3**. §14.1–§14.1c below preserve the earlier
+failures as historical evidence; **each is labelled with the commit / runtime that
+resolved it**, and all are superseded by the final PASS in §14.3.
 
-### 14.1 First runtime (Windows) — evidence and outcome (B6C remains YELLOW)
+### 14.1 First runtime (Windows) — 302→SSO (historical; RESOLVED)
+
+> **Resolved:** the protected-preview cause was fixed by disabling protection on
+> `penalty444-unity-staging` (§14.2) and the PS 5.1 workarounds were rewritten
+> into commits `2f691880`/`b1830757`. Superseded by the final PASS (§14.3).
 
 A first authorized Windows runtime was executed. Honest record:
 
@@ -380,11 +385,10 @@ A first authorized Windows runtime was executed. Honest record:
   parsing) that were **not** part of the committed head; those fixes are now
   rewritten cleanly into the committed script (see §8 native-process discipline
   and §9 protected-preview detection).
-- A **corrected committed-head rerun remains required**. **B6C remains YELLOW**;
-  the production decision remains **NO-GO**; **B6D remains unauthorized**. No
-  runtime gate is marked PASS.
+- *(Historical status, now superseded: at the time a corrected rerun was still
+  required. See §14.3 for the completed, passing runtime.)*
 
-### 14.1a Corrected-head rerun — DNS/readiness propagation (still YELLOW)
+### 14.1a Corrected-head rerun — DNS/readiness propagation (historical; RESOLVED by `453eb9ac`)
 
 A corrected-head rerun was executed after disabling protection **only** on
 `penalty444-unity-staging`:
@@ -408,15 +412,12 @@ A corrected-head rerun was executed after disabling protection **only** on
   deployment's DNS/readiness delay no longer forces a needless redeploy.
   **Deployment creation itself is never automatically retried** — only HTTP
   readiness/verification requests retry.
-- The successful immutable preview remains
-  `https://penalty444-unity-staging-42qkvl348-chancykibombwes-projects.vercel.app`.
-  Artifact-project preview protection is disabled **only** on
-  `penalty444-unity-staging`; main-app preview integration has **not** begun.
-- The polling correction still needs a Windows rerun to confirm. **B6C remains
-  YELLOW**; production remains **NO-GO**; **B6D remains unauthorized**; no runtime
-  gate is marked final PASS.
+- Artifact-project preview protection is disabled **only** on
+  `penalty444-unity-staging` (the main application project is unchanged).
+- *(Historical status, now superseded: the polling correction was later confirmed
+  on Windows; the final verified deployment is in §14.3.)*
 
-### 14.1b Windows PowerShell 5.1 source-encoding fix (ASCII-only)
+### 14.1b Windows PowerShell 5.1 source-encoding fix (ASCII-only) (historical; RESOLVED by `5091328f`)
 
 A pristine checkout of committed head `453eb9ac` **failed** the Windows
 PowerShell **5.1** parser (e.g. `Line 531: Unexpected token 'inspect'` /
@@ -439,12 +440,11 @@ transient-status handling, deployment parsing, and MIME/security checks are
 **Important:** the earlier ValidateOnly "exit 0" (§14.1a) was produced with a
 **locally modified** wrapper temporarily hidden via `git update-index
 --skip-worktree`, so it does **not** count as pristine committed-head validation.
-A clean Windows **parser + ValidateOnly + final deployment** rerun against the
-ASCII-only committed head is **still required**. The monotonic-window
-implementation has **not** yet passed a Windows runtime. **B6C remains YELLOW**;
-production remains **NO-GO**; **B6D remains unauthorized**.
+*(Historical status, now superseded: at the time a clean Windows parser +
+ValidateOnly + final deployment rerun against the ASCII-only head was still
+required. That rerun was completed successfully — see §14.3.)*
 
-### 14.1c Main-app runtime — staging route isolation failure + fix (still YELLOW)
+### 14.1c Main-app runtime — staging route isolation failure + fix (historical; RESOLVED by `a74c70c8`)
 
 A main-app preview runtime test of the guarded route
 `/dev/unity-staging?version=b6b-local-fb840878-d` found:
@@ -483,10 +483,10 @@ so merely importing the normal shell does not open a socket.
 All staging security gates are unchanged (production `notFound()`,
 `UNITY_STAGING_ROUTE_ENABLED`, validated origin + version, same-origin relative
 URLs, strict inbound origin/source validation, ready/error allowlist,
-manifest/index gates, mock events only). **Isolation is not claimed PASS until the
-corrected preview is retested** — the fix was verified here only by typecheck +
-build. **B6C remains not final / YELLOW**; production remains **NO-GO**; **B6D
-remains unauthorized**.
+manifest/index gates, mock events only). The corrected preview was subsequently
+retested and the **route-isolation gate now PASSES** (§14.3): the Socket Network
+filter was empty (0 of 34 requests) with no `socket.io`/WebSocket/Railway realtime
+and no Supabase hostname/profiles/auth/token-refresh traffic on the staging route.
 
 ### 14.2 Configuration prerequisite (anonymous artifact access)
 
@@ -497,15 +497,79 @@ Authentication redirect. Adjust deployment protection **only** on that dedicated
 artifact project. Protection on the **main application project**
 (`penalty444-platform-at1y`) must remain **unchanged**. Do not use the
 production/project alias, and do not add a protection-bypass secret in this scope.
+*(This prerequisite was satisfied: protection was disabled only on
+`penalty444-unity-staging`, and the artifact preview is anonymously reachable —
+see §14.3.)*
 
-## 15. Relationship to B6A/B6B and B6D
+### 14.3 Final verified staging runtime — B6C staging-runtime gate PASS
 
-- B6C proposes to address, **at staging scope only**, the B6A blockers for
-  artifact publishing tooling, an immutable hosted URL, same-origin delivery,
-  staging deployment, and MIME/compression verification — none marked PASS until
-  the Windows/Vercel runtime validation succeeds.
-- Production reproducibility, performance, mobile/desktop qualification, security
-  approval, telemetry, production rollout controls, kill switch, rollback
-  rehearsal, asset licensing, and product/UX approval all remain **blocked**.
-- The B6A decision remains **NO-GO**. **B6C does not authorize B6D**; B6D is a
-  separate, future, independently-gated PR.
+The full Windows + Vercel operator runtime completed successfully against the
+corrected committed head.
+
+**Artifact release (B6B source):** `b6b-local-fb840878-d`, source commit
+`fb840878d94de7275f6ffb4818e2d59b38cc1fca`, Unity **6000.4.2f1**, **17** files,
+manifest SHA-256
+`be290569c2f22cc8481a641bbfd720795790ced4e271042f45f367441f6444ae`.
+
+**Final artifact preview deployment (PASS):**
+
+- deployment ID `dpl_CrN11NEwGrwDAaxUErrksMuXZSWj`
+- immutable preview
+  `https://penalty444-unity-staging-phs4cj38n-chancykibombwes-projects.vercel.app`
+- `target = null` (Preview), **wrapper exit 0**; DNS propagation absorbed by the
+  bounded HTTP polling **without creating a second deployment**.
+- Header/MIME verification passed: framework `application/javascript` + gzip;
+  wasm `application/wasm` + gzip; data `application/octet-stream` + gzip;
+  `X-Frame-Options: SAMEORIGIN` pass; `X-Content-Type-Options: nosniff` pass;
+  immutable `Cache-Control` pass. **No production deployment, no alias.**
+
+**Final corrected main-app preview:**
+
+- commit `a74c70c8630743ff8e561b3459cd5fa907e50092`
+- deployment ID `dpl_7Z6QwuuQXQk7pUeY3jJRyu3WZipW`
+- immutable URL
+  `https://penalty444-platform-at1y-p8cwdi458-chancykibombwes-projects.vercel.app`
+- `target = null` (Preview), state **READY**.
+
+**Final main-app runtime (PASS):**
+
+- The route loaded **only** when the guarded preview variables were enabled for
+  the exact feature branch; production, missing-version, and invalid-version routes
+  returned **404**.
+- Manifest/index validation passed; Unity reached **ready**; the same-origin
+  browser path was
+  `/unity/penalty444/staging/releases/b6b-local-fb840878-d/`; the strict iframe
+  origin/source bridge worked. Mock **`staging_begin` / GOAL / SAVE / `match_end` /
+  `reset`** all passed (reset returned the visual round to 1); **no inbound Unity
+  error**.
+
+**Route-isolation retest (PASS):** on `/dev/unity-staging` the staging page
+rendered **without** the normal app chrome; the Socket Network filter was empty
+(**0 of 34 requests**) — **no** `socket.io` / WebSocket / Railway realtime
+requests, and **no** Supabase hostname / profiles / auth / token-refresh requests.
+No `disconnectSocket()` workaround; normal routes unchanged. (Vercel
+preview-toolbar requests such as feedback / JWE / hostname validation are platform
+tooling, **not** application Socket.IO or Supabase activity.)
+
+## 15. Final status and relationship to B6A/B6B/B6D
+
+**B6C staging status — verified by the §14.3 runtime:**
+
+| Gate | Status |
+|---|---|
+| B6C local builder / release verification | **PASS** |
+| B6C artifact preview delivery | **PASS** |
+| B6C same-origin main-app preview integration | **PASS** |
+| B6C route isolation | **PASS** |
+| **B6C staging-runtime gate** | **PASS** |
+
+- B6C is **staging only** and does **not** activate Unity in live matches. No
+  production variables, no production deployment, no live renderer activation.
+- **Production delivery remains NO-GO.**
+- **Production reproducibility remains BLOCKED** — the Unity build was not proven
+  bit-for-bit deterministic (B6B recorded non-identical same-source artifacts).
+- Production performance, mobile/desktop qualification, security approval,
+  telemetry, production rollout controls, kill switch, rollback rehearsal, asset
+  licensing, and product/UX approval all remain **blocked**.
+- The B6A decision remains **NO-GO**. **B6D remains unauthorized** — a separate,
+  future, independently-gated PR.
