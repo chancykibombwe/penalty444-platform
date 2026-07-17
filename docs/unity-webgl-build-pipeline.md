@@ -315,6 +315,24 @@ discipline, deployment-URL parsing, protected-preview detection, rollback
 selection, and the required Windows/Vercel runtime test. B6C is **staging only**;
 the production decision remains **NO-GO** and B6C does not authorize B6D.
 
+## 6.13 B6D — real-match integration (PLANNING ONLY; not started)
+
+B6C is **complete** (staging-runtime gate PASS; §6.12). **B6D implementation has
+not started.** A formal scope/risk brief —
+`docs/unity-b6d-real-match-integration-scope.md` — proposes how the Unity
+presentation *could* consume authoritative real-match presentation events while
+Node.js/Socket.IO remains the sole gameplay authority, Unity stays
+presentation-only, and the React renderer remains the fallback.
+
+- The brief defines the proposed gates **B6D1** (contract + sanitizing adapter +
+  tests), **B6D2** (preview shadow mode), **B6D3** (internal preview renderer),
+  **B6D4** (failure/recovery validation), and **B6D5** (closeout).
+- **No subphase is authorized by the existence of the document** — each requires
+  its own separate review/gate, and the next approval (if any) should authorize
+  **B6D1 only**.
+- **Production remains NO-GO. Production reproducibility remains BLOCKED.** B6D is
+  preview/free-play only and activates no production Unity.
+
 ## 7. Production-readiness boundary
 
 > B5 (live shadow preview) is complete on `master` (PRs #199–#202), but that does
