@@ -1,11 +1,6 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
-import Link from "next/link";
-import Navbar from "../components/layout/Navbar";
-import FreePlayNoticeStrip from "../components/layout/FreePlayNoticeStrip";
-import ActiveMatchRecovery from "../components/match/ActiveMatchRecovery";
-import MatchReadyNotification from "../components/match/MatchReadyNotification";
-import TournamentMatchReadyNotification from "../components/tournament/TournamentMatchReadyNotification";
+import RouteAwareAppShell from "../components/layout/RouteAwareAppShell";
 
 export const metadata: Metadata = {
   title: "444 ARENA — Penalty444 Free Play Beta",
@@ -27,42 +22,14 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const feedbackBody = encodeURIComponent(
-    "What happened:\n\nRoom code (if available):\n\nBrowser / device:\n\n(Attach a screenshot if possible)"
-  );
-  const feedbackHref = `mailto:info.chancykibombwe@gmail.com?subject=%5B444%20ARENA%20Beta%5D%20Bug%20Report&body=${feedbackBody}`;
-
+  // html/body, metadata and viewport stay here. Body content is delegated to the
+  // route-aware shell, which renders the full app chrome + global runtime on all
+  // routes EXCEPT /dev/unity-staging (B6C staging isolation — no Socket.IO / auth
+  // components mount there). See RouteAwareAppShell.
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="bg-zinc-950 text-white" suppressHydrationWarning>
-        <ActiveMatchRecovery />
-        <MatchReadyNotification />
-        <TournamentMatchReadyNotification />
-        <Navbar />
-
-        {/* Free Play Beta notice strip — hidden on Home per the locked Home
-            design (Home keeps Free Play messaging in hero/pill/footer). */}
-        <FreePlayNoticeStrip />
-
-        <main className="p-4 pb-28 md:p-6 md:pb-6">{children}</main>
-
-        {/* Persistent beta feedback footer */}
-        <footer className="border-t border-[#1B2433] bg-[#080C12] px-4 py-3 text-center text-[11px] text-zinc-400 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:pb-3">
-          444 ARENA · Free Play Beta ·{" "}
-          <a
-            href={feedbackHref}
-            className="underline hover:text-zinc-200"
-          >
-            Report a bug
-          </a>
-          {" "}·{" "}
-          <Link
-            href="/games/penalty444"
-            className="hover:text-zinc-300"
-          >
-            How to play
-          </Link>
-        </footer>
+        <RouteAwareAppShell>{children}</RouteAwareAppShell>
       </body>
     </html>
   );

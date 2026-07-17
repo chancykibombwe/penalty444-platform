@@ -444,6 +444,50 @@ ASCII-only committed head is **still required**. The monotonic-window
 implementation has **not** yet passed a Windows runtime. **B6C remains YELLOW**;
 production remains **NO-GO**; **B6D remains unauthorized**.
 
+### 14.1c Main-app runtime — staging route isolation failure + fix (still YELLOW)
+
+A main-app preview runtime test of the guarded route
+`/dev/unity-staging?version=b6b-local-fb840878-d` found:
+
+- The artifact loaded same-origin, Unity reached `ready`, and the mock
+  `staging_begin` / `round_result` GOAL / SAVE / `match_end` / `reset` all worked;
+  negative routes still 404'd. **Presentation/mock verification passed.**
+- **But** Chrome Network (Socket filter) showed live/reconnecting
+  `socket.io/?EIO=4&transport=websocket` requests **while on the staging route** —
+  contradicting the page's **NO SOCKET.IO / NO SUPABASE / NO AUTH / mock-only /
+  not-a-live-match** contract. **The staging route failed its isolation gate.**
+
+**Repository cause (not the staging page).** The root `app/layout.tsx` globally
+mounted `ActiveMatchRecovery`, `MatchReadyNotification`,
+`TournamentMatchReadyNotification`, `Navbar`, `FreePlayNoticeStrip`, and the
+footer on **every** route. `ActiveMatchRecovery` (and `MatchReadyNotification`)
+call `getSocket()` on mount, which creates the Socket.IO singleton and binds
+Supabase auth / reads the access token for the handshake — so the realtime/auth
+runtime leaked onto the staging route.
+
+**Fix — route-aware shell (mount-level, not cosmetic).** A new
+`apps/web/src/components/layout/RouteAwareAppShell.tsx` (client component using
+`usePathname()`) renders, for **exactly** `pathname === "/dev/unity-staging"`,
+only a minimal `<main>{children}</main>` — **none** of `ActiveMatchRecovery`,
+`MatchReadyNotification`, `TournamentMatchReadyNotification`, `Navbar`,
+`FreePlayNoticeStrip`, or the normal footer mount, so their mount-time
+`getSocket()` / auth effects never run. Every **other** route renders the exact
+existing shell unchanged. `layout.tsx` keeps `<html>`/`<body>`, metadata, and
+viewport and delegates body content to the shell. No `disconnectSocket()`
+workaround, no cosmetic hiding of network activity, and no change to the Socket.IO
+singleton or auth policy — the realtime/auth components simply never mount on the
+staging route. `getSocket()` remains **lazy** (the `io()` call is inside
+`getSocket`, and each global component calls it only inside a mount `useEffect`),
+so merely importing the normal shell does not open a socket.
+
+All staging security gates are unchanged (production `notFound()`,
+`UNITY_STAGING_ROUTE_ENABLED`, validated origin + version, same-origin relative
+URLs, strict inbound origin/source validation, ready/error allowlist,
+manifest/index gates, mock events only). **Isolation is not claimed PASS until the
+corrected preview is retested** — the fix was verified here only by typecheck +
+build. **B6C remains not final / YELLOW**; production remains **NO-GO**; **B6D
+remains unauthorized**.
+
 ### 14.2 Configuration prerequisite (anonymous artifact access)
 
 The dedicated `penalty444-unity-staging` artifact project's **preview**

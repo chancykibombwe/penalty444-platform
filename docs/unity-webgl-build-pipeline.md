@@ -280,6 +280,17 @@ modified file (skip-worktree) and is **not** accepted as pristine committed-head
 proof — a clean Windows parser + ValidateOnly + final deployment rerun is still
 required. **B6C remains YELLOW.**
 
+A main-app preview runtime test then found that although `/dev/unity-staging`
+loaded the artifact same-origin and the mock events worked, **live Socket.IO
+connections appeared on the staging route** — the root `layout.tsx` globally
+mounted `ActiveMatchRecovery` / `MatchReadyNotification` whose mount-time
+`getSocket()` binds realtime + Supabase auth, breaking the route's
+no-Socket.IO/no-Supabase isolation. Fixed with a route-aware shell
+(`RouteAwareAppShell`) that mounts **no** global runtime/chrome on
+`/dev/unity-staging` (all other routes unchanged; no `disconnectSocket()`
+workaround, no socket/auth-policy change). Isolation is **not** claimed PASS until
+the corrected preview is retested. **B6C remains YELLOW.**
+
 The deployment URL is resolved by a dedicated parser supporting the Vercel CLI
 **56.2.0** structured-JSON stdout (immutable origin taken only from
 `deployment.url`, gated on `status=ok` / `readyState=READY` / `target=null`) and
