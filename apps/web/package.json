@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:unity-presentation": "tsx --test src/components/match/unityPresentationAdapter.test.ts"
+    "test:unity-presentation": "tsx --test src/components/match/unityPresentationAdapter.test.ts src/components/match/unityPresentationShadow.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.104.0",
