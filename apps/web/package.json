@@ -9,7 +9,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:unity-presentation": "tsx --test src/components/match/unityPresentationAdapter.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.104.0",
@@ -26,6 +27,7 @@
     "eslint": "^9",
     "eslint-config-next": "^16.2.6",
     "tailwindcss": "^4",
+    "tsx": "^4.23.1",
     "typescript": "^5"
   }
 }
