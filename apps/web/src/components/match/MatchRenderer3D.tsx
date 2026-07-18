@@ -42,6 +42,7 @@ import type { PresentationEnvelope } from "./unityPresentationProtocol";
 import {
   ShadowDispatchQueue,
   summarizeSentMessage,
+  isEnvelopeForActiveInstance,
   type SentSummary,
 } from "./unityPresentationShadow";
 
@@ -382,9 +383,19 @@ export default function MatchRenderer3D({
         clearReadyTimeout();
         readyRef.current = true;
         setStatus("ready");
-        cb.onReady?.();
-        flushPending();
-        flushFifo();
+        if (deliveryMode === "fifo") {
+          // FIFO ready policy: a shadow preview that was NOT ready when an
+          // animation happened does NOT replay that historical animation later.
+          // Discard any pre-ready FIFO history, then let the parent's onReady
+          // publish a fresh ready_resync (current authoritative match_state_sync),
+          // which is sent normally once it arrives — we do NOT flush pre-ready
+          // history here.
+          fifoQueueRef.current?.reset();
+          cb.onReady?.();
+        } else {
+          cb.onReady?.();
+          flushPending();
+        }
       } else if (msg.event === "animation_complete") {
         cb.onAnimationComplete?.(msg.payload.round);
       } else if (msg.event === "error") {
@@ -395,7 +406,7 @@ export default function MatchRenderer3D({
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [enabled, buildUrl, flushPending, flushFifo, clearReadyTimeout, markUnavailable]);
+  }, [enabled, buildUrl, deliveryMode, flushPending, flushFifo, clearReadyTimeout, markUnavailable]);
 
   // LATEST mode (legacy): track the latest React → Unity message and try to send
   // it. If Unity is not ready yet, it stays pending and is flushed on `ready`.
@@ -428,6 +439,13 @@ export default function MatchRenderer3D({
     if (!fifoQueueRef.current) fifoQueueRef.current = new ShadowDispatchQueue(32);
     const queue = fifoQueueRef.current;
     for (const item of messages ?? []) {
+      // Defensive isolation: only enqueue a validated versioned envelope for the
+      // current active instance. A foreign-instance or unvalidatable message is
+      // rejected (never enqueued) — the active instance is never inferred from a
+      // message.
+      if (!isEnvelopeForActiveInstance(item.message, activeMatchInstanceId)) {
+        continue;
+      }
       const res = queue.enqueue(item.id, item.message);
       if (!res.ok && res.reason === "overflow") {
         markUnavailable("3D preview message queue overflow.");
@@ -436,7 +454,7 @@ export default function MatchRenderer3D({
       // duplicate → silently skipped (already queued or already sent)
     }
     flushFifo();
-  }, [enabled, buildUrl, deliveryMode, messages, flushFifo, markUnavailable]);
+  }, [enabled, buildUrl, deliveryMode, messages, activeMatchInstanceId, flushFifo, markUnavailable]);
 
   // Arm the readiness timeout for this component lifecycle; clear on unmount.
   useEffect(() => {

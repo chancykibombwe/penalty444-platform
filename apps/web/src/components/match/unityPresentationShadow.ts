@@ -21,6 +21,8 @@ import {
   deriveMatchInstanceId,
   isPositiveSafeInteger,
   PresentationSequenceEmitter,
+  sanitizeScores,
+  validateEnvelope,
   type PresentationEnvelope,
 } from "./unityPresentationProtocol";
 import {
@@ -115,20 +117,29 @@ export function compareEnvelopeToSource(
       if (src.round !== envelope.payload.round) return "FAIL";
       return "PASS";
     }
-    // match_state_sync vs a complete match:update snapshot.
+    // match_state_sync vs a complete match:update snapshot. EXACT keyed check:
+    // the player-id key SET and each keyed score must match (so a swapped
+    // player→score assignment FAILs), plus round/maxRounds/phase and the
+    // suddenDeathRound presence+value. Keys are compared internally only; the
+    // audit summary still exposes no player ids.
     if (src.round !== envelope.payload.round) return "FAIL";
     if (src.maxRounds !== envelope.payload.maxRounds) return "FAIL";
     if (src.phase !== envelope.payload.phase) return "FAIL";
-    const srcScores = src.scores;
-    if (srcScores === null || typeof srcScores !== "object") return "FAIL";
-    const srcVals = Object.values(srcScores as Record<string, unknown>)
-      .filter((v): v is number => typeof v === "number")
-      .slice()
-      .sort((a, b) => a - b);
-    const envVals = Object.values(envelope.payload.scores).slice().sort((a, b) => a - b);
-    if (srcVals.length !== envVals.length) return "FAIL";
-    for (let i = 0; i < srcVals.length; i++) {
-      if (srcVals[i] !== envVals[i]) return "FAIL";
+    const envHasSD = envelope.payload.suddenDeathRound !== undefined;
+    const srcHasSD = src.suddenDeathRound !== undefined;
+    if (envHasSD !== srcHasSD) return "FAIL";
+    if (envHasSD && src.suddenDeathRound !== envelope.payload.suddenDeathRound) return "FAIL";
+    const srcScores = sanitizeScores(src.scores);
+    if (srcScores === null) return "FAIL";
+    const envScores = envelope.payload.scores;
+    const envKeys = Object.keys(envScores).sort();
+    const srcKeys = Object.keys(srcScores).sort();
+    if (envKeys.length !== srcKeys.length) return "FAIL";
+    for (let i = 0; i < envKeys.length; i++) {
+      if (envKeys[i] !== srcKeys[i]) return "FAIL"; // exact key set
+    }
+    for (const k of envKeys) {
+      if (envScores[k] !== srcScores[k]) return "FAIL"; // swapped assignment → FAIL
     }
     return "PASS";
   } catch {
@@ -145,6 +156,11 @@ export class UnityPresentationShadowCoordinator {
   private activeInstanceId: string | null = null;
   private readonly emitter = new PresentationSequenceEmitter();
   private priorSnapshot: PriorStateSnapshot | null = null;
+  // Mirror of the last COMMITTED sequence for the active instance (0 = none). Lets
+  // us build provisionally with a candidate sequence and only advance the emitter
+  // on a successful (validated) build — so a malformed payload never consumes a
+  // sequence or mutates instance state.
+  private committedSeq = 0;
 
   getActiveInstanceId(): string | null {
     return this.activeInstanceId;
@@ -154,11 +170,25 @@ export class UnityPresentationShadowCoordinator {
     return this.priorSnapshot !== null;
   }
 
-  private optsFor(emittedAt: number | undefined): AdapterBuildOpts {
-    const opts: AdapterBuildOpts = {
-      matchInstanceId: this.activeInstanceId as string,
-      sequence: this.emitter.next(this.activeInstanceId as string),
-    };
+  // The sequence a message for `instanceId` WOULD receive — without mutating.
+  private peekSequence(instanceId: string): number {
+    return instanceId === this.activeInstanceId ? this.committedSeq + 1 : 1;
+  }
+
+  // Commit atomically: on a new instance, switch active + clear prior + reset the
+  // sequence; then advance the emitter (which returns the peeked value) and record
+  // it. Called ONLY after a successful build.
+  private commit(instanceId: string, isNewInstance: boolean): void {
+    if (isNewInstance) {
+      this.activeInstanceId = instanceId;
+      this.priorSnapshot = null;
+      this.committedSeq = 0;
+    }
+    this.committedSeq = this.emitter.next(instanceId);
+  }
+
+  private optsFor(instanceId: string, sequence: number, emittedAt: number | undefined): AdapterBuildOpts {
+    const opts: AdapterBuildOpts = { matchInstanceId: instanceId, sequence };
     if (emittedAt !== undefined) opts.emittedAt = emittedAt;
     return opts;
   }
@@ -168,11 +198,12 @@ export class UnityPresentationShadowCoordinator {
   }
 
   /**
-   * (A) Accept a raw authoritative `match:update`. Derives the protocol instance
-   * from roomCode + numeric `matchInstance`; an explicit new instance resets the
-   * sequence to 1 and clears the prior snapshot. Builds `match_state_sync`
-   * directly from the raw payload and stores ONLY the sanitized envelope payload
-   * as the prior complete snapshot. Returns null on malformed data; never throws.
+   * (A) Accept a raw authoritative `match:update`. Derives the candidate instance
+   * from roomCode + numeric `matchInstance`, then **validates the complete state
+   * FIRST**. Only on success does it commit atomically: switch to a new instance
+   * (reset sequence to 1, clear prior), advance the sequence, and replace the
+   * prior snapshot. A validation failure changes NOTHING (no instance change, no
+   * prior clear, no sequence consumed) and returns null. Never throws.
    */
   acceptMatchUpdate(roomCode: unknown, raw: unknown, emittedAt?: number): UnityShadowDispatch | null {
     try {
@@ -182,17 +213,16 @@ export class UnityPresentationShadowCoordinator {
       const instanceId = deriveMatchInstanceId(roomCode, matchInstance);
       if (instanceId === null) return null;
 
-      // Instance transitions come ONLY from an authoritative match:update.
-      if (instanceId !== this.activeInstanceId) {
-        this.activeInstanceId = instanceId;
-        this.priorSnapshot = null;
-      }
+      const isNewInstance = instanceId !== this.activeInstanceId;
+      const candidateSeq = this.peekSequence(instanceId);
+      const envelope = buildMatchStateSyncEnvelope(
+        raw,
+        this.optsFor(instanceId, candidateSeq, emittedAt)
+      );
+      if (envelope === null) return null; // atomic: nothing mutated on failure
 
-      const envelope = buildMatchStateSyncEnvelope(raw, this.optsFor(emittedAt));
-      if (envelope === null) return null;
-
-      // Store the sanitized snapshot for later terminal / ready resync.
-      this.priorSnapshot = { matchInstanceId: this.activeInstanceId, payload: envelope.payload };
+      this.commit(instanceId, isNewInstance);
+      this.priorSnapshot = { matchInstanceId: instanceId, payload: envelope.payload };
       return this.toDispatch(envelope, "match:update");
     } catch {
       return null;
@@ -202,13 +232,19 @@ export class UnityPresentationShadowCoordinator {
   /**
    * (B) Accept a raw authoritative `match:result` → `round_result`. Requires an
    * already-established active instance; no scores/phase/maxRounds; no result
-   * derivation. Returns null before a valid instance exists; never throws.
+   * derivation. A malformed result consumes NO sequence. Null before a valid
+   * instance exists; never throws.
    */
   acceptRoundResult(raw: unknown, emittedAt?: number): UnityShadowDispatch | null {
     try {
       if (this.activeInstanceId === null) return null;
-      const envelope = buildRoundResultEnvelope(raw, this.optsFor(emittedAt));
-      if (envelope === null) return null;
+      const candidateSeq = this.peekSequence(this.activeInstanceId);
+      const envelope = buildRoundResultEnvelope(
+        raw,
+        this.optsFor(this.activeInstanceId, candidateSeq, emittedAt)
+      );
+      if (envelope === null) return null; // no sequence consumed on failure
+      this.commit(this.activeInstanceId, false);
       return this.toDispatch(envelope, "match:result");
     } catch {
       return null;
@@ -219,16 +255,22 @@ export class UnityPresentationShadowCoordinator {
    * (C) Accept a raw authoritative `match:end`. Combines ONLY the final
    * authoritative scores with the same-instance stored complete snapshot; returns
    * null when no valid same-instance prior exists (never fabricates
-   * round/maxRounds/phase). A later complete `match:update` is the preferred
-   * terminal state sync.
+   * round/maxRounds/phase) and consumes NO sequence on failure. A later complete
+   * `match:update` is the preferred terminal state sync.
    */
   acceptMatchEnd(raw: unknown, emittedAt?: number): UnityShadowDispatch | null {
     try {
       if (this.activeInstanceId === null) return null;
       if (this.priorSnapshot === null) return null;
       if (this.priorSnapshot.matchInstanceId !== this.activeInstanceId) return null;
-      const envelope = buildTerminalStateSyncEnvelope(raw, this.priorSnapshot, this.optsFor(emittedAt));
-      if (envelope === null) return null;
+      const candidateSeq = this.peekSequence(this.activeInstanceId);
+      const envelope = buildTerminalStateSyncEnvelope(
+        raw,
+        this.priorSnapshot,
+        this.optsFor(this.activeInstanceId, candidateSeq, emittedAt)
+      );
+      if (envelope === null) return null; // no sequence consumed on failure
+      this.commit(this.activeInstanceId, false);
       return this.toDispatch(envelope, "match:end");
     } catch {
       return null;
@@ -237,16 +279,22 @@ export class UnityPresentationShadowCoordinator {
 
   /**
    * (D) On Unity `ready`/reload: rebuild a fresh `match_state_sync` from the last
-   * stored sanitized complete snapshot with a NEW sequence. Returns null when no
-   * complete snapshot exists. Does NOT replay round_result history.
+   * stored sanitized complete snapshot with a NEW sequence. Returns null (and
+   * consumes NO sequence) when no complete snapshot exists. Does NOT replay
+   * round_result history.
    */
   buildReadyResync(emittedAt?: number): UnityShadowDispatch | null {
     try {
       if (this.activeInstanceId === null) return null;
       if (this.priorSnapshot === null) return null;
       if (this.priorSnapshot.matchInstanceId !== this.activeInstanceId) return null;
-      const envelope = buildMatchStateSyncEnvelope(this.priorSnapshot.payload, this.optsFor(emittedAt));
-      if (envelope === null) return null;
+      const candidateSeq = this.peekSequence(this.activeInstanceId);
+      const envelope = buildMatchStateSyncEnvelope(
+        this.priorSnapshot.payload,
+        this.optsFor(this.activeInstanceId, candidateSeq, emittedAt)
+      );
+      if (envelope === null) return null; // no sequence consumed on failure
+      this.commit(this.activeInstanceId, false);
       return this.toDispatch(envelope, "ready_resync");
     } catch {
       return null;
@@ -331,29 +379,121 @@ export interface SentSummary {
   sequence?: number;
 }
 
+// Known event names that may appear as a sanitized `event` label (legacy or
+// versioned). Anything else becomes "unknown".
+const KNOWN_EVENTS = new Set([
+  "round_result",
+  "match_state_sync",
+  "staging_begin",
+  "match_end",
+  "reset",
+]);
+
 /**
- * Build a sanitized sent-summary. A legacy `UnityInbound` yields no invented
- * instance/sequence; a versioned `PresentationEnvelope` yields its validated
- * `matchInstanceId` + `sequence`. Never includes raw payloads. Never throws.
+ * Build a sanitized sent-summary. Only a **fully-validated** B6D1
+ * `PresentationEnvelope` (via `validateEnvelope`) may contribute `matchInstanceId`
+ * + `sequence` + the versioned event. A malformed "versioned-looking" object
+ * (bad protocol version, invalid/negative sequence, malformed payload) receives
+ * NO invented instance/sequence. Legacy messages keep only a sanitized known
+ * event name. Never includes raw payloads; never throws.
  */
 export function summarizeSentMessage(message: unknown, id: string): SentSummary {
   const summary: SentSummary = { messageId: id, event: "unknown" };
   try {
+    const validated = validateEnvelope(message);
+    if (validated !== null) {
+      summary.event = validated.event;
+      summary.matchInstanceId = validated.matchInstanceId;
+      summary.sequence = validated.sequence;
+      return summary;
+    }
+    // Legacy / unvalidatable: a sanitized known event name only — never an
+    // invented instance or sequence.
     if (message !== null && typeof message === "object") {
-      const m = message as Record<string, unknown>;
-      if (typeof m.event === "string") summary.event = m.event;
-      if (
-        m.protocolVersion === 1 &&
-        typeof m.matchInstanceId === "string" &&
-        m.matchInstanceId.length > 0 &&
-        typeof m.sequence === "number"
-      ) {
-        summary.matchInstanceId = m.matchInstanceId;
-        summary.sequence = m.sequence;
-      }
+      const ev = (message as Record<string, unknown>).event;
+      if (typeof ev === "string" && KNOWN_EVENTS.has(ev)) summary.event = ev;
     }
   } catch {
     /* keep safe defaults */
   }
   return summary;
+}
+
+// ── Parent-side pending-unsent buffer helpers (pure) ───────────────────────────
+// The MatchRoomPanel keeps only UNSENT versioned dispatches (not replayable
+// history). Sent messages are removed on acknowledgment; an instance change or a
+// ready lifecycle replaces the buffer; a 33rd unsent message is an explicit
+// overflow (never a silent trim). These are pure so the lifecycle is unit-tested
+// without React/DOM.
+
+export const SHADOW_PENDING_CAP = 32;
+
+export interface PendingShadowItem {
+  id: string;
+  message: PresentationEnvelope;
+}
+
+export interface PendingAppendResult {
+  buffer: PendingShadowItem[];
+  overflow: boolean;
+}
+
+/**
+ * Append an unsent dispatch in creation order. Deduplicates by id. When the
+ * buffer already holds SHADOW_PENDING_CAP (32) unsent messages, the next one is an
+ * explicit OVERFLOW: the buffer is bounded at CAP+1 (so the renderer can detect
+ * failure) and never grows beyond it, and the OLDEST is never trimmed.
+ */
+export function appendPending(
+  buffer: readonly PendingShadowItem[],
+  item: PendingShadowItem,
+): PendingAppendResult {
+  if (buffer.some((m) => m.id === item.id)) {
+    return { buffer: buffer.slice(), overflow: false }; // dedup
+  }
+  if (buffer.length >= SHADOW_PENDING_CAP) {
+    if (buffer.length > SHADOW_PENDING_CAP) {
+      return { buffer: buffer.slice(), overflow: true }; // already overflowed — do not grow
+    }
+    return { buffer: [...buffer, item], overflow: true }; // the 33rd → overflow
+  }
+  return { buffer: [...buffer, item], overflow: false };
+}
+
+/** Remove a transported message once its id is acknowledged (onMessageSent). */
+export function acknowledgePending(
+  buffer: readonly PendingShadowItem[],
+  messageId: string,
+): PendingShadowItem[] {
+  return buffer.filter((m) => m.id !== messageId);
+}
+
+/**
+ * Replace the buffer for a fresh lifecycle (new instance, or a ready resync):
+ * drop ALL prior history and keep only the single new item (or none).
+ */
+export function replacePending(item: PendingShadowItem | null): PendingShadowItem[] {
+  return item === null ? [] : [item];
+}
+
+/** Keep only items belonging to the given active instance (defensive isolation). */
+export function pendingForInstance(
+  buffer: readonly PendingShadowItem[],
+  activeInstanceId: string | null,
+): PendingShadowItem[] {
+  if (activeInstanceId === null) return [];
+  return buffer.filter((m) => m.message.matchInstanceId === activeInstanceId);
+}
+
+/**
+ * Renderer guard: does a queued message VALIDATE as a versioned envelope for the
+ * active instance? A foreign-instance or unvalidatable message is rejected.
+ */
+export function isEnvelopeForActiveInstance(
+  message: unknown,
+  activeInstanceId: string | null,
+): boolean {
+  if (activeInstanceId === null) return false;
+  const v = validateEnvelope(message);
+  return v !== null && v.matchInstanceId === activeInstanceId;
 }

@@ -57,12 +57,15 @@ import {
   type ShotResult,
 } from "./matchPresentation";
 import MatchRenderer3D, { type UnityInbound } from "./MatchRenderer3D";
-import type { PresentationEnvelope } from "./unityPresentationProtocol";
 import {
   UnityPresentationShadowCoordinator,
   compareEnvelopeToSource,
+  appendPending,
+  acknowledgePending,
+  replacePending,
   type UnityShadowDispatch,
   type SentSummary,
+  type PendingShadowItem,
 } from "./unityPresentationShadow";
 
 type MatchResultPayload = {
@@ -892,13 +895,17 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
   if (unityB6D2ShadowEnabled && shadowCoordinatorRef.current === null) {
     shadowCoordinatorRef.current = new UnityPresentationShadowCoordinator();
   }
-  // Ordered FIFO dispatch list (versioned envelopes only), bounded at 32.
-  const [unityB6D2Queue, setUnityB6D2Queue] = useState<
-    ReadonlyArray<{ id: string; message: PresentationEnvelope }>
-  >([]);
+  // Pending-UNSENT versioned dispatches only (NOT replayable history). Sent
+  // messages are removed on acknowledgment; an instance change or ready lifecycle
+  // replaces the buffer; the 33rd unsent message is an explicit overflow.
+  const [unityB6D2Pending, setUnityB6D2Pending] = useState<PendingShadowItem[]>(
+    []
+  );
   const [unityB6D2ActiveInstance, setUnityB6D2ActiveInstance] = useState<
     string | null
   >(null);
+  // Synchronous mirror of the active instance for transition detection.
+  const unityB6D2ActiveInstanceRef = useRef<string | null>(null);
   // Tiny sanitized audit (NO raw payloads, NO player ids, NO scores-by-id).
   const [unityB6D2Audit, setUnityB6D2Audit] = useState<{
     lastBuiltEvent: string | null;
@@ -923,10 +930,19 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     (dispatch: UnityShadowDispatch | null, rawSource: unknown) => {
       if (!unityB6D2ShadowEnabled || !dispatch) return;
       const comparison = compareEnvelopeToSource(dispatch.envelope, rawSource);
-      setUnityB6D2Queue((q) =>
-        [...q, { id: dispatch.id, message: dispatch.envelope }].slice(-32)
-      );
-      setUnityB6D2ActiveInstance(dispatch.envelope.matchInstanceId);
+      const newInstance = dispatch.envelope.matchInstanceId;
+      const item: PendingShadowItem = { id: dispatch.id, message: dispatch.envelope };
+      if (newInstance !== unityB6D2ActiveInstanceRef.current) {
+        // Instance transition (only ever from an authoritative match:update):
+        // drop ALL old-instance pending messages and keep just this new one.
+        setUnityB6D2Pending(replacePending(item));
+        unityB6D2ActiveInstanceRef.current = newInstance;
+        setUnityB6D2ActiveInstance(newInstance);
+      } else {
+        // Same instance: append an unsent dispatch (dedup + bounded; the 33rd is
+        // an explicit overflow, never a silent trim — the renderer fails open).
+        setUnityB6D2Pending((prev) => appendPending(prev, item).buffer);
+      }
       setUnityB6D2Audit((a) => ({
         ...a,
         lastBuiltEvent: dispatch.audit.event,
@@ -945,14 +961,30 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     [unityB6D2ShadowEnabled]
   );
 
-  // Unity ready → request a fresh state resync from the last complete snapshot.
+  // Unity ready / reload → clean baseline: DISCARD any pre-ready pending history
+  // and replace the buffer with a single fresh ready_resync (current authoritative
+  // state), when available. Never replays an earlier round_result.
   const handleB6D2Ready = useCallback(() => {
     setUnityB6D2Audit((a) => ({ ...a, unityStatus: "ready" }));
-    publishB6D2Shadow(
-      shadowCoordinatorRef.current?.buildReadyResync() ?? null,
-      null
-    );
-  }, [publishB6D2Shadow]);
+    const resync = shadowCoordinatorRef.current?.buildReadyResync() ?? null;
+    if (resync) {
+      unityB6D2ActiveInstanceRef.current = resync.envelope.matchInstanceId;
+      setUnityB6D2ActiveInstance(resync.envelope.matchInstanceId);
+      setUnityB6D2Pending(
+        replacePending({ id: resync.id, message: resync.envelope })
+      );
+      setUnityB6D2Audit((a) => ({
+        ...a,
+        lastBuiltEvent: resync.audit.event,
+        lastBuiltSequence: resync.audit.sequence,
+        comparison: "PENDING",
+      }));
+    } else {
+      // No complete snapshot yet — discard pre-ready history; wait for the next
+      // authoritative match_state_sync. Nothing is replayed.
+      setUnityB6D2Pending(replacePending(null));
+    }
+  }, []);
 
   const handleB6D2Error = useCallback((m: string) => {
     if (process.env.NODE_ENV !== "production") {
@@ -961,7 +993,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     setUnityB6D2Audit((a) => ({ ...a, unityStatus: "unavailable" }));
   }, []);
 
+  // A transported message is acknowledged → remove it from the pending buffer so
+  // it is never retained as replayable history.
   const handleB6D2Sent = useCallback((summary: SentSummary) => {
+    setUnityB6D2Pending((prev) => acknowledgePending(prev, summary.messageId));
     setUnityB6D2Audit((a) => ({
       ...a,
       lastSentEvent: summary.event,
@@ -4008,7 +4043,7 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             {unityB6D2ShadowEnabled ? (
               <MatchRenderer3D
                 deliveryMode="fifo"
-                messages={unityB6D2Queue}
+                messages={unityB6D2Pending}
                 activeMatchInstanceId={unityB6D2ActiveInstance}
                 onReady={handleB6D2Ready}
                 onError={handleB6D2Error}

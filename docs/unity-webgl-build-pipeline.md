@@ -362,7 +362,11 @@ envelopes, behind a **third** public flag `NEXT_PUBLIC_UNITY_B6D2_SHADOW_ENABLED
   player-facing renderer and sole client lifecycle owner; the legacy shadow is
   preserved exactly when the flag is off; `package-lock.json` is unchanged.
 - It **proves envelopes are built/ordered/dispatched**, **not** that Unity has
-  applied `match_state_sync`.
+  applied `match_state_sync`. The parent keeps a **pending-unsent** buffer (not
+  replayable history), the instance transition is **atomic**, ready/reload
+  discards pre-ready history and **resumes from current authoritative state**, and
+  overflow is **explicit + fail-open**. Enforced by **119** unit tests in the Web
+  CI step.
 - **B6D2A must pass code review before any branch-preview flag configuration.**
   **B6D2B requires separate authorization** (as does B6D3). Production remains
   **NO-GO**; reproducibility remains **BLOCKED**.

@@ -14,6 +14,13 @@ import {
   buildAuditSummary,
   compareEnvelopeToSource,
   summarizeSentMessage,
+  appendPending,
+  acknowledgePending,
+  replacePending,
+  pendingForInstance,
+  isEnvelopeForActiveInstance,
+  SHADOW_PENDING_CAP,
+  type PendingShadowItem,
 } from "./unityPresentationShadow";
 
 function freshUpdate(overrides: Record<string, unknown> = {}) {
@@ -149,16 +156,17 @@ test("coordinator: a new instance clears the prior terminal snapshot", () => {
   assert.equal(term.envelope.payload.round, 1); // from the inst-2 snapshot, not inst-1's round 3
 });
 
-test("coordinator: an old-instance prior cannot be reused for terminal sync", () => {
+test("coordinator: a malformed new-instance update is atomic (active + prior unchanged)", () => {
   const c = new UnityPresentationShadowCoordinator();
-  c.acceptMatchUpdate("ABCD12", freshUpdate({ matchInstance: 1 })); // prior inst-1 stored
-  // A new-instance update whose body is malformed clears the prior and switches
-  // the active instance to 2, leaving no inst-2 prior.
+  c.acceptMatchUpdate("ABCD12", freshUpdate({ matchInstance: 1, round: 3, maxRounds: 3 })); // prior inst-1 stored
+  // A malformed new-instance update commits NOTHING: the active instance and the
+  // inst-1 prior are untouched (atomic transition; see §6 correction).
   assert.equal(c.acceptMatchUpdate("ABCD12", freshUpdate({ matchInstance: 2, scores: { p1: -1 } })), null);
-  assert.equal(c.getActiveInstanceId(), "ABCD12:2");
-  assert.equal(c.hasPriorSnapshot(), false);
-  // match:end now finds no valid same-instance prior → null (inst-1 prior not reused).
-  assert.equal(c.acceptMatchEnd({ scores: { p1: 3, p2: 1 } }), null);
+  assert.equal(c.getActiveInstanceId(), "ABCD12:1"); // unchanged
+  assert.equal(c.hasPriorSnapshot(), true); // inst-1 prior intact
+  // A same-instance match:end still resolves against the intact inst-1 prior.
+  const term = c.acceptMatchEnd({ scores: { p1: 3, p2: 1 } });
+  assert.equal(term?.envelope.matchInstanceId, "ABCD12:1");
 });
 
 test("coordinator: terminal match:end with a valid same-instance prior works", () => {
@@ -372,4 +380,230 @@ test("sent summary: never throws on junk", () => {
   for (const j of [null, undefined, 5, "x", [], () => {}]) {
     assert.doesNotThrow(() => summarizeSentMessage(j, "id"));
   }
+});
+
+// ═══════════════════ B6D2A CORRECTIONS — ATOMIC COORDINATOR ═══════════════════
+
+const MALFORMED_UPDATE = { matchInstance: 1, scores: { p1: -1 }, round: 1, maxRounds: 3, phase: "NORMAL" };
+
+test("atomic: malformed first update then valid update → valid update is sequence 1", () => {
+  const c = new UnityPresentationShadowCoordinator();
+  assert.equal(c.acceptMatchUpdate("ABCD12", MALFORMED_UPDATE), null);
+  assert.equal(c.getActiveInstanceId(), null); // no commit on failure
+  const ok = c.acceptMatchUpdate("ABCD12", freshUpdate());
+  assert.equal(ok?.envelope.sequence, 1);
+});
+
+test("atomic: malformed new-instance update does not change the active instance", () => {
+  const c = new UnityPresentationShadowCoordinator();
+  c.acceptMatchUpdate("ABCD12", freshUpdate({ matchInstance: 1 }));
+  assert.equal(c.getActiveInstanceId(), "ABCD12:1");
+  assert.equal(c.acceptMatchUpdate("ABCD12", { matchInstance: 2, scores: { p1: -1 }, round: 1, maxRounds: 3, phase: "NORMAL" }), null);
+  assert.equal(c.getActiveInstanceId(), "ABCD12:1"); // unchanged
+});
+
+test("atomic: malformed new-instance update does not clear the old prior snapshot", () => {
+  const c = new UnityPresentationShadowCoordinator();
+  c.acceptMatchUpdate("ABCD12", freshUpdate({ matchInstance: 1, scores: { p1: 2, p2: 1 }, round: 3, maxRounds: 3 }));
+  c.acceptMatchUpdate("ABCD12", { matchInstance: 2, scores: { p1: -1 }, round: 1, maxRounds: 3, phase: "NORMAL" }); // malformed
+  const term = c.acceptMatchEnd({ scores: { p1: 3, p2: 1 } });
+  assert.equal(term?.envelope.matchInstanceId, "ABCD12:1"); // inst-1 prior intact
+  assert.equal(term?.envelope.payload.round, 3);
+});
+
+test("atomic: malformed update does not consume a sequence", () => {
+  const c = new UnityPresentationShadowCoordinator();
+  assert.equal(c.acceptMatchUpdate("ABCD12", freshUpdate())?.envelope.sequence, 1);
+  assert.equal(c.acceptMatchUpdate("ABCD12", { matchInstance: 1, scores: { p1: -1 }, round: 1, maxRounds: 3, phase: "NORMAL" }), null);
+  assert.equal(c.acceptMatchUpdate("ABCD12", freshUpdate({ round: 4 }))?.envelope.sequence, 2); // not 3
+});
+
+test("atomic: malformed result does not consume a sequence", () => {
+  const c = new UnityPresentationShadowCoordinator();
+  c.acceptMatchUpdate("ABCD12", freshUpdate()); // seq 1
+  assert.equal(c.acceptRoundResult({ round: 1, kickerPick: "UP", keeperPick: "RIGHT", result: "GOAL" }), null); // invalid lane
+  assert.equal(c.acceptRoundResult(RESULT_RAW)?.envelope.sequence, 2); // not 3
+});
+
+test("atomic: malformed match:end does not consume a sequence", () => {
+  const c = new UnityPresentationShadowCoordinator();
+  c.acceptMatchUpdate("ABCD12", freshUpdate()); // seq 1, prior stored
+  assert.equal(c.acceptMatchEnd({ scores: { p1: -1 } }), null); // malformed scores
+  assert.equal(c.acceptMatchEnd({ scores: { p1: 3, p2: 1 } })?.envelope.sequence, 2); // not 3
+});
+
+test("atomic: failed resync does not consume a sequence", () => {
+  const c = new UnityPresentationShadowCoordinator();
+  assert.equal(c.buildReadyResync(), null); // no active instance / no prior
+  assert.equal(c.acceptMatchUpdate("ABCD12", freshUpdate())?.envelope.sequence, 1); // still 1
+});
+
+test("atomic: a valid new instance commits atomically and starts at sequence 1", () => {
+  const c = new UnityPresentationShadowCoordinator();
+  c.acceptMatchUpdate("ABCD12", freshUpdate({ matchInstance: 1 })); // seq 1
+  c.acceptRoundResult(RESULT_RAW); // seq 2
+  const d = c.acceptMatchUpdate("ABCD12", freshUpdate({ matchInstance: 2 }));
+  assert.equal(d?.envelope.matchInstanceId, "ABCD12:2");
+  assert.equal(d?.envelope.sequence, 1);
+});
+
+// ═══════════════════ B6D2A CORRECTIONS — EXACT COMPARISON ═════════════════════
+
+function stateEnvelope(overrides = {}) {
+  const c = new UnityPresentationShadowCoordinator();
+  const d = c.acceptMatchUpdate("ABCD12", freshUpdate(overrides));
+  assert.ok(d);
+  return d.envelope;
+}
+
+test("compare: swapped player-score mapping returns FAIL", () => {
+  const env = stateEnvelope({ scores: { p1: 1, p2: 0 } });
+  assert.equal(compareEnvelopeToSource(env, freshUpdate({ scores: { p1: 0, p2: 1 } })), "FAIL");
+});
+
+test("compare: missing player score key returns FAIL", () => {
+  const env = stateEnvelope({ scores: { p1: 1, p2: 0 } });
+  assert.equal(compareEnvelopeToSource(env, freshUpdate({ scores: { p1: 1 } })), "FAIL");
+});
+
+test("compare: extra player score key returns FAIL", () => {
+  const env = stateEnvelope({ scores: { p1: 1, p2: 0 } });
+  assert.equal(compareEnvelopeToSource(env, freshUpdate({ scores: { p1: 1, p2: 0, p3: 5 } })), "FAIL");
+});
+
+test("compare: suddenDeathRound mismatch returns FAIL", () => {
+  const env = stateEnvelope({ scores: { p1: 1, p2: 0 }, suddenDeathRound: 0 });
+  assert.equal(compareEnvelopeToSource(env, freshUpdate({ scores: { p1: 1, p2: 0 }, suddenDeathRound: 1 })), "FAIL");
+});
+
+test("compare: exact keyed state returns PASS", () => {
+  const raw = freshUpdate({ scores: { p1: 1, p2: 0 }, round: 2, maxRounds: 3, phase: "NORMAL", suddenDeathRound: 0 });
+  const c = new UnityPresentationShadowCoordinator();
+  const d = c.acceptMatchUpdate("ABCD12", raw);
+  assert.ok(d);
+  assert.equal(compareEnvelopeToSource(d.envelope, raw), "PASS");
+});
+
+// ═══════════════ B6D2A CORRECTIONS — PARENT PENDING BUFFER ════════════════════
+
+function versionedItem(seq: number, instance = "ABCD12:1"): PendingShadowItem {
+  return {
+    id: `${instance}:${seq}:round_result`,
+    message: {
+      type: "PENALTY444_MATCH_EVENT",
+      protocolVersion: 1,
+      matchInstanceId: instance,
+      sequence: seq,
+      event: "round_result",
+      payload: { round: seq, kickerLane: "LEFT", keeperLane: "RIGHT", result: "GOAL" },
+    } as PendingShadowItem["message"],
+  };
+}
+
+test("pending: sent acknowledgment removes the message from the buffer", () => {
+  const buffer = [versionedItem(1), versionedItem(2)];
+  const next = acknowledgePending(buffer, "ABCD12:1:1:round_result");
+  assert.deepStrictEqual(next.map((m) => m.id), ["ABCD12:1:2:round_result"]);
+});
+
+test("pending: instance change replaces buffer with only the new-instance item", () => {
+  const buffer = [versionedItem(1), versionedItem(2)];
+  const fresh = replacePending(versionedItem(1, "ZZZZ99:2"));
+  assert.deepStrictEqual(fresh.map((m) => m.id), ["ZZZZ99:2:1:round_result"]);
+  // pendingForInstance drops any foreign-instance leftovers.
+  assert.deepStrictEqual(pendingForInstance([...buffer, versionedItem(1, "ZZZZ99:2")], "ABCD12:1").map((m) => m.id), ["ABCD12:1:1:round_result", "ABCD12:1:2:round_result"]);
+});
+
+test("pending: renderer rejects a foreign-instance queued message", () => {
+  const item = versionedItem(1, "ABCD12:1");
+  assert.equal(isEnvelopeForActiveInstance(item.message, "ABCD12:1"), true);
+  assert.equal(isEnvelopeForActiveInstance(item.message, "ZZZZ99:2"), false);
+  assert.equal(isEnvelopeForActiveInstance(item.message, null), false);
+  assert.equal(isEnvelopeForActiveInstance({ not: "valid" }, "ABCD12:1"), false);
+});
+
+test("pending: initial ready / reload discards queued historical round_result (queue reset)", () => {
+  const q = new ShadowDispatchQueue();
+  q.enqueue("ABCD12:1:2:round_result", versionedItem(2).message);
+  assert.equal(q.size(), 1);
+  q.reset(); // renderer resets on ready / reload
+  assert.equal(q.size(), 0);
+  assert.equal(q.hasSent("ABCD12:1:2:round_result"), false);
+});
+
+test("pending: ready resync is the only first message; no old result re-enqueued", () => {
+  const buffer = [versionedItem(2), versionedItem(3)]; // pre-ready history
+  const afterReady = replacePending(versionedItem(4)); // fresh ready_resync
+  assert.deepStrictEqual(afterReady.map((m) => m.id), ["ABCD12:1:4:round_result"]);
+  // none of the historical ids survive
+  assert.equal(afterReady.some((m) => m.id === "ABCD12:1:2:round_result"), false);
+  assert.equal(buffer.length, 2); // original untouched (pure)
+});
+
+test("pending: 32 unsent are accepted, the 33rd is an explicit overflow (no trim)", () => {
+  let buffer: PendingShadowItem[] = [];
+  let lastOverflow = false;
+  for (let i = 1; i <= SHADOW_PENDING_CAP; i++) {
+    const r = appendPending(buffer, versionedItem(i));
+    buffer = r.buffer;
+    lastOverflow = r.overflow;
+  }
+  assert.equal(buffer.length, 32);
+  assert.equal(lastOverflow, false);
+  const r33 = appendPending(buffer, versionedItem(33));
+  assert.equal(r33.overflow, true);
+  assert.equal(r33.buffer.length, 33); // oldest NOT trimmed
+  assert.equal(r33.buffer[0].id, "ABCD12:1:1:round_result"); // oldest preserved
+});
+
+test("pending: overflow does not cause unbounded growth", () => {
+  let buffer: PendingShadowItem[] = [];
+  for (let i = 1; i <= SHADOW_PENDING_CAP; i++) buffer = appendPending(buffer, versionedItem(i)).buffer;
+  buffer = appendPending(buffer, versionedItem(33)).buffer; // 33
+  const r34 = appendPending(buffer, versionedItem(34));
+  assert.equal(r34.overflow, true);
+  assert.equal(r34.buffer.length, 33); // capped at CAP+1
+});
+
+test("pending: FIFO order is preserved below the cap; duplicates deduped", () => {
+  let buffer: PendingShadowItem[] = [];
+  buffer = appendPending(buffer, versionedItem(1)).buffer;
+  buffer = appendPending(buffer, versionedItem(2)).buffer;
+  buffer = appendPending(buffer, versionedItem(1)).buffer; // duplicate id
+  buffer = appendPending(buffer, versionedItem(3)).buffer;
+  assert.deepStrictEqual(buffer.map((m) => m.message.sequence), [1, 2, 3]);
+});
+
+// ═══════════════ B6D2A CORRECTIONS — VALIDATED SENT SUMMARY ═══════════════════
+
+const VALID_VERSIONED = {
+  type: "PENALTY444_MATCH_EVENT",
+  protocolVersion: 1,
+  matchInstanceId: "ABCD12:1",
+  sequence: 3,
+  event: "round_result",
+  payload: { round: 1, kickerLane: "LEFT", keeperLane: "RIGHT", result: "GOAL" },
+};
+
+test("sent-summary: a fully valid versioned envelope exposes instance/sequence", () => {
+  const s = summarizeSentMessage(VALID_VERSIONED, "id-1");
+  assert.deepStrictEqual(s, { messageId: "id-1", event: "round_result", matchInstanceId: "ABCD12:1", sequence: 3 });
+});
+
+test("sent-summary: invalid protocol version exposes neither instance nor sequence", () => {
+  const s = summarizeSentMessage({ ...VALID_VERSIONED, protocolVersion: 2 }, "id-2");
+  assert.equal("matchInstanceId" in s, false);
+  assert.equal("sequence" in s, false);
+});
+
+test("sent-summary: invalid/negative sequence exposes neither instance nor sequence", () => {
+  assert.equal("sequence" in summarizeSentMessage({ ...VALID_VERSIONED, sequence: -1 }, "id"), false);
+  assert.equal("matchInstanceId" in summarizeSentMessage({ ...VALID_VERSIONED, sequence: 0 }, "id"), false);
+});
+
+test("sent-summary: malformed payload exposes neither instance nor sequence", () => {
+  const bad = { ...VALID_VERSIONED, payload: { round: 1, kickerLane: "LEFT" } }; // missing keeperLane/result
+  const s = summarizeSentMessage(bad, "id");
+  assert.equal("matchInstanceId" in s, false);
+  assert.equal("sequence" in s, false);
 });

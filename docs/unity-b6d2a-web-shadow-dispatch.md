@@ -196,7 +196,7 @@ ready-resync). It **never** computes a gameplay outcome.
 ## 15. Test inventory
 
 `npm run test:unity-presentation` runs **both** `unityPresentationAdapter.test.ts`
-(58) and `unityPresentationShadow.test.ts` (36) → **94 tests, all passing**, and
+(58) and `unityPresentationShadow.test.ts` (61) → **119 tests, all passing**, and
 runs in the GitHub Web CI job. The shadow tests cover: first-update
 instance+sequence-1; invalid/missing `matchInstance`; result-before-instance;
 result-after-state next sequence; round_result has no scores/phase/maxRounds;
@@ -211,6 +211,52 @@ stable message-id format; hostile getters/proxies never throw; the source
 comparison; and the pure queue (FIFO order, duplicate-queued, duplicate-sent,
 overflow, reset/reload policy, latest-vs-fifo) + sanitized sent-summary (legacy
 vs versioned, junk-safe).
+
+## 15a. Lifecycle corrections (review)
+
+- **Pending-unsent buffer, not replayable history.** The parent keeps only
+  **unsent** versioned dispatches (no `.slice(-32)` permanent history). A
+  transported message is **removed** when its id is acknowledged via
+  `onMessageSent`, so a sent message can never be re-supplied after a reload or
+  instance reset. The audit history is kept separately as sanitized scalar
+  metadata only.
+- **Atomic instance transition.** `acceptMatchUpdate` **validates the complete
+  candidate state first**; only on success does it commit (switch instance, reset
+  the sequence to 1, clear + replace the prior snapshot). A validation failure
+  changes **nothing** — no instance change, no prior clear, **no sequence
+  consumed**. Likewise a malformed `round_result` / `match:end` / `ready_resync`
+  consumes **no** sequence, so the first valid message after rejected input gets
+  the sequence it would have had.
+- **Ready / reload discards pre-ready history.** In FIFO mode, on Unity `ready`
+  (initial, reload, or a fresh lifecycle) the renderer **discards** any pre-ready
+  queued messages and does **not** flush them; the parent replaces its buffer with
+  a single fresh `ready_resync` `match_state_sync` (current authoritative state)
+  when available. A shadow preview that was not ready at the time of an animation
+  does **not** replay that historical animation later — it **resumes from current
+  authoritative state**. No earlier `round_result` is replayed.
+- **Active-instance isolation.** An explicit `activeMatchInstanceId` change clears
+  the renderer queue + sent ids and replaces the parent buffer for the new
+  instance; the renderer defensively **rejects** a queued envelope whose
+  `matchInstanceId` differs from the active instance; the active instance is never
+  inferred from a message; a previous-instance message is never re-enqueued after
+  reset; the first successful new-instance state sync is **sequence 1**.
+- **Explicit, fail-open overflow.** The FIFO limit is **32 unsent**; the **33rd**
+  reaches a controlled overflow that marks the Unity preview `unavailable` through
+  the existing fail-open path (React continues). The oldest is **never** trimmed;
+  the parent buffer is bounded at **32 + 1** overflow-trigger to prevent unbounded
+  memory growth; messages are never reordered.
+- **Exact comparison, identity-free audit.** `compareEnvelopeToSource` for
+  `match_state_sync` compares the **exact set of player-id keys** and each keyed
+  score (a swapped player→score assignment → `FAIL`), plus round / maxRounds /
+  phase / `suddenDeathRound` presence+value; `round_result` compares
+  round / kickerPick→kickerLane / keeperPick→keeperLane / result. It computes **no**
+  outcome, and the returned **audit summary still contains no player ids** (sorted
+  numeric values + `playerCount` only).
+- **Validated sent-summary.** `summarizeSentMessage` uses B6D1 `validateEnvelope`;
+  only a fully-validated `PresentationEnvelope` contributes `matchInstanceId` +
+  `sequence`. A malformed "versioned-looking" object (bad protocol version,
+  invalid/negative sequence, malformed payload) receives **no** invented
+  instance/sequence; legacy messages keep only a sanitized known event name.
 
 ## 16. Status
 
