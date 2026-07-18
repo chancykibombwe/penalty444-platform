@@ -552,3 +552,126 @@ test("robustness: getters that throw do not crash the adapter", () => {
   assert.doesNotThrow(() => buildMatchStateSyncEnvelope({ scores: evilScores, round: 1, maxRounds: 3, phase: "NORMAL" }, OPTS));
   assert.equal(buildMatchStateSyncEnvelope({ scores: evilScores, round: 1, maxRounds: 3, phase: "NORMAL" }, OPTS), null);
 });
+
+// ══════════════════ HOSTILE GETTERS / PROXIES / EXOTIC OBJECTS ════════════════
+
+test("hostile: validateEnvelope with a throwing top-level `type` getter → null, no throw", () => {
+  const env: Record<string, unknown> = {
+    protocolVersion: 1,
+    matchInstanceId: "A:1",
+    sequence: 1,
+    event: "round_result",
+    payload: { round: 1, kickerLane: "LEFT", keeperLane: "RIGHT", result: "GOAL" },
+  };
+  Object.defineProperty(env, "type", { enumerable: true, get() { throw new Error("boom"); } });
+  assert.doesNotThrow(() => validateEnvelope(env));
+  assert.equal(validateEnvelope(env), null);
+});
+
+test("hostile: validateEnvelope with a throwing `payload` getter → null, no throw", () => {
+  const env: Record<string, unknown> = {
+    type: PRESENTATION_TYPE,
+    protocolVersion: 1,
+    matchInstanceId: "A:1",
+    sequence: 1,
+    event: "round_result",
+  };
+  Object.defineProperty(env, "payload", { enumerable: true, get() { throw new Error("boom"); } });
+  assert.doesNotThrow(() => validateEnvelope(env));
+  assert.equal(validateEnvelope(env), null);
+});
+
+test("hostile: validateEnvelope with a throwing nested payload-field getter → null, no throw", () => {
+  const payload: Record<string, unknown> = { kickerLane: "LEFT", keeperLane: "RIGHT", result: "GOAL" };
+  Object.defineProperty(payload, "round", { enumerable: true, get() { throw new Error("boom"); } });
+  const env = { type: PRESENTATION_TYPE, protocolVersion: 1, matchInstanceId: "A:1", sequence: 1, event: "round_result", payload };
+  assert.doesNotThrow(() => validateEnvelope(env));
+  assert.equal(validateEnvelope(env), null);
+});
+
+test("hostile: sanitizeScores with a Proxy whose ownKeys trap throws → null, no throw", () => {
+  const p = new Proxy({}, { ownKeys() { throw new Error("nope"); } });
+  assert.doesNotThrow(() => sanitizeScores(p));
+  assert.equal(sanitizeScores(p), null);
+});
+
+test("hostile: sanitizeScores with a Proxy whose descriptor trap throws → null, no throw", () => {
+  const p = new Proxy({ p1: 1 }, { getOwnPropertyDescriptor() { throw new Error("nope"); } });
+  assert.doesNotThrow(() => sanitizeScores(p));
+  assert.equal(sanitizeScores(p), null);
+});
+
+test("hostile: sanitizeScores with a revoked Proxy → null, no throw", () => {
+  const { proxy, revoke } = Proxy.revocable({ p1: 1 }, {});
+  revoke();
+  assert.doesNotThrow(() => sanitizeScores(proxy));
+  assert.equal(sanitizeScores(proxy), null);
+});
+
+test("hostile: validateEnvelope containing hostile scores → null, no throw", () => {
+  const badScores = new Proxy({}, { ownKeys() { throw new Error("nope"); } });
+  const env = {
+    type: PRESENTATION_TYPE,
+    protocolVersion: 1,
+    matchInstanceId: "A:1",
+    sequence: 1,
+    event: "match_state_sync",
+    payload: { scores: badScores, round: 1, maxRounds: 3, phase: "NORMAL" },
+  };
+  assert.doesNotThrow(() => validateEnvelope(env));
+  assert.equal(validateEnvelope(env), null);
+});
+
+test("hostile: gate.accept with a hostile envelope → invalid-envelope, no state change, later seq 1 accepted", () => {
+  const g = new PresentationSequenceGate();
+  g.beginInstance("A:1");
+  const hostile: Record<string, unknown> = {
+    protocolVersion: 1,
+    matchInstanceId: "A:1",
+    sequence: 5,
+    event: "round_result",
+    payload: { round: 1, kickerLane: "LEFT", keeperLane: "RIGHT", result: "GOAL" },
+  };
+  Object.defineProperty(hostile, "type", { enumerable: true, get() { throw new Error("boom"); } });
+  let decision: unknown;
+  assert.doesNotThrow(() => {
+    decision = g.accept(hostile);
+  });
+  assert.deepStrictEqual(decision, { accepted: false, reason: "invalid-envelope" });
+  assert.equal(g.lastSequence(), 0); // lastSequence not advanced by a rejected hostile envelope
+  assert.equal(g.activeInstance(), "A:1"); // instance not silently changed
+  // A later valid sequence 1 is still accepted (proving the floor stayed at 0).
+  assert.deepStrictEqual(g.accept(rrEnvelope("A:1", 1)), { accepted: true });
+});
+
+test("exotic: Date / Map / Set / class instance are rejected as score maps", () => {
+  assert.equal(sanitizeScores(new Date()), null);
+  assert.equal(sanitizeScores(new Map([["p1", 1]])), null);
+  assert.equal(sanitizeScores(new Set([1])), null);
+  class Scoreish {
+    p1 = 1;
+  }
+  assert.equal(sanitizeScores(new Scoreish()), null);
+  // ... and via the builder
+  assert.equal(buildMatchStateSyncEnvelope({ scores: new Map(), round: 1, maxRounds: 3, phase: "NORMAL" }, OPTS), null);
+});
+
+test("exotic: Object.create(null) with valid own score entries is accepted and cloned", () => {
+  const s = Object.create(null) as Record<string, number>;
+  s.p1 = 1;
+  s.p2 = 0;
+  const cleaned = sanitizeScores(s);
+  assert.deepStrictEqual(cleaned, { p1: 1, p2: 0 });
+  assert.notEqual(cleaned, s); // fresh clone, not the source reference
+});
+
+test("score keys: whitespace-only player id is rejected", () => {
+  assert.equal(sanitizeScores({ "   ": 1 }), null);
+  assert.equal(sanitizeScores({ "\t": 1 }), null);
+});
+
+test("score keys: player id with leading/trailing whitespace is rejected", () => {
+  assert.equal(sanitizeScores({ " p1": 1 }), null);
+  assert.equal(sanitizeScores({ "p1 ": 1 }), null);
+  assert.equal(sanitizeScores({ " p1 ": 1 }), null);
+});

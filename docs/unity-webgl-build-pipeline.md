@@ -335,15 +335,19 @@ presentation-only, and the React renderer remains the fallback.
 **B6D1 — implemented as standalone contract/test groundwork only** (see
 `docs/unity-b6d1-contract-adapter.md`). Adds a versioned presentation protocol
 (`unityPresentationProtocol.ts`), a sanitizing adapter
-(`unityPresentationAdapter.ts`), and 46 unit tests
+(`unityPresentationAdapter.ts`), and **58** unit tests
 (`unityPresentationAdapter.test.ts`, run via `npm run test:unity-presentation`
-using `tsx` + Node `node:test`).
+using `tsx` + Node `node:test`). The validators/gate are **exception-safe**
+against hostile getters and Proxies. The tests are enforced in the existing
+GitHub **Web CI job** (`.github/workflows/ci.yml`, step "Unity presentation
+contract tests").
 
 - **It does NOT activate the existing bridge.** `MatchRoomPanel` and
   `MatchRenderer3D` are **unchanged**; the module is imported by nothing at
   runtime.
 - **No Unity, server, Supabase, or deployment change**; no feature-flag change;
-  no generated WebGL output. It is pure TypeScript + tests.
+  no generated WebGL output. The only CI change is the added Web test step. It is
+  pure TypeScript + tests.
 - **B6D2 requires a separate approval after B6D1 review.** Production remains
   **NO-GO**; reproducibility remains **BLOCKED**.
 

@@ -35,13 +35,18 @@ test code for a later, separately-reviewed integration.
   `test:unity-presentation` script.
 - `apps/web/package-lock.json` — lock entry for `tsx` (3 packages).
 
+**CI:** `.github/workflows/ci.yml` — a single **test step** added to the existing
+Web job (see §11). No new job, no secrets, no Node-version/concurrency/permissions/
+trigger/realtime/deploy change.
+
 **Docs:** this file + a B6D section update in
 `docs/unity-webgl-build-pipeline.md`.
 
 **Intentionally untouched:** `MatchRoomPanel.tsx`, `MatchRenderer3D.tsx`,
 `matchPresentation.ts` (imported for types only), `lib/socket/client.ts`,
 `apps/realtime-server/**`, `packages/shared/**`, `unity/**`,
-`apps/web/public/unity/**`, Vercel, Supabase, and GitHub Actions.
+`apps/web/public/unity/**`, Vercel, and Supabase. (The GitHub Actions change is
+**only** the added Web test step above.)
 
 ## 4. Contract version
 
@@ -158,14 +163,36 @@ only.
   `accessToken`, `refreshToken`, `supabaseToken`, `session`, `jwt`, `socket`,
   `socketId`, `cookie`, `wallet`, `walletBalance`, `stakeAmount`, `commission`,
   `payout`, `email`, `serviceRoleKey`, `authorization`.
-- Scores are validated defensively: own enumerable keys only; non-empty player
-  ids; finite non-negative integer values; a **new** cloned object (no reference
-  to the source); dangerous keys `__proto__` / `prototype` / `constructor`
-  rejected (prototype-pollution guard).
+- Scores are validated defensively: own enumerable keys only; player-id keys must
+  be **non-empty and have no leading/trailing whitespace** (whitespace-only ids
+  rejected); finite non-negative integer values; a **new** cloned object (no
+  reference to the source); dangerous keys `__proto__` / `prototype` /
+  `constructor` rejected (prototype-pollution guard).
 - `statusMessage` is normalized (control chars → space, trimmed, capped at 200);
   a non-string `statusMessage` is omitted, not trusted.
-- Every function returns a controlled `null` on malformed input and **never
-  throws** (getters that throw are caught).
+
+### 9.1 Exception-safety at the untrusted boundary
+
+The untrusted **parsing / building / gating** functions — `validateEnvelope`,
+`sanitizeScores`, `PresentationSequenceGate.accept`, and every `build*` adapter —
+return a controlled `null` (or a `{ accepted: false, … }` decision) and **never
+throw**, even against hostile inputs:
+
+- **Strict plain-record rule:** `isPlainRecord` accepts **only** an ordinary
+  object whose prototype is `Object.prototype`, or an `Object.create(null)`
+  record. It rejects arrays, `Date`/`Map`/`Set`, class instances, functions,
+  `null`, and revoked/hostile Proxies; prototype inspection is wrapped in
+  try/catch so a throwing `getPrototypeOf` trap yields "not a plain record".
+- **Hostile getters / Proxies:** `validateEnvelope` snapshots each top-level field
+  once and wraps the whole inspection in try/catch, so a throwing getter on
+  `type` / `protocolVersion` / `matchInstanceId` / `sequence` / `emittedAt` /
+  `event` / `payload` / any payload field / nested scores returns `null`.
+  `sanitizeScores` wraps the full path (plain-record check, `Object.keys`,
+  per-property read, output construction), so a Proxy whose `ownKeys`,
+  `getOwnPropertyDescriptor`, or value getter throws — or a revoked Proxy —
+  yields `null`. `PresentationSequenceGate.accept` adds defense-in-depth try/catch
+  and, on any rejection (including a caught throw), leaves `activeInstanceId` and
+  `lastAccepted` **unchanged** (it never silently adopts an instance).
 
 ## 10. Sequence / instance behavior
 
@@ -181,10 +208,20 @@ only.
   `no-active-instance`. This is TypeScript reference behavior only; **no Unity C#
   is modified in B6D1.**
 
+**Trusted vs. untrusted, precisely.** `PresentationSequenceGate.accept` (and all
+parsing/building) operate on **untrusted** messages and never throw. The explicit
+**controller-setup** methods `PresentationSequenceEmitter.next` and
+`PresentationSequenceGate.beginInstance` are **trusted control APIs**: the caller
+must pass an already-validated `matchInstanceId`, and they throw on an invalid id
+(a programmer error), rather than silently degrading. So "never throws" applies to
+the untrusted boundary, not to these two trusted setup calls.
+
 ## 11. Complete test inventory
 
-`apps/web/src/components/match/unityPresentationAdapter.test.ts` — **46 tests**,
-all passing via `npm run test:unity-presentation` (Node `node:test` + `tsx`).
+`apps/web/src/components/match/unityPresentationAdapter.test.ts` — **58 tests**,
+all passing via `npm run test:unity-presentation` (Node `node:test` + `tsx`), and
+run in the GitHub **Web CI job** (`.github/workflows/ci.yml`, step "Unity
+presentation contract tests", after `npm ci` and before the TypeScript check).
 Tests assert **exact output keys** (via `deepStrictEqual`), not only selected
 values. Coverage:
 
@@ -216,14 +253,26 @@ foreign-instance prior → null; terminal scores still sanitized.
 **Robustness:** null / arrays / strings / numbers / functions / NaN / Infinity;
 invalid build opts; getters that throw never crash the adapter.
 
+**Hostile inputs (exception-safety):** `validateEnvelope` with a throwing
+top-level `type` getter, a throwing `payload` getter, and a throwing nested
+payload-field getter (each → `null`, no throw); `sanitizeScores` with a Proxy
+whose `ownKeys` trap throws, whose descriptor trap throws, and a revoked Proxy
+(each → `null`, no throw); `validateEnvelope` containing hostile scores;
+`PresentationSequenceGate.accept` on a hostile envelope (→ `invalid-envelope`,
+does not throw, does not advance `lastSequence`, later valid sequence 1 still
+accepted); `Date`/`Map`/`Set`/class instances rejected as score maps;
+`Object.create(null)` with valid entries accepted and cloned; whitespace-only and
+leading/trailing-whitespace player ids rejected.
+
 ## 12. What remains intentionally unintegrated
 
 - No import of this module by `MatchRoomPanel` / `MatchRenderer3D` or any runtime
   component.
 - No socket wiring, no Supabase, no React state, no feature-flag change.
 - The existing `MatchRenderer3D` bridge contract is untouched and unused by B6D1.
-- No Unity C# change; no server change; no Vercel/Supabase/CI change; no
-  generated WebGL output.
+- No Unity C# change; no server change; no Vercel/Supabase change; no generated
+  WebGL output. The **only** CI change is the added Web test step (§11) that runs
+  these unit tests — no runtime, deployment, or job-structure change.
 
 ## 13. Status
 

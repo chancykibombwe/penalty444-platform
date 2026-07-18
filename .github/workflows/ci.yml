@@ -1,8 +1,9 @@
 name: CI
 
 # Foundation release guard: every PR into master (and pushes to master) must
-# pass a minimal set of safety checks before merge — web TypeScript check,
-# web production build, and realtime-server TypeScript/build check.
+# pass a minimal set of safety checks before merge — the Unity presentation
+# contract tests, the web TypeScript check, the web production build, and the
+# realtime-server TypeScript/build check.
 #
 # Intentionally minimal: lint is NOT a required blocker in this phase (there is
 # pre-existing lint debt that must not block foundation lock). No secrets are
@@ -54,6 +55,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Unity presentation contract tests
+        run: npm run test:unity-presentation
 
       - name: TypeScript check
         run: npx tsc --noEmit -p tsconfig.json

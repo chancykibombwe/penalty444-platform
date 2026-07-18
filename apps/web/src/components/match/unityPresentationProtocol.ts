@@ -107,28 +107,39 @@ export function isDangerousKey(key: string): boolean {
 
 // ── Full-envelope validation (defensive; returns the narrowed type or null) ─────
 
+/**
+ * Exception-safe strict plain-record check. Accepts ONLY an ordinary object whose
+ * prototype is Object.prototype, or an Object.create(null) record. Rejects
+ * arrays, Date/Map/Set, class instances, functions, null, and revoked/hostile
+ * Proxies (any prototype-inspection throw is treated as "not a plain record").
+ */
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value)
-  );
+  try {
+    if (typeof value !== "object" || value === null) return false;
+    if (Array.isArray(value)) return false;
+    const proto = Object.getPrototypeOf(value);
+    return proto === Object.prototype || proto === null;
+  } catch {
+    return false;
+  }
 }
 
 function validateRoundResultPayload(value: unknown): RoundResultPayload | null {
   if (!isPlainRecord(value)) return null;
-  if (!isPositiveSafeInteger(value.round)) return null;
-  if (!isValidLane(value.kickerLane)) return null;
-  if (!isValidLane(value.keeperLane)) return null;
-  if (!isShotResult(value.result)) return null;
-  const out: RoundResultPayload = {
-    round: value.round,
-    kickerLane: value.kickerLane,
-    keeperLane: value.keeperLane,
-    result: value.result,
-  };
-  if (typeof value.statusMessage === "string") {
-    const normalized = normalizeStatusMessage(value.statusMessage);
+  // Snapshot each field ONCE (a hostile getter throwing propagates to the
+  // validateEnvelope try/catch, which returns null).
+  const round = value.round;
+  const kickerLane = value.kickerLane;
+  const keeperLane = value.keeperLane;
+  const result = value.result;
+  const statusMessage = value.statusMessage;
+  if (!isPositiveSafeInteger(round)) return null;
+  if (!isValidLane(kickerLane)) return null;
+  if (!isValidLane(keeperLane)) return null;
+  if (!isShotResult(result)) return null;
+  const out: RoundResultPayload = { round, kickerLane, keeperLane, result };
+  if (typeof statusMessage === "string") {
+    const normalized = normalizeStatusMessage(statusMessage);
     if (normalized !== null) out.statusMessage = normalized;
   }
   return out;
@@ -155,42 +166,47 @@ export function normalizeStatusMessage(value: string): string | null {
  * reference to the source object.
  */
 export function sanitizeScores(raw: unknown): Record<string, number> | null {
-  if (!isPlainRecord(raw)) return null;
-  const out: Record<string, number> = {};
-  const keys = Object.keys(raw);
-  for (const key of keys) {
-    if (key.length === 0) return null;
-    if (isDangerousKey(key)) return null;
-    let val: unknown;
-    try {
-      val = raw[key];
-    } catch {
-      return null;
+  try {
+    if (!isPlainRecord(raw)) return null;
+    const out: Record<string, number> = {};
+    // Object.keys / property reads may throw on a hostile Proxy (ownKeys,
+    // getOwnPropertyDescriptor, or a value getter) — the outer try returns null.
+    const keys = Object.keys(raw);
+    for (const key of keys) {
+      // Player-id key rules: non-empty and no leading/trailing whitespace, and
+      // never a prototype-pollution key.
+      if (key.length === 0) return null;
+      if (key.trim().length === 0) return null;
+      if (key !== key.trim()) return null;
+      if (isDangerousKey(key)) return null;
+      const val: unknown = (raw as Record<string, unknown>)[key];
+      if (typeof val !== "number" || !Number.isSafeInteger(val) || val < 0) {
+        return null;
+      }
+      out[key] = val;
     }
-    if (typeof val !== "number" || !Number.isSafeInteger(val) || val < 0) {
-      return null;
-    }
-    out[key] = val;
+    return out;
+  } catch {
+    return null;
   }
-  return out;
 }
 
 function validateMatchStateSyncPayload(value: unknown): MatchStateSyncPayload | null {
   if (!isPlainRecord(value)) return null;
   const scores = sanitizeScores(value.scores);
   if (scores === null) return null;
-  if (!isPositiveSafeInteger(value.round)) return null;
-  if (!isPositiveSafeInteger(value.maxRounds)) return null;
-  if (!isMatchPhase(value.phase)) return null;
-  const out: MatchStateSyncPayload = {
-    scores,
-    round: value.round,
-    maxRounds: value.maxRounds,
-    phase: value.phase,
-  };
-  if (value.suddenDeathRound !== undefined) {
-    if (!isNonNegativeSafeInteger(value.suddenDeathRound)) return null;
-    out.suddenDeathRound = value.suddenDeathRound;
+  // Snapshot each field ONCE (hostile getters propagate to the caller's try).
+  const round = value.round;
+  const maxRounds = value.maxRounds;
+  const phase = value.phase;
+  const suddenDeathRound = value.suddenDeathRound;
+  if (!isPositiveSafeInteger(round)) return null;
+  if (!isPositiveSafeInteger(maxRounds)) return null;
+  if (!isMatchPhase(phase)) return null;
+  const out: MatchStateSyncPayload = { scores, round, maxRounds, phase };
+  if (suddenDeathRound !== undefined) {
+    if (!isNonNegativeSafeInteger(suddenDeathRound)) return null;
+    out.suddenDeathRound = suddenDeathRound;
   }
   return out;
 }
@@ -200,24 +216,38 @@ function validateMatchStateSyncPayload(value: unknown): MatchStateSyncPayload | 
  * PresentationEnvelope or null. Never throws.
  */
 export function validateEnvelope(value: unknown): PresentationEnvelope | null {
-  if (!isPlainRecord(value)) return null;
-  if (value.type !== PRESENTATION_TYPE) return null;
-  if (value.protocolVersion !== PRESENTATION_PROTOCOL_VERSION) return null;
-  if (!isValidMatchInstanceId(value.matchInstanceId)) return null;
-  if (!isValidSequence(value.sequence)) return null;
-  if (value.emittedAt !== undefined && !isValidEmittedAt(value.emittedAt)) return null;
+  try {
+    if (!isPlainRecord(value)) return null;
+    // Snapshot each top-level field ONCE so a hostile getter cannot return
+    // different values across reads; any throw lands in the catch below → null.
+    const type = value.type;
+    const protocolVersion = value.protocolVersion;
+    const matchInstanceId = value.matchInstanceId;
+    const sequence = value.sequence;
+    const emittedAt = value.emittedAt;
+    const event = value.event;
+    const payload = value.payload;
 
-  if (value.event === "round_result") {
-    const payload = validateRoundResultPayload(value.payload);
-    if (payload === null) return null;
-    return buildEnvelope("round_result", value.matchInstanceId, value.sequence, value.emittedAt, payload);
+    if (type !== PRESENTATION_TYPE) return null;
+    if (protocolVersion !== PRESENTATION_PROTOCOL_VERSION) return null;
+    if (!isValidMatchInstanceId(matchInstanceId)) return null;
+    if (!isValidSequence(sequence)) return null;
+    if (emittedAt !== undefined && !isValidEmittedAt(emittedAt)) return null;
+
+    if (event === "round_result") {
+      const p = validateRoundResultPayload(payload);
+      if (p === null) return null;
+      return buildEnvelope("round_result", matchInstanceId, sequence, emittedAt, p);
+    }
+    if (event === "match_state_sync") {
+      const p = validateMatchStateSyncPayload(payload);
+      if (p === null) return null;
+      return buildEnvelope("match_state_sync", matchInstanceId, sequence, emittedAt, p);
+    }
+    return null;
+  } catch {
+    return null;
   }
-  if (value.event === "match_state_sync") {
-    const payload = validateMatchStateSyncPayload(value.payload);
-    if (payload === null) return null;
-    return buildEnvelope("match_state_sync", value.matchInstanceId, value.sequence, value.emittedAt, payload);
-  }
-  return null;
 }
 
 // ── Envelope construction (field-by-field; never spreads raw payloads) ─────────
@@ -347,20 +377,29 @@ export class PresentationSequenceGate {
     return this.lastAccepted;
   }
 
-  /** Decide whether a validated envelope may be applied. Never throws. */
+  /**
+   * Decide whether a validated envelope may be applied. NEVER throws. State
+   * (`activeInstanceId`, `lastAccepted`) changes ONLY on the accepted path; any
+   * rejection — including a defensively-caught unexpected throw — leaves state
+   * untouched and never silently adopts an instance.
+   */
   accept(envelope: unknown): GateDecision {
-    const valid = validateEnvelope(envelope);
-    if (valid === null) return { accepted: false, reason: "invalid-envelope" };
-    if (this.activeInstanceId === null) {
-      return { accepted: false, reason: "no-active-instance" };
+    try {
+      const valid = validateEnvelope(envelope);
+      if (valid === null) return { accepted: false, reason: "invalid-envelope" };
+      if (this.activeInstanceId === null) {
+        return { accepted: false, reason: "no-active-instance" };
+      }
+      if (valid.matchInstanceId !== this.activeInstanceId) {
+        return { accepted: false, reason: "foreign-instance" };
+      }
+      if (valid.sequence <= this.lastAccepted) {
+        return { accepted: false, reason: "stale-or-duplicate" };
+      }
+      this.lastAccepted = valid.sequence;
+      return { accepted: true };
+    } catch {
+      return { accepted: false, reason: "invalid-envelope" };
     }
-    if (valid.matchInstanceId !== this.activeInstanceId) {
-      return { accepted: false, reason: "foreign-instance" };
-    }
-    if (valid.sequence <= this.lastAccepted) {
-      return { accepted: false, reason: "stale-or-duplicate" };
-    }
-    this.lastAccepted = valid.sequence;
-    return { accepted: true };
   }
 }
