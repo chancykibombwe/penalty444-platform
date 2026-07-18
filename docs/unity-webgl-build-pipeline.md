@@ -328,10 +328,24 @@ presentation-only, and the React renderer remains the fallback.
   tests), **B6D2** (preview shadow mode), **B6D3** (internal preview renderer),
   **B6D4** (failure/recovery validation), and **B6D5** (closeout).
 - **No subphase is authorized by the existence of the document** — each requires
-  its own separate review/gate, and the next approval (if any) should authorize
-  **B6D1 only**.
+  its own separate review/gate.
 - **Production remains NO-GO. Production reproducibility remains BLOCKED.** B6D is
   preview/free-play only and activates no production Unity.
+
+**B6D1 — implemented as standalone contract/test groundwork only** (see
+`docs/unity-b6d1-contract-adapter.md`). Adds a versioned presentation protocol
+(`unityPresentationProtocol.ts`), a sanitizing adapter
+(`unityPresentationAdapter.ts`), and 46 unit tests
+(`unityPresentationAdapter.test.ts`, run via `npm run test:unity-presentation`
+using `tsx` + Node `node:test`).
+
+- **It does NOT activate the existing bridge.** `MatchRoomPanel` and
+  `MatchRenderer3D` are **unchanged**; the module is imported by nothing at
+  runtime.
+- **No Unity, server, Supabase, or deployment change**; no feature-flag change;
+  no generated WebGL output. It is pure TypeScript + tests.
+- **B6D2 requires a separate approval after B6D1 review.** Production remains
+  **NO-GO**; reproducibility remains **BLOCKED**.
 
 ## 7. Production-readiness boundary
 
