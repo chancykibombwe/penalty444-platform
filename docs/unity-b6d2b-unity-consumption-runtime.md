@@ -1,16 +1,26 @@
 # B6D2B — Unity Protocol v1 Consumption and Controlled Staging Runtime Proof
 
-> **Status:** implementation complete; clean-worktree Unity build + staging
-> runtime proof recorded below. **Presentation-only.** React and the Node
-> realtime server remain the sole authority. **Production remains NO-GO,
+> **Status:** Unity implementation complete; clean-worktree validation/build
+> succeeded; the **identical compiled WebGL artifact** passed the controlled A–H
+> runtime proof (§15). The protected main-preview `/dev/unity-staging` harness
+> **could not be driven non-interactively** — Vercel SSO returned **HTTP 302** —
+> so the literal harness-route run is **not** claimed as executed. The equivalent
+> artifact-runtime proof is **accepted as sufficient for B6D2B**; running the exact
+> harness route remains a **documented, non-blocking follow-up** that **must be
+> completed before B6D3 runtime authorization**. **Presentation-only.** React and
+> the Node realtime server remain the sole authority. **Production remains NO-GO,
 > reproducibility remains BLOCKED, and B6D3 remains unauthorized.**
 
 ## 1. Scope
 
 B6D2B teaches the Unity **prototype** to validate and consume the already-merged
-B6D1 "Protocol v1" presentation envelopes, and proves it end-to-end through the
-guarded same-origin `/dev/unity-staging` route using deterministic **mock**
-Protocol v1 events.
+B6D1 "Protocol v1" presentation envelopes, and proves it end-to-end using
+deterministic **mock** Protocol v1 events. The runtime proof was executed against
+the **identical compiled WebGL artifact** (`b6d2b-5226d3c1-a`); the branch-preview
+`/dev/unity-staging` harness was deployed, but its interactive execution was
+**blocked by Vercel SSO (HTTP 302)**, so the substitute artifact-runtime proof is
+accepted for B6D2B and the literal harness-route execution is **deferred until
+before B6D3 runtime approval** (see §15).
 
 B6D2B **does**:
 
@@ -20,7 +30,9 @@ B6D2B **does**:
 - return **sanitized** applied/rejected acknowledgements;
 - rebuild an immutable local B6B release from the exact committed feature head;
 - deploy that release to the dedicated staging artifact project as **PREVIEW only**;
-- validate it through the guarded same-origin staging route.
+- prove the compiled artifact through the equivalent artifact-runtime proof, with
+  the guarded same-origin `/dev/unity-staging` harness deployed for the deferred
+  literal run.
 
 B6D2B **does NOT**: enable `NEXT_PUBLIC_UNITY_B6D2_SHADOW_ENABLED`; test the new
 protocol in a real match; make Unity player-facing; touch production

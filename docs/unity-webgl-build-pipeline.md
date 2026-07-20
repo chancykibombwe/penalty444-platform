@@ -374,8 +374,12 @@ envelopes, behind a **third** public flag `NEXT_PUBLIC_UNITY_B6D2_SHADOW_ENABLED
 **B6D2B — Unity Protocol v1 consumption + controlled staging runtime proof**
 (see `docs/unity-b6d2b-unity-consumption-runtime.md`). B6D2B teaches the Unity
 **prototype** to validate and consume the already-merged B6D1 Protocol v1
-envelopes as **presentation-only** state, and proves it through the guarded
-same-origin `/dev/unity-staging` route with deterministic mock events.
+envelopes as **presentation-only** state. The Unity runtime was proven directly
+using the **identical deployed artifact** (`b6d2b-5226d3c1-a`) with deterministic
+mock events; the branch-preview `/dev/unity-staging` harness was deployed, but its
+**interactive execution was blocked by Vercel SSO (HTTP 302)**. The substitute
+artifact-runtime proof was **accepted for B6D2B**, and the literal harness-route
+execution is **deferred until before B6D3 runtime approval**.
 
 - **New Unity source (presentation-only):**
   `UnityPresentationProtocolV1.cs` adds a bounded, exception-safe **structural
