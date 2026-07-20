@@ -72,4 +72,27 @@ mergeInto(LibraryManager.library, {
     }
     window.__penalty444BridgeRegistered = false;
   },
+
+  // B6D2B — Unity → parent acknowledgement bridge (presentation telemetry only).
+  //
+  // Receives a JSON string built by C# (a sanitized PENALTY444_UNITY_EVENT
+  // applied/rejected ack), parses it defensively, and posts it ONLY to
+  // window.parent using window.location.origin as targetOrigin (never "*").
+  //
+  // Non-negotiable: it makes NO network request and reads NO cookies /
+  // localStorage / auth / wallet data. Any failure is swallowed so a bridge
+  // error can never break Unity or React.
+  Penalty444PostUnityEvent: function (jsonPtr) {
+    try {
+      var json = UTF8ToString(jsonPtr);
+      if (!json) return;
+      var data = JSON.parse(json);
+      if (!data || typeof data !== "object") return;
+      if (window.parent) {
+        window.parent.postMessage(data, window.location.origin);
+      }
+    } catch (err) {
+      /* swallow — presentation ack bridge must stay non-fatal */
+    }
+  },
 });

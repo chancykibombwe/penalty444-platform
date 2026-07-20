@@ -37,7 +37,22 @@ namespace Penalty444.Prototype
 
         [DllImport("__Internal")]
         private static extern void Penalty444UnregisterWebBridge();
+
+        // Posts a sanitized Unity → parent acknowledgement (applied/rejected).
+        [DllImport("__Internal")]
+        private static extern void Penalty444PostUnityEvent(string json);
 #endif
+
+        // B6D2B: receiver-side instance/sequence gate for the strict Protocol v1
+        // path. Legacy envelopes never touch this.
+        private readonly PresentationInstanceGate presentationGate = new PresentationInstanceGate();
+
+        /// <summary>
+        /// Editor/test-only capture of the most recent Unity → parent ack JSON.
+        /// In a real WebGL build the ack is posted through the browser bridge; in
+        /// the Editor there is no parent window, so we only record it.
+        /// </summary>
+        public string LastPostedUnityEventJson { get; private set; }
 
         private void Start()
         {
@@ -86,6 +101,131 @@ namespace Penalty444.Prototype
                 return;
             }
 
+            // B6D2B — strict versioned Protocol v1 path. A top-level
+            // protocolVersion routes here; anything else falls through to legacy.
+            // An unsupported version is REJECTED here and never reinterpreted as a
+            // legacy event.
+            PresentationParseResult versioned;
+            try
+            {
+                versioned = UnityPresentationProtocolV1.Parse(json);
+            }
+            catch (Exception e)
+            {
+                Ignore($"versioned parse failed: {e.Message}");
+                return;
+            }
+
+            if (versioned.IsVersioned)
+            {
+                HandleVersioned(versioned);
+                return;
+            }
+
+            HandleLegacy(json);
+        }
+
+        // ── B6D2B strict versioned handling (gate → apply → ack) ─────────────
+        private void HandleVersioned(PresentationParseResult parsed)
+        {
+            if (!parsed.Ok)
+            {
+                // invalid_envelope / unsupported_version — no reliable envelope
+                // fields are available to echo.
+                PostRejected(parsed.Reason, null, false, 0, null);
+                return;
+            }
+
+            PresentationEnvelopeV1 envelope = parsed.Envelope;
+            string eventName = UnityPresentationProtocolV1.EventKindToString(envelope.Event);
+
+            PresentationInstanceGate.GateResult decision = presentationGate.Evaluate(envelope);
+            if (!decision.Accepted)
+            {
+                PostRejected(decision.Reason, envelope.MatchInstanceId, true, envelope.Sequence, eventName);
+                return;
+            }
+
+            bool applied;
+            try
+            {
+                applied = ApplyVersioned(envelope, decision.ResetScene);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[UnityBridgeReceiver] Versioned apply threw — {e.Message}.");
+                applied = false;
+            }
+
+            if (!applied)
+            {
+                // Transactional: a failed application must NOT commit the sequence
+                // or change the active instance.
+                PostRejected(PresentationRejectReasons.ApplyFailed, envelope.MatchInstanceId, true, envelope.Sequence, eventName);
+                return;
+            }
+
+            // Commit the active instance + sequence ONLY after a successful apply.
+            presentationGate.Commit(envelope);
+            PostApplied(envelope);
+        }
+
+        private bool ApplyVersioned(PresentationEnvelopeV1 envelope, bool resetScene)
+        {
+            if (sceneController == null)
+            {
+                Debug.LogWarning("[UnityBridgeReceiver] No PenaltySceneController assigned; cannot apply versioned event.");
+                return false;
+            }
+
+            if (envelope.Event == PresentationEventKind.RoundResult)
+            {
+                RoundResultData rr = envelope.RoundResult;
+                sceneController.ShowRoundResultVersioned(
+                    rr.Round, rr.KickerLane, rr.KeeperLane, rr.Result,
+                    rr.HasStatusMessage ? rr.StatusMessage : null);
+                return true;
+            }
+
+            // match_state_sync — a fresh/new-instance snapshot resets the scene and
+            // clears prior visual state before applying the complete snapshot.
+            if (resetScene) sceneController.ResetScene();
+            MatchStateSyncData s = envelope.StateSync;
+            sceneController.ApplyMatchStateSyncVersioned(
+                s.ScoreValuesOrdered, s.PlayerCount, s.Round, s.MaxRounds, s.Phase,
+                s.HasSuddenDeathRound, s.SuddenDeathRound);
+            return true;
+        }
+
+        private void PostApplied(PresentationEnvelopeV1 envelope)
+        {
+            PostUnityEvent(UnityPresentationProtocolV1.BuildAppliedAckJson(envelope));
+        }
+
+        private void PostRejected(string reason, string matchInstanceId, bool hasSequence, long sequence, string rejectedEvent)
+        {
+            PostUnityEvent(UnityPresentationProtocolV1.BuildRejectedAckJson(
+                reason, matchInstanceId, hasSequence, sequence, rejectedEvent));
+        }
+
+        private void PostUnityEvent(string json)
+        {
+            LastPostedUnityEventJson = json;
+#if UNITY_WEBGL && !UNITY_EDITOR
+            try
+            {
+                Penalty444PostUnityEvent(json);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[UnityBridgeReceiver] PostUnityEvent failed — {e.Message}.");
+            }
+#endif
+        }
+
+        // ── Legacy bridge (unchanged behavior; no protocolVersion) ───────────
+        private void HandleLegacy(string json)
+        {
             Penalty444Envelope env;
             try
             {
