@@ -38,6 +38,20 @@ import type {
   MatchPhase,
   RevealStage,
 } from "./matchPresentation";
+import type { PresentationEnvelope } from "./unityPresentationProtocol";
+import {
+  ShadowDispatchQueue,
+  summarizeSentMessage,
+  isEnvelopeForActiveInstance,
+  type SentSummary,
+} from "./unityPresentationShadow";
+
+/**
+ * Outbound-to-Unity message: the existing legacy `UnityInbound` OR a versioned
+ * B6D1 `PresentationEnvelope` (B6D2A). The legacy contract is preserved; the
+ * versioned envelope is only ever supplied when the third B6D2A flag is on.
+ */
+export type UnityShadowMessage = UnityInbound | PresentationEnvelope;
 
 // Re-export the canonical match types so future Unity-bridge consumers can
 // import them from one place without reaching back into presentation code.
@@ -177,20 +191,34 @@ type UnityRendererStatus = "loading" | "ready" | "unavailable";
 
 type MatchRenderer3DProps = {
   /**
-   * Latest authoritative, already-resolved presentation message to forward INTO
-   * Unity (the live shadow may forward `staging_begin`, `round_result`,
-   * `match_end`, or `reset`). Held pending until Unity signals `ready`, then
-   * sent at most once per `messageId` for the current iframe lifecycle. The
-   * renderer never derives outcome from this — it only forwards server-resolved
-   * state. When null/undefined, nothing is sent.
+   * LATEST-mode (legacy) message to forward INTO Unity. Held pending until Unity
+   * signals `ready`, then sent at most once per `messageId` per iframe lifecycle.
+   * Used when `deliveryMode` is "latest" (default). The renderer never derives
+   * outcome from this — it only forwards server-resolved state.
    */
-  message?: UnityInbound | null;
+  message?: UnityShadowMessage | null;
   /**
-   * Stable identity for `message`. A given id is delivered to Unity at most once
-   * per iframe lifecycle (deduplication). Changing it (new round) allows a new
-   * send; the same id will not be re-sent unless the iframe reloads.
+   * Stable identity for `message` (LATEST mode). A given id is delivered at most
+   * once per iframe lifecycle (deduplication).
    */
   messageId?: string | number | null;
+  /**
+   * FIFO-mode (B6D2A) ordered message list. Each `{ id, message }` is enqueued in
+   * arrival order, deduped by id (across queued + already-sent), and flushed in
+   * exact FIFO order once Unity is ready. Used only when `deliveryMode` is "fifo".
+   */
+  messages?: ReadonlyArray<{ id: string; message: UnityShadowMessage }>;
+  /**
+   * Delivery mode. "latest" (default) preserves the legacy single-pending
+   * behavior; "fifo" enables the B6D2A ordered queue.
+   */
+  deliveryMode?: "latest" | "fifo";
+  /**
+   * FIFO mode only — the coordinator's active protocol matchInstanceId. When it
+   * changes, the queue and per-lifecycle sent ids are cleared; the renderer never
+   * infers an instance from an incoming message.
+   */
+  activeMatchInstanceId?: string | null;
   /**
    * Optional Unity → React event callbacks. The renderer never derives match
    * outcome from these — they only drive presentation/animation timing.
@@ -198,14 +226,24 @@ type MatchRenderer3DProps = {
   onReady?: () => void;
   onAnimationComplete?: (round: number) => void;
   onError?: (message: string) => void;
+  /**
+   * Fired after a message is delivered to Unity, with SANITIZED metadata only
+   * (messageId, event, and instance/sequence for versioned envelopes). Never
+   * receives raw payloads; callback errors never break the renderer.
+   */
+  onMessageSent?: (summary: SentSummary) => void;
 };
 
 export default function MatchRenderer3D({
   message = null,
   messageId = null,
+  messages,
+  deliveryMode = "latest",
+  activeMatchInstanceId = null,
   onReady,
   onAnimationComplete,
   onError,
+  onMessageSent,
 }: MatchRenderer3DProps) {
   // Public, build-time env flags only. No secrets, no tokens.
   const enabled = process.env.NEXT_PUBLIC_UNITY_MATCH_ENABLED === "true";
@@ -213,15 +251,30 @@ export default function MatchRenderer3D({
 
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   // Hold latest callbacks in a ref so the listener subscribes once.
-  const callbacksRef = useRef({ onReady, onAnimationComplete, onError });
-  callbacksRef.current = { onReady, onAnimationComplete, onError };
+  const callbacksRef = useRef({ onReady, onAnimationComplete, onError, onMessageSent });
+  callbacksRef.current = { onReady, onAnimationComplete, onError, onMessageSent };
 
   // Send-queue state, all in refs so the once-subscribed listener stays stable.
   const readyRef = useRef(false);
-  const pendingRef = useRef<{ message: UnityInbound; id: string | number } | null>(
+  const pendingRef = useRef<{ message: UnityShadowMessage; id: string | number } | null>(
     null
   );
   const sentIdsRef = useRef<Set<string | number>>(new Set());
+
+  // FIFO delivery queue (B6D2A). Created lazily; only used in "fifo" mode.
+  const fifoQueueRef = useRef<ShadowDispatchQueue | null>(null);
+  const fifoInstanceRef = useRef<string | null>(activeMatchInstanceId);
+
+  // Sanitized "message sent" notification — callback errors never break render.
+  const notifySent = useCallback((message: UnityShadowMessage, id: string | number) => {
+    const cb = callbacksRef.current.onMessageSent;
+    if (!cb) return;
+    try {
+      cb(summarizeSentMessage(message, String(id)));
+    } catch {
+      /* onMessageSent must never break the renderer */
+    }
+  }, []);
 
   // Presentation-only lifecycle (B5B3). Never gates the React match.
   const [status, setStatus] = useState<UnityRendererStatus>("loading");
@@ -278,13 +331,38 @@ export default function MatchRenderer3D({
     try {
       target.postMessage(pending.message, window.location.origin);
       sentIdsRef.current.add(pending.id);
+      notifySent(pending.message, pending.id);
     } catch (error) {
       if (process.env.NODE_ENV !== "production") {
         console.warn("[unity-shadow] postMessage failed", error);
       }
       markUnavailable("3D preview message delivery failed.");
     }
-  }, [markUnavailable]);
+  }, [markUnavailable, notifySent]);
+
+  // FIFO flush (B6D2A). Drains the queue in exact arrival order and posts each
+  // same-origin (never "*"). A delivery exception fails the preview open, never
+  // React. Only runs in "fifo" mode once Unity is ready.
+  const flushFifo = useCallback(() => {
+    if (!readyRef.current || unavailableRef.current) return;
+    const queue = fifoQueueRef.current;
+    if (!queue) return;
+    const target = iframeRef.current?.contentWindow;
+    if (!target) return;
+    const batch = queue.drain();
+    for (const item of batch) {
+      try {
+        target.postMessage(item.message, window.location.origin);
+        notifySent(item.message as UnityShadowMessage, item.id);
+      } catch (error) {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("[unity-b6d2-shadow] postMessage failed", error);
+        }
+        markUnavailable("3D preview message delivery failed.");
+        return;
+      }
+    }
+  }, [markUnavailable, notifySent]);
 
   useEffect(() => {
     // Only listen when there is actually an iframe build to listen to.
@@ -305,8 +383,19 @@ export default function MatchRenderer3D({
         clearReadyTimeout();
         readyRef.current = true;
         setStatus("ready");
-        cb.onReady?.();
-        flushPending();
+        if (deliveryMode === "fifo") {
+          // FIFO ready policy: a shadow preview that was NOT ready when an
+          // animation happened does NOT replay that historical animation later.
+          // Discard any pre-ready FIFO history, then let the parent's onReady
+          // publish a fresh ready_resync (current authoritative match_state_sync),
+          // which is sent normally once it arrives — we do NOT flush pre-ready
+          // history here.
+          fifoQueueRef.current?.reset();
+          cb.onReady?.();
+        } else {
+          cb.onReady?.();
+          flushPending();
+        }
       } else if (msg.event === "animation_complete") {
         cb.onAnimationComplete?.(msg.payload.round);
       } else if (msg.event === "error") {
@@ -317,16 +406,55 @@ export default function MatchRenderer3D({
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [enabled, buildUrl, flushPending, clearReadyTimeout, markUnavailable]);
+  }, [enabled, buildUrl, deliveryMode, flushPending, flushFifo, clearReadyTimeout, markUnavailable]);
 
-  // Track the latest React → Unity message and try to send it. If Unity is not
-  // ready yet, it stays pending and is flushed on the next `ready`.
+  // LATEST mode (legacy): track the latest React → Unity message and try to send
+  // it. If Unity is not ready yet, it stays pending and is flushed on `ready`.
   useEffect(() => {
     if (!enabled || !buildUrl) return;
+    if (deliveryMode !== "latest") return;
     if (!message || messageId == null) return;
     pendingRef.current = { message, id: messageId };
     flushPending();
-  }, [enabled, buildUrl, message, messageId, flushPending]);
+  }, [enabled, buildUrl, deliveryMode, message, messageId, flushPending]);
+
+  // FIFO mode (B6D2A): an explicit active-instance change clears the queue and
+  // per-lifecycle sent ids. Declared BEFORE the enqueue effect so a same-render
+  // instance change resets before new-instance messages are enqueued. The
+  // renderer never infers an instance from an incoming message.
+  useEffect(() => {
+    if (!enabled || !buildUrl) return;
+    if (deliveryMode !== "fifo") return;
+    if (activeMatchInstanceId === fifoInstanceRef.current) return;
+    fifoInstanceRef.current = activeMatchInstanceId;
+    fifoQueueRef.current?.reset();
+  }, [enabled, buildUrl, deliveryMode, activeMatchInstanceId]);
+
+  // FIFO mode (B6D2A): enqueue new messages in arrival order (deduped by id) and
+  // flush them in FIFO order once ready. Queue overflow fails the preview open;
+  // React continues normally.
+  useEffect(() => {
+    if (!enabled || !buildUrl) return;
+    if (deliveryMode !== "fifo") return;
+    if (!fifoQueueRef.current) fifoQueueRef.current = new ShadowDispatchQueue(32);
+    const queue = fifoQueueRef.current;
+    for (const item of messages ?? []) {
+      // Defensive isolation: only enqueue a validated versioned envelope for the
+      // current active instance. A foreign-instance or unvalidatable message is
+      // rejected (never enqueued) — the active instance is never inferred from a
+      // message.
+      if (!isEnvelopeForActiveInstance(item.message, activeMatchInstanceId)) {
+        continue;
+      }
+      const res = queue.enqueue(item.id, item.message);
+      if (!res.ok && res.reason === "overflow") {
+        markUnavailable("3D preview message queue overflow.");
+        return;
+      }
+      // duplicate → silently skipped (already queued or already sent)
+    }
+    flushFifo();
+  }, [enabled, buildUrl, deliveryMode, messages, activeMatchInstanceId, flushFifo, markUnavailable]);
 
   // Arm the readiness timeout for this component lifecycle; clear on unmount.
   useEffect(() => {
@@ -341,9 +469,13 @@ export default function MatchRenderer3D({
     if (unavailableRef.current) return;
     readyRef.current = false;
     sentIdsRef.current.clear();
+    // FIFO mode: on reload, clear the queue + sent-id history; the parent's
+    // `ready` callback publishes a fresh state sync. Old round_result history is
+    // never replayed.
+    if (deliveryMode === "fifo") fifoQueueRef.current?.reset();
     setStatus("loading");
     armReadyTimeout();
-  }, [armReadyTimeout]);
+  }, [armReadyTimeout, deliveryMode]);
 
   // Native iframe load failure (network error) → fail open (idempotent).
   const handleIframeError = useCallback(() => {

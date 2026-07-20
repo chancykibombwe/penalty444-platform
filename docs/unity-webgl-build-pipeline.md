@@ -351,6 +351,26 @@ contract tests").
 - **B6D2 requires a separate approval after B6D1 review.** Production remains
   **NO-GO**; reproducibility remains **BLOCKED**.
 
+**B6D2A — default-off web shadow dispatch only** (see
+`docs/unity-b6d2a-web-shadow-dispatch.md`). B6D1 is **complete**; B6D2A wires the
+tested B6D1 contract/adapter into the existing optional React→Unity shadow path to
+build, order, and dispatch real authoritative `round_result` / `match_state_sync`
+envelopes, behind a **third** public flag `NEXT_PUBLIC_UNITY_B6D2_SHADOW_ENABLED`
+(default off; runs only when all three Unity flags are `"true"`).
+
+- **No Unity source and no production configuration.** React stays the
+  player-facing renderer and sole client lifecycle owner; the legacy shadow is
+  preserved exactly when the flag is off; `package-lock.json` is unchanged.
+- It **proves envelopes are built/ordered/dispatched**, **not** that Unity has
+  applied `match_state_sync`. The parent keeps a **pending-unsent** buffer (not
+  replayable history), the instance transition is **atomic**, ready/reload
+  discards pre-ready history and **resumes from current authoritative state**, and
+  overflow is **explicit + fail-open**. Enforced by **119** unit tests in the Web
+  CI step.
+- **B6D2A must pass code review before any branch-preview flag configuration.**
+  **B6D2B requires separate authorization** (as does B6D3). Production remains
+  **NO-GO**; reproducibility remains **BLOCKED**.
+
 ## 7. Production-readiness boundary
 
 > B5 (live shadow preview) is complete on `master` (PRs #199–#202), but that does

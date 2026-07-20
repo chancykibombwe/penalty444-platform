@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -57,6 +57,16 @@ import {
   type ShotResult,
 } from "./matchPresentation";
 import MatchRenderer3D, { type UnityInbound } from "./MatchRenderer3D";
+import {
+  UnityPresentationShadowCoordinator,
+  compareEnvelopeToSource,
+  appendPending,
+  acknowledgePending,
+  replacePending,
+  type UnityShadowDispatch,
+  type SentSummary,
+  type PendingShadowItem,
+} from "./unityPresentationShadow";
 
 type MatchResultPayload = {
   roomCode?: string;
@@ -869,6 +879,134 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     livePhaseRef.current = phase;
     liveMatchInstanceRef.current = matchInstance;
   }, [unityShadowEnabled, scores, maxRounds, phase, matchInstance]);
+
+  // ── B6D2A: versioned web shadow dispatch (Phase B6D2A) — default-off ──
+  // Third build-time public flag. The B6D2A path runs ONLY when all three flags
+  // are exactly "true"; when absent/false the existing B5 two-flag legacy shadow
+  // is unchanged. While on, the versioned B6D1 envelopes REPLACE the legacy feed
+  // (the protocol supports only round_result + match_state_sync — no legacy
+  // staging_begin / reset / match_end). This never affects React state/timing.
+  const unityB6D2ShadowEnabled =
+    unityShadowEnabled &&
+    process.env.NEXT_PUBLIC_UNITY_B6D2_SHADOW_ENABLED === "true";
+  const shadowCoordinatorRef = useRef<UnityPresentationShadowCoordinator | null>(
+    null
+  );
+  if (unityB6D2ShadowEnabled && shadowCoordinatorRef.current === null) {
+    shadowCoordinatorRef.current = new UnityPresentationShadowCoordinator();
+  }
+  // Pending-UNSENT versioned dispatches only (NOT replayable history). Sent
+  // messages are removed on acknowledgment; an instance change or ready lifecycle
+  // replaces the buffer; the 33rd unsent message is an explicit overflow.
+  const [unityB6D2Pending, setUnityB6D2Pending] = useState<PendingShadowItem[]>(
+    []
+  );
+  const [unityB6D2ActiveInstance, setUnityB6D2ActiveInstance] = useState<
+    string | null
+  >(null);
+  // Synchronous mirror of the active instance for transition detection.
+  const unityB6D2ActiveInstanceRef = useRef<string | null>(null);
+  // Tiny sanitized audit (NO raw payloads, NO player ids, NO scores-by-id).
+  const [unityB6D2Audit, setUnityB6D2Audit] = useState<{
+    lastBuiltEvent: string | null;
+    lastBuiltSequence: number | null;
+    lastSentEvent: string | null;
+    lastSentSequence: number | null;
+    comparison: "PASS" | "FAIL" | "PENDING" | null;
+    unityStatus: "loading" | "ready" | "unavailable";
+  }>({
+    lastBuiltEvent: null,
+    lastBuiltSequence: null,
+    lastSentEvent: null,
+    lastSentSequence: null,
+    comparison: null,
+    unityStatus: "loading",
+  });
+
+  // Publish a versioned dispatch: enqueue it (FIFO, bounded), track the active
+  // protocol instance, update the sanitized audit, and log ONLY the audit summary
+  // under a consistent [unity-b6d2-shadow] prefix. No-op when B6D2A is off.
+  const publishB6D2Shadow = useCallback(
+    (dispatch: UnityShadowDispatch | null, rawSource: unknown) => {
+      if (!unityB6D2ShadowEnabled || !dispatch) return;
+      const comparison = compareEnvelopeToSource(dispatch.envelope, rawSource);
+      const newInstance = dispatch.envelope.matchInstanceId;
+      const item: PendingShadowItem = { id: dispatch.id, message: dispatch.envelope };
+      if (newInstance !== unityB6D2ActiveInstanceRef.current) {
+        // Instance transition (only ever from an authoritative match:update):
+        // drop ALL old-instance pending messages and keep just this new one.
+        setUnityB6D2Pending(replacePending(item));
+        unityB6D2ActiveInstanceRef.current = newInstance;
+        setUnityB6D2ActiveInstance(newInstance);
+      } else {
+        // Same instance: append an unsent dispatch (dedup + bounded; the 33rd is
+        // an explicit overflow, never a silent trim — the renderer fails open).
+        setUnityB6D2Pending((prev) => appendPending(prev, item).buffer);
+      }
+      setUnityB6D2Audit((a) => ({
+        ...a,
+        lastBuiltEvent: dispatch.audit.event,
+        lastBuiltSequence: dispatch.audit.sequence,
+        comparison,
+      }));
+      if (process.env.NODE_ENV !== "production") {
+        console.info(
+          "[unity-b6d2-shadow] built",
+          dispatch.audit,
+          "compare",
+          comparison
+        );
+      }
+    },
+    [unityB6D2ShadowEnabled]
+  );
+
+  // Unity ready / reload → clean baseline: DISCARD any pre-ready pending history
+  // and replace the buffer with a single fresh ready_resync (current authoritative
+  // state), when available. Never replays an earlier round_result.
+  const handleB6D2Ready = useCallback(() => {
+    setUnityB6D2Audit((a) => ({ ...a, unityStatus: "ready" }));
+    const resync = shadowCoordinatorRef.current?.buildReadyResync() ?? null;
+    if (resync) {
+      unityB6D2ActiveInstanceRef.current = resync.envelope.matchInstanceId;
+      setUnityB6D2ActiveInstance(resync.envelope.matchInstanceId);
+      setUnityB6D2Pending(
+        replacePending({ id: resync.id, message: resync.envelope })
+      );
+      setUnityB6D2Audit((a) => ({
+        ...a,
+        lastBuiltEvent: resync.audit.event,
+        lastBuiltSequence: resync.audit.sequence,
+        comparison: "PENDING",
+      }));
+    } else {
+      // No complete snapshot yet — discard pre-ready history; wait for the next
+      // authoritative match_state_sync. Nothing is replayed.
+      setUnityB6D2Pending(replacePending(null));
+    }
+  }, []);
+
+  const handleB6D2Error = useCallback((m: string) => {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[unity-b6d2-shadow] non-blocking Unity error:", m);
+    }
+    setUnityB6D2Audit((a) => ({ ...a, unityStatus: "unavailable" }));
+  }, []);
+
+  // A transported message is acknowledged → remove it from the pending buffer so
+  // it is never retained as replayable history.
+  const handleB6D2Sent = useCallback((summary: SentSummary) => {
+    setUnityB6D2Pending((prev) => acknowledgePending(prev, summary.messageId));
+    setUnityB6D2Audit((a) => ({
+      ...a,
+      lastSentEvent: summary.event,
+      lastSentSequence:
+        typeof summary.sequence === "number"
+          ? summary.sequence
+          : a.lastSentSequence,
+    }));
+  }, []);
+
   const [leaveMatchBusy, setLeaveMatchBusy] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [matchAborted, setMatchAborted] = useState(false);
@@ -1037,6 +1175,19 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         return;
       }
       // === END REVEAL GATE ===
+
+      // B6D2A: the update has passed the room check AND the reveal gate, so it is
+      // being applied now. Build + dispatch a versioned match_state_sync from the
+      // RAW authoritative payload (never from React state / liveScoresRef / later
+      // effects). No-op unless the third flag is on. This never blocks or reorders
+      // any setState below — the coordinator is pure and only appends to a queue.
+      publishB6D2Shadow(
+        shadowCoordinatorRef.current?.acceptMatchUpdate(
+          normalizedRoomCode,
+          data
+        ) ?? null,
+        data
+      );
 
       const incomingRound = data.round;
 
@@ -1458,30 +1609,41 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         authoritative.kickerPick &&
         authoritative.keeperPick
       ) {
-        const resultRound =
-          authoritative.round ?? lastPickRoundRef.current ?? 0;
-        // Distinct id from the staging message for this round (…:result vs …:staging).
-        const resultId = `${normalizedRoomCode}:${liveMatchInstanceRef.current}:${resultRound}:result`;
-        setUnityShadowMessage({
-          id: resultId,
-          message: {
-            type: "PENALTY444_MATCH_EVENT",
-            event: "round_result",
-            payload: {
-              kickerLane: authoritative.kickerPick,
-              keeperLane: authoritative.keeperPick,
-              result: authoritative.result,
-              // Latest client-held authoritative score snapshot, frozen at
-              // build time (match:result carries no scores → may be pre-result;
-              // no local score calc; Unity ignores scores). Copied so later
-              // state updates can't mutate it.
-              scores: { ...liveScoresRef.current },
-              round: resultRound,
-              maxRounds: liveMaxRoundsRef.current,
-              phase: livePhaseRef.current,
+        if (unityB6D2ShadowEnabled) {
+          // B6D2A: versioned round_result built from the authoritative result
+          // ONLY (no scores/phase/maxRounds, no legacy liveScoresRef snapshot, no
+          // result derivation). The scoreboard changes only via match_state_sync.
+          publishB6D2Shadow(
+            shadowCoordinatorRef.current?.acceptRoundResult(authoritative) ??
+              null,
+            authoritative
+          );
+        } else {
+          const resultRound =
+            authoritative.round ?? lastPickRoundRef.current ?? 0;
+          // Distinct id from the staging message for this round (…:result vs …:staging).
+          const resultId = `${normalizedRoomCode}:${liveMatchInstanceRef.current}:${resultRound}:result`;
+          setUnityShadowMessage({
+            id: resultId,
+            message: {
+              type: "PENALTY444_MATCH_EVENT",
+              event: "round_result",
+              payload: {
+                kickerLane: authoritative.kickerPick,
+                keeperLane: authoritative.keeperPick,
+                result: authoritative.result,
+                // Latest client-held authoritative score snapshot, frozen at
+                // build time (match:result carries no scores → may be pre-result;
+                // no local score calc; Unity ignores scores). Copied so later
+                // state updates can't mutate it.
+                scores: { ...liveScoresRef.current },
+                round: resultRound,
+                maxRounds: liveMaxRoundsRef.current,
+                phase: livePhaseRef.current,
+              },
             },
-          },
-        });
+          });
+        }
       }
 
       // "Dramatic hold": keep the result on screen so REVEALED actually
@@ -1610,6 +1772,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       // lanes are present. env checks inlined (not reactive) so no new socket-
       // effect dependency is introduced.
       if (
+        // B6D2A has no legacy `staging_begin` (the versioned protocol supports
+        // only round_result + match_state_sync), so this legacy staging feed is
+        // suppressed while the third flag is on and preserved exactly when off.
+        !unityB6D2ShadowEnabled &&
         process.env.NEXT_PUBLIC_UNITY_MATCH_ENABLED === "true" &&
         process.env.NEXT_PUBLIC_UNITY_LIVE_SHADOW_ENABLED === "true" &&
         authoritative.kickerPick &&
@@ -1744,24 +1910,35 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
         process.env.NEXT_PUBLIC_UNITY_MATCH_ENABLED === "true" &&
         process.env.NEXT_PUBLIC_UNITY_LIVE_SHADOW_ENABLED === "true"
       ) {
-        const presentation = getUnityMatchEndPresentation(payload.scores);
-        if (presentation) {
-          setUnityShadowMessage({
-            id: `${normalizedRoomCode}:${liveMatchInstanceRef.current}:match-end`,
-            message: {
-              type: "PENALTY444_MATCH_EVENT",
-              event: "match_end",
-              payload: {
-                winnerId: presentation.winnerId,
-                isDraw: presentation.isDraw,
-              },
-            },
-          });
-        } else if (process.env.NODE_ENV !== "production") {
-          console.warn(
-            "[unity-shadow] match_end skipped — malformed final scores",
-            payload.scores
+        if (unityB6D2ShadowEnabled) {
+          // B6D2A: defensive terminal state sync — combines the final
+          // authoritative scores with the same-instance stored complete snapshot.
+          // null → send nothing (a later full match:update is the preferred
+          // complete terminal sync). React match-end behavior is unchanged.
+          publishB6D2Shadow(
+            shadowCoordinatorRef.current?.acceptMatchEnd(payload) ?? null,
+            null
           );
+        } else {
+          const presentation = getUnityMatchEndPresentation(payload.scores);
+          if (presentation) {
+            setUnityShadowMessage({
+              id: `${normalizedRoomCode}:${liveMatchInstanceRef.current}:match-end`,
+              message: {
+                type: "PENALTY444_MATCH_EVENT",
+                event: "match_end",
+                payload: {
+                  winnerId: presentation.winnerId,
+                  isDraw: presentation.isDraw,
+                },
+              },
+            });
+          } else if (process.env.NODE_ENV !== "production") {
+            console.warn(
+              "[unity-shadow] match_end skipped — malformed final scores",
+              payload.scores
+            );
+          }
         }
       }
 
@@ -1847,6 +2024,11 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       // being cleared. Skipped unless BOTH flags are "true"; env checks inlined
       // (not reactive) → no new socket-effect dependency.
       if (
+        // B6D2A has no legacy `reset` event; the new-instance transition is driven
+        // by the authoritative match:update carrying a new numeric matchInstance
+        // (coordinator resets the sequence there). Suppressed while on; preserved
+        // exactly when off.
+        !unityB6D2ShadowEnabled &&
         process.env.NEXT_PUBLIC_UNITY_MATCH_ENABLED === "true" &&
         process.env.NEXT_PUBLIC_UNITY_LIVE_SHADOW_ENABLED === "true"
       ) {
@@ -3858,14 +4040,56 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
             </span>
           </div>
           <div className="aspect-video w-full overflow-hidden rounded-xl">
-            <MatchRenderer3D
-              message={unityShadowMessage?.message ?? null}
-              messageId={unityShadowMessage?.id ?? null}
-              onError={(m) =>
-                console.warn("[unity-shadow] non-blocking Unity error:", m)
-              }
-            />
+            {unityB6D2ShadowEnabled ? (
+              <MatchRenderer3D
+                deliveryMode="fifo"
+                messages={unityB6D2Pending}
+                activeMatchInstanceId={unityB6D2ActiveInstance}
+                onReady={handleB6D2Ready}
+                onError={handleB6D2Error}
+                onMessageSent={handleB6D2Sent}
+              />
+            ) : (
+              <MatchRenderer3D
+                message={unityShadowMessage?.message ?? null}
+                messageId={unityShadowMessage?.id ?? null}
+                onError={(m) =>
+                  console.warn("[unity-shadow] non-blocking Unity error:", m)
+                }
+              />
+            )}
           </div>
+          {unityB6D2ShadowEnabled ? (
+            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-[10px] text-zinc-500">
+              <dt className="text-zinc-600">protocol</dt>
+              <dd className="text-emerald-400">v1</dd>
+              <dt className="text-zinc-600">instance</dt>
+              <dd className="truncate text-zinc-300">
+                {unityB6D2ActiveInstance ?? "—"}
+              </dd>
+              <dt className="text-zinc-600">last sent</dt>
+              <dd className="text-zinc-300">
+                {unityB6D2Audit.lastSentEvent ?? "—"}
+                {unityB6D2Audit.lastSentSequence != null
+                  ? ` #${unityB6D2Audit.lastSentSequence}`
+                  : ""}
+              </dd>
+              <dt className="text-zinc-600">comparison</dt>
+              <dd
+                className={
+                  unityB6D2Audit.comparison === "PASS"
+                    ? "text-emerald-400"
+                    : unityB6D2Audit.comparison === "FAIL"
+                      ? "text-red-400"
+                      : "text-amber-400"
+                }
+              >
+                {unityB6D2Audit.comparison ?? "PENDING"}
+              </dd>
+              <dt className="text-zinc-600">react</dt>
+              <dd className="text-zinc-300">authoritative</dd>
+            </dl>
+          ) : null}
           <p className="mt-1.5 text-[10px] text-zinc-600">
             React-timed cinematic shadow preview — presentation only; the React
             match remains authoritative. Stages during the React reveal, then
