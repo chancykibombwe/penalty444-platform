@@ -371,6 +371,53 @@ envelopes, behind a **third** public flag `NEXT_PUBLIC_UNITY_B6D2_SHADOW_ENABLED
   **B6D2B requires separate authorization** (as does B6D3). Production remains
   **NO-GO**; reproducibility remains **BLOCKED**.
 
+**B6D2B — Unity Protocol v1 consumption + controlled staging runtime proof**
+(see `docs/unity-b6d2b-unity-consumption-runtime.md`). B6D2B teaches the Unity
+**prototype** to validate and consume the already-merged B6D1 Protocol v1
+envelopes as **presentation-only** state. The Unity runtime was proven directly
+using the **identical deployed artifact** (`b6d2b-5226d3c1-a`) with deterministic
+mock events; the branch-preview `/dev/unity-staging` harness was deployed, but its
+**interactive execution was blocked by Vercel SSO (HTTP 302)**. The substitute
+artifact-runtime proof was **accepted for B6D2B**, and the literal harness-route
+execution is **deferred until before B6D3 runtime approval**.
+
+- **New Unity source (presentation-only):**
+  `UnityPresentationProtocolV1.cs` adds a bounded, exception-safe **structural
+  JSON reader** (16 KiB / depth 8 / 512-char string / 16 score entries; rejects
+  duplicate keys, fractional/negative/overflow scores, dangerous/whitespace score
+  keys — never regex for nested JSON, no Newtonsoft, WebGL/IL2CPP-safe), a strict
+  Protocol v1 model, and an instance/sequence gate. `PenaltySceneController`
+  gains versioned `round_result` (authoritative round, no score math) and an
+  **identity-neutral** `match_state_sync` presentation. `UnityBridgeReceiver`
+  routes versioned messages to the strict path and preserves the legacy bridge
+  for envelopes without `protocolVersion`. `Penalty444WebBridge.jslib` adds
+  `Penalty444PostUnityEvent`, which posts sanitized `presentation_applied` /
+  `presentation_rejected` acks **only** to `window.parent` with
+  `window.location.origin` (never `"*"`; no network/cookies/auth/wallet).
+- **Validation:** `Assets/Editor/Penalty444PresentationProtocolValidation.cs`
+  runs **41** deterministic parser/gate/legacy/ack cases (**57 assertions**) via
+  `Penalty444.Editor.Penalty444PresentationProtocolValidation.RunFromCommandLine`
+  (fails the batch process on any assertion) — clean-worktree run at head
+  `5226d3c1` reported **`PASS - all 57/57`** (exit 0). Web side adds
+  `unityStagingProtocol.ts` + `unityStagingProtocol.test.ts` to
+  `npm run test:unity-presentation` (**149** unit tests total).
+- **Release + deployment:** built from the clean worktree at head `5226d3c1` as
+  **`b6d2b-5226d3c1-a`** (schemaVersion 1, 17 files, gzip, manifest SHA-256
+  `00205da3ecc88557a1f138d5b57486e4920fe5ef33a02962c340cf61b28dc79e`) and deployed
+  to `penalty444-unity-staging` as **PREVIEW only** (`dpl_2bHdvjmYFYbSW7iprDFmTHPgt4Ua`,
+  `target: null`, READY). The built WebGL runtime was runtime-proven (Protocol v1
+  apply/reject, ordering/instance gate, reload bootstrap, sudden death, legacy) —
+  see the runtime doc §15.
+- **No new package/dependency**; `package-lock.json`, `Packages/manifest.json`,
+  and `Packages/packages-lock.json` unchanged. Generated WebGL output and runtime
+  evidence remain untracked.
+- **Scope guardrails:** the third live-shadow flag
+  `NEXT_PUBLIC_UNITY_B6D2_SHADOW_ENABLED` remains **unconfigured**; no real match
+  or room is used; React + the Node realtime server stay authoritative; the
+  identity-neutral scoreboard does **not** define a player-facing scoreboard
+  (that remains unauthorized for B6D3 review). **Production remains NO-GO,
+  reproducibility remains BLOCKED, and B6D3 remains unauthorized.**
+
 ## 7. Production-readiness boundary
 
 > B5 (live shadow preview) is complete on `master` (PRs #199–#202), but that does
