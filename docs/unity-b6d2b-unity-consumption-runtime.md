@@ -258,12 +258,13 @@ exception text and raw input are never included.
 Entry point (deterministic, batch-safe):
 `Penalty444.Editor.Penalty444PresentationProtocolValidation.RunFromCommandLine`
 
-**41** checks: parser (1–18), gate (19–32), legacy (33–37), acknowledgement
-(38–41). It logs a single PASS summary and fails the Unity process on any
-assertion. It modifies no scene/project settings and leaves no tracked asset.
+**41** numbered cases: parser (1–18), gate (19–32), legacy (33–37),
+acknowledgement (38–41). These expand to **57 individual assertions**. It logs a
+single PASS summary and fails the Unity process on any assertion. It modifies no
+scene/project settings and leaves no tracked asset.
 
-- **Command:** _see §12 — run inside the clean worktree with Unity 6000.4.2f1._
-- **Result:** _PENDING (recorded after the clean-worktree run)._
+- **Command:** `Unity.exe -batchmode -quit -projectPath unity\Penalty444Client -executeMethod Penalty444.Editor.Penalty444PresentationProtocolValidation.RunFromCommandLine` (Unity 6000.4.2f1, run inside the clean worktree).
+- **Result:** **PASS — `[B6D2B validation] PASS - all 57/57 presentation-protocol checks passed.`** (exit code 0).
 
 ## 10. Web test inventory and result
 
@@ -293,13 +294,18 @@ assertion. It modifies no scene/project settings and leaves no tracked asset.
 > build.
 
 - **Clean worktree path:** `C:\Users\EL GADO\Desktop\penalty444-b6d2b-build`
-- **Exact HEAD:** _PENDING (must equal the reported feature commit)._
+- **Exact HEAD:** `5226d3c125f3a274fc7d8589f3aa77642a3c5991` (equals the feature
+  commit; `git status --porcelain` empty before running Unity).
 - Validation: `Penalty444.Editor.Penalty444PresentationProtocolValidation.RunFromCommandLine`
-  with Unity **6000.4.2f1** → **PENDING** (require exit code 0).
+  with Unity **6000.4.2f1** → **PASS (57/57), exit code 0**.
 - Release build via the committed B6B builder/wrapper, version
-  `b6d2b-<SHORT_HEAD>-a` → **PENDING**.
-- Manifest `schemaVersion 1`, `sourceCommit` = exact full feature commit, all
-  file hashes verified, manifest self-checksum verified → **PENDING**.
+  **`b6d2b-5226d3c1-a`** → **built** (WebGL, gzip, new immutable release dir; no
+  existing release overwritten; no output committed).
+- Manifest `schemaVersion 1`, `sourceCommit` =
+  `5226d3c125f3a274fc7d8589f3aa77642a3c5991`, **17 files**, all file hashes
+  verified, manifest self-checksum verified.
+  Manifest SHA-256: **`00205da3ecc88557a1f138d5b57486e4920fe5ef33a02962c340cf61b28dc79e`**.
+  Total artifact bytes 10,703,699; compressed payload 10,657,168 (gzip).
 
 ## 13. Staging artifact preview deployment
 
@@ -308,10 +314,15 @@ Artifact project `penalty444-unity-staging`
 (`team_qBdaTOMQrGQnsZfiMVzyDNB4`). **PREVIEW only** (`target: null`; no `--prod`;
 no alias).
 
-- **Deployment ID / immutable origin:** _PENDING._
-- HTTP verification (index/loader/framework.gz/data.gz/wasm.gz/manifest/checksum;
-  MIME; `Content-Encoding: gzip`; immutable cache; `nosniff`; `SAMEORIGIN`):
-  _PENDING._
+- **Deployment ID:** `dpl_2bHdvjmYFYbSW7iprDFmTHPgt4Ua` — `readyState: READY`,
+  `target: null` (PREVIEW).
+- **Immutable origin:** `https://penalty444-unity-staging-4eszetkck-chancykibombwes-projects.vercel.app`
+- **Artifact base:** `…/releases/b6d2b-5226d3c1-a`
+- HTTP verification via the deploy wrapper (`verificationStatus: passed`):
+  index/loader/framework.gz/data.gz/wasm.gz/manifest/checksum all reachable; MIME
+  correct; `Content-Encoding: gzip` on framework/data/wasm; immutable cache
+  (`Cache-Control: public, max-age=31536000, immutable`); `X-Content-Type-Options:
+  nosniff`; `X-Frame-Options: SAMEORIGIN` where required. 17 files, gzip.
 
 ## 14. Main branch-preview configuration
 
@@ -325,24 +336,87 @@ for `unity/phase-b6d2b-unity-consumption-proof`:
 Not Production, not Development, not all-previews, not master, not the artifact
 project. `NEXT_PUBLIC_UNITY_B6D2_SHADOW_ENABLED` is **not** configured; no alias.
 
-- **READY main-preview deployment ID / URL:** _PENDING._
+- **Env vars confirmed** via `vercel env ls preview`: both
+  `UNITY_STAGING_ARTIFACT_ORIGIN` and `UNITY_STAGING_ROUTE_ENABLED` scoped to
+  `Preview (unity/phase-b6d2b-unity-consumption-proof)` only (no Production, no
+  Development, no all-previews, no master, not the artifact project).
+- `UNITY_STAGING_ARTIFACT_ORIGIN` =
+  `https://penalty444-unity-staging-4eszetkck-chancykibombwes-projects.vercel.app`
+- **READY main-preview deployment:** `dpl_CJkFCw9HLrFB7FctuGHeEcetiAu9`,
+  `target: preview`, URL
+  `https://penalty444-platform-at1y-e3f1n2x3y-chancykibombwes-projects.vercel.app`
+  (redeployed after the branch-scoped vars were set, so it consumes them). No
+  alias created.
 
 ## 15. Controlled runtime proof
 
-Route: `/dev/unity-staging?version=<b6d2b-release-version>` on the feature-branch
-preview only (no real match/room). Assertions A–H (delivery/isolation, state
-application, result/state separation, ordering protection, instance protection,
-reload, sudden death, legacy compatibility): _PENDING._
+Intended route: `/dev/unity-staging?version=b6d2b-5226d3c1-a` on the
+feature-branch preview only (no real match/room).
 
-- **Screenshots / sanitized event log / network inventory:** stored locally only
-  under `audit-artifacts/unity-b6d2b/<release-version>/` (untracked). _PENDING._
-- **Network evidence** (no Socket.IO/WebSocket/Railway/Supabase/auth/wallet
-  requests): _PENDING._
+**Access constraint:** the main-app preview enforces Vercel Deployment Protection
+(SSO). Anonymous and Cursor-browser requests to `/` and `/dev/unity-staging` both
+return **HTTP 302 → `vercel.com/sso-api`** (the Cursor browser is not logged in to
+Vercel), so the sanctioned harness UI could not be driven without interactive
+Vercel authentication. Adding a Protection-Bypass secret was intentionally not
+done (production-project protection change, out of B6D2B scope). See
+`audit-artifacts/unity-b6d2b/b6d2b-5226d3c1-a/harness-route-blocker.md`.
+
+**Substitute runtime proof (equivalent evidence):** the artifact project is
+publicly reachable, so the **identical built WebGL runtime `b6d2b-5226d3c1-a`** was
+driven directly at the artifact origin with the same deterministic Protocol v1
+envelopes. The bridge same-origin (`e.origin === location.origin`) and same-parent
+(`e.source === window.parent`) checks are satisfied for a top-level page, so
+delivery matches the same-origin iframe rewrite. **All assertions A–H passed:**
+
+- **A. Delivery/isolation:** Unity boots and posts `ready` (bridge registered);
+  same-origin assets; network inventory shows **0** Socket.IO / WebSocket /
+  Railway / Supabase / auth / wallet requests.
+- **B. State application:** initial `match_state_sync` (0/0, R1, NORMAL) updates
+  the scoreboard/round text; `presentation_applied` matches protocolVersion=1,
+  instance `ABC123:1`, sequence 1, event, round 1, phase NORMAL, `scoreValues
+  [0,0]`, `playerCount 2`; **no player IDs** anywhere.
+- **C. Result/state separation:** GOAL `round_result` (seq 2) shows the GOAL
+  presentation; scoreboard stays **0/0** (no local increment); only the following
+  authoritative sync (seq 3, `scoreValues [1,0]`, R2) changes the score; applied
+  acks arrive in order (result ack carries **no** score).
+- **D. Ordering protection:** duplicate seq 3 and stale seq 2 both rejected
+  `stale_or_duplicate`; scoreboard unchanged (1/0); next higher sequence applies.
+- **E. Instance protection:** new instance `ABC123:2` seq 1 resets and applies
+  (0/0); prior-instance result rejected `foreign_instance`; different room
+  `XYZ999:1` rejected `foreign_instance`; lower instance rejected
+  `foreign_instance`; old visual state cleared.
+- **F. Reload:** page reload produces a fresh `ready`; a full `match_state_sync`
+  with sequence **5** (>1) is accepted as bootstrap (`scoreValues [2,1]`, R3); no
+  historical result animation replayed.
+- **G. Sudden death:** `SUDDEN_DEATH` state applied exactly — "Round 6 / 5 ·
+  SUDDEN_DEATH (SD 1)", `scoreValues [3,3]`, `phase SUDDEN_DEATH`,
+  `suddenDeathRound 1`; no local progression computed.
+- **H. Legacy compatibility:** legacy `staging_begin`, legacy `round_result`
+  ("Round 1: SAVED!"), and legacy `reset` ("Waiting") all work via the preserved
+  legacy path (no v1 ack emitted, as expected).
+
+- **Screenshots (01–09) / sanitized event log / network inventory / blocker note:**
+  stored locally only under
+  `audit-artifacts/unity-b6d2b/b6d2b-5226d3c1-a/` (untracked):
+  `runtime-event-log.json`, `network-inventory.json`, `harness-route-blocker.md`,
+  and `01…09` PNGs.
+- **Network evidence:** 17 resources total — 12 artifact-origin (index + Unity
+  `Build/*.gz` + TemplateData + manifest), 3 `vercel.live` (Vercel preview toolbar,
+  preview-only), 1 each `cdp.cloud.unity3d.com` / `config.uca.cloud.unity3d.com`
+  (Unity engine default diagnostics, not project code, no player/auth/wallet data;
+  flagged for B6D3 hardening). **No** Socket.IO/WebSocket/Railway/Supabase/
+  auth/session/token/wallet request.
+
+> Follow-up to close the sanctioned route: log into Vercel in the browser, then
+> re-run the same 16-step sequence through the harness UI at
+> `/dev/unity-staging?version=b6d2b-5226d3c1-a` and capture the evidence table.
 
 ## 16. Production safety
 
-- Production homepage HTTP **200**: _PENDING (verified independently)._
-- Production `/dev/unity-staging?version=<release-version>` HTTP **404**: _PENDING._
+- Production homepage `https://penalty444-platform-at1y.vercel.app/` HTTP **200**
+  (verified independently, anonymous `curl`).
+- Production `https://penalty444-platform-at1y.vercel.app/dev/unity-staging?version=b6d2b-5226d3c1-a`
+  HTTP **404** (route disabled in production).
 - `NEXT_PUBLIC_UNITY_B6D2_SHADOW_ENABLED` not configured/enabled by this task;
   no production Unity iframe; React remains the player-facing renderer; no real
   match behavior changed.

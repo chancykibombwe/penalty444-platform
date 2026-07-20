@@ -391,11 +391,19 @@ same-origin `/dev/unity-staging` route with deterministic mock events.
   `presentation_rejected` acks **only** to `window.parent` with
   `window.location.origin` (never `"*"`; no network/cookies/auth/wallet).
 - **Validation:** `Assets/Editor/Penalty444PresentationProtocolValidation.cs`
-  runs **41** deterministic parser/gate/legacy/ack checks via
+  runs **41** deterministic parser/gate/legacy/ack cases (**57 assertions**) via
   `Penalty444.Editor.Penalty444PresentationProtocolValidation.RunFromCommandLine`
-  (fails the batch process on any assertion). Web side adds
+  (fails the batch process on any assertion) — clean-worktree run at head
+  `5226d3c1` reported **`PASS - all 57/57`** (exit 0). Web side adds
   `unityStagingProtocol.ts` + `unityStagingProtocol.test.ts` to
   `npm run test:unity-presentation` (**149** unit tests total).
+- **Release + deployment:** built from the clean worktree at head `5226d3c1` as
+  **`b6d2b-5226d3c1-a`** (schemaVersion 1, 17 files, gzip, manifest SHA-256
+  `00205da3ecc88557a1f138d5b57486e4920fe5ef33a02962c340cf61b28dc79e`) and deployed
+  to `penalty444-unity-staging` as **PREVIEW only** (`dpl_2bHdvjmYFYbSW7iprDFmTHPgt4Ua`,
+  `target: null`, READY). The built WebGL runtime was runtime-proven (Protocol v1
+  apply/reject, ordering/instance gate, reload bootstrap, sudden death, legacy) —
+  see the runtime doc §15.
 - **No new package/dependency**; `package-lock.json`, `Packages/manifest.json`,
   and `Packages/packages-lock.json` unchanged. Generated WebGL output and runtime
   evidence remain untracked.
