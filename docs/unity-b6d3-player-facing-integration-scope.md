@@ -8,11 +8,12 @@
 > for a single GO/HOLD decision in §18.
 >
 > Every statement is labelled as one of: **[Verified]** (exists in the repo today
-> at the baseline commit, cited), **[Proposed B6D3]** (design not built), or
-> **[Recommendation]**. Event, state, field, and flag names are quoted verbatim
-> from the repository as of master `be2baeb6d8bae90f1229bf41fda0b5c4897967cc`
-> (B6D2B merged). No payload field is invented; where a field does not exist it
-> is marked *Not present*.
+> at the baseline commit, cited), **[Runtime-verified]** (confirmed by the
+> authenticated post-merge runtime proof recorded in §2), **[Proposed B6D3]**
+> (design not built), or **[Recommendation]**. Event, state, field, and flag names
+> are quoted verbatim from the repository as of master
+> `be2baeb6d8bae90f1229bf41fda0b5c4897967cc` (B6D2B merged). No payload field is
+> invented; where a field does not exist it is marked *Not present*.
 
 ---
 
@@ -26,30 +27,35 @@
   `NEXT_PUBLIC_UNITY_B6D2_SHADOW_ENABLED`
   (`MatchRoomPanel.tsx:860-862`, `:889-891`). None is configured in production.
   Unity is never player-facing today; React is the sole player-facing renderer.
-- **What B6D1/B6D2A/B6D2B already proved [Verified].** A versioned,
-  presentation-only Protocol v1 (`round_result` + `match_state_sync`), an
-  exception-safe sanitizing adapter, a sequence/instance gate, a pure React→Unity
-  shadow coordinator, and a Unity-side parser/gate that consumes the envelopes
-  as **identity-neutral** presentation (numeric score values only, player-id keys
-  discarded). 119 web unit tests + 149 with the staging harness suite; the
-  compiled WebGL artifact passed the A–H controlled runtime proof.
+- **What B6D1/B6D2A/B6D2B already proved [Verified + Runtime-verified].** A
+  versioned, presentation-only Protocol v1 (`round_result` + `match_state_sync`),
+  an exception-safe sanitizing adapter, a sequence/instance gate, a pure
+  React→Unity shadow coordinator, and a Unity-side parser/gate that consumes the
+  envelopes as **identity-neutral** presentation (numeric score values only,
+  player-id keys discarded). 119 web unit tests + 149 with the staging harness
+  suite; Unity editor validation 57/57. **The authenticated same-origin
+  `/dev/unity-staging` harness route was subsequently driven end-to-end and passed
+  11/11** (see §2) — the compiled WebGL artifact consumes Protocol v1 correctly in
+  the sanctioned harness.
 - **What B6D3 would add [Proposed B6D3].** A **controlled, opt-in, free-play-only**
   step in which the Unity presentation is shown *to a restricted set of consenting
   internal/test sessions* as a **view of an already-decided real match**, with the
   React renderer remaining the immediate, always-available fallback. Node/Socket.IO
   stays the sole gameplay authority; Unity stays presentation-only and never
   authoritative.
-- **What is still missing before B6D3 can even be authorized [Verified/Blocker].**
-  (a) the sanctioned `/dev/unity-staging` harness-route run was **blocked by Vercel
-  SSO (HTTP 302)** and must be completed first (B6D2B §15); (b) a **player-facing
-  identity/order model does not exist** — the scoreboard is identity-neutral only
-  (B6D2B §5.1); (c) the third shadow flag `NEXT_PUBLIC_UNITY_B6D2_SHADOW_ENABLED`
-  has **never been enabled against a real match**, so the versioned live-shadow
-  path has no real-match evidence; (d) Unity engine default diagnostics endpoints
-  were observed at runtime and are flagged for hardening (B6D2B §15).
-- **Recommendation [Recommendation].** **HOLD.** B6D3 is **not authorized** by
-  this document. See §18. The prerequisites above are entry gates, not tasks
-  inside B6D3.
+- **What still gates B6D3 [Verified].** The principal *design* problem is that a
+  **player-facing identity / visual-side model does not yet exist** — the Unity
+  scoreboard is identity-neutral only (§7). A **separate player-facing flag +
+  server-side cohort gate** must be designed before any lifecycle host work (§9),
+  and **controlled real-match evidence** is required before real-match runtime
+  testing (§13). None of these blocks the pure, test-only first subphase.
+- **Recommendation [Recommendation].** **GO for B6D3A only** — a pure
+  TypeScript + unit-test identity/visual-side and correlation contract, with **no
+  Unity activation, no real match, no `MatchRoomPanel`/`MatchRenderer3D`/server/
+  Unity-C# change, no environment change, and no deployment**. **HOLD** on B6D3B
+  and every later player-facing or real-match subphase. This document still
+  authorizes no implementation; B6D3A is *proposed for separate implementation
+  authorization*. See §18.
 
 ---
 
@@ -110,14 +116,55 @@
   `UNITY_STAGING_ARTIFACT_ORIGIN`, and returns `notFound()` when
   `VERCEL_ENV === "production"` (`:39-49`). It is **never** a `NEXT_PUBLIC_*`
   gate and never loads live match state.
-- **B6D2B runtime proof status [Verified/Blocker]:** the identical WebGL artifact
-  `b6d2b-5226d3c1-a` passed the A–H proof, **but** the sanctioned
-  `/dev/unity-staging` harness-route run was blocked by Vercel SSO (HTTP 302) and
-  remains a **documented, non-blocking follow-up that must be completed before
-  B6D3 runtime authorization** (B6D2B header, §15).
+
+### 2.1 Authenticated harness-route runtime proof [Runtime-verified]
+
+The following is **later authenticated runtime evidence, verified after the
+B6D2B document was merged**. It supersedes, for the purposes of this B6D3 review,
+the historical SSO-blocked wording in `docs/unity-b6d2b-unity-consumption-runtime.md`
+(that document was written when the sanctioned route could not be driven
+non-interactively because Vercel SSO returned HTTP 302; that wording is now
+**historical and superseded** — this review does **not** rely on the old B6D2B
+document containing the 11/11 result).
+
+- **Deployment:** `dpl_CJkFCw9HLrFB7FctuGHeEcetiAu9`
+- **Release:** `b6d2b-5226d3c1-a`
+- **Source commit:** `5226d3c125f3a274fc7d8589f3aa77642a3c5991`
+- **Unity:** `6000.4.2f1`
+- **Authenticated same-origin `/dev/unity-staging` route proof: 11/11 PASSED.**
+
+The 11/11 authenticated run confirmed, through the actual harness UI on the
+protected same-origin route:
+
+1. Unity **ready** lifecycle received.
+2. Authoritative **state bootstrap** (initial `match_state_sync`) applied to the
+   scoreboard/round/phase.
+3. `round_result` **does not increment the score locally** (result animation only).
+4. Authoritative **score sync** — the scoreboard changes only on `match_state_sync`.
+5. **Duplicate sequence** rejected (`stale_or_duplicate`).
+6. **Stale/lower sequence** rejected (`stale_or_duplicate`).
+7. **Match-instance protection** — a foreign/old-instance message rejected
+   (`foreign_instance`); a valid higher instance resets and applies.
+8. **Sudden-death** state (`phase = SUDDEN_DEATH`, `suddenDeathRound`) presented
+   exactly as supplied; no local progression computed.
+9. **iframe reload** produces a fresh `ready` lifecycle.
+10. **Post-reload bootstrap** with a `sequence` **greater than 1** accepted as a
+    complete snapshot; no historical `round_result` replayed.
+11. **Sanitized evidence only** — no player IDs and no raw JSON in the harness
+    evidence table or acknowledgements (numeric `scoreValues` + `playerCount` only).
+
+**Distinction of evidence classes.** Items in §2 (bullets) are
+**repository-verified facts** read from source at the baseline commit. Items in
+§2.1 are **later authenticated runtime evidence** from the deployment above. The
+sanctioned harness-route run is therefore **complete and PASSED**, not blocked,
+deferred, or an open blocker.
+
 - **Production posture [Verified]:** production homepage HTTP 200;
   production `/dev/unity-staging` HTTP 404; no production Unity iframe;
   `NEXT_PUBLIC_UNITY_B6D2_SHADOW_ENABLED` unconfigured. **Production is NO-GO.**
+- **Artifact reproducibility [Verified — BLOCKED]:** deterministic two-build
+  reproducibility remains **BLOCKED**; mitigated by immutable versioned artifacts
+  and redeploy-known-good (see §16).
 
 ---
 
@@ -236,22 +283,21 @@ codebase) and the adapter's own repo-fact comments
   (mapped in `unityPresentationAdapter.ts:70-71`).
 - **The authoritative payloads carry raw player IDs that the adapter drops.**
   `match:result` also carries `roomCode`, `kickerPlayerId`, `keeperPlayerId`
-  (`index.ts:1614-1623`); `match:update` also carries `roles`, `kickerPlayerId`,
-  `keeperPlayerId`, `playerNames`, `matchInstance`, `matchType`, `picksLocked`,
-  `isResolving`, etc. (`index.ts:720-739`). The adapter extracts **only** the
-  presentation fields in the table below and never spreads these raw ID fields
-  into a Unity payload.
-- **`match:rejoinState` (`rooms.ts:464-484`) does NOT carry `scores` or
-  `maxRounds`** — the adapter therefore rejects a raw `rejoinState` as a state
+  (`index.ts:1614-1623`); `match:update` also carries `matchInstance`, `matchType`,
+  `picksLocked`, `isResolving`, etc. (`index.ts:720-740`). The adapter extracts
+  **only** the presentation fields in the table below and never spreads these raw
+  ID fields into a Unity payload.
+- **`match:rejoinState` (`rooms.ts:358-370`, `:474-485`) does NOT carry `scores`
+  or `maxRounds`** — the adapter therefore rejects a raw `rejoinState` as a state
   snapshot (`unityPresentationAdapter.ts:99-108`); the complete reconnect snapshot
   must come from the `match:update` the server also emits.
 
 | Authoritative source (event → fields) [Verified] | React source location | Unity message [Verified B6D1] | Required fields | Score included? |
 |---|---|---|---|---|
 | `match:result` `{ round, kickerPick, keeperPick, result, statusMessage }` (`index.ts:1614-1623`) | built in `MatchRoomPanel.tsx` shadow path | `round_result` `{ round, kickerLane, keeperLane, result, statusMessage? }` | round, lanes, result | **No** — drives shot animation only |
-| `match:update` `{ scores, round, maxRounds, phase, suddenDeathRound? }` (`index.ts:720-739`) — a **complete** snapshot | `scores`, `maxRounds`, `phase`, `matchInstance` state | `match_state_sync` `{ scores, round, maxRounds, phase, suddenDeathRound? }` | scores, round, maxRounds, phase | **Yes** — authoritative snapshot only |
-| `match:end` `{ scores, tournamentId? }` (`index.ts:1347`) | `getUnityMatchEndPresentation(scores)` (`MatchRoomPanel.tsx:278-301`) | terminal `match_state_sync` (via `buildTerminalStateSyncEnvelope`) or authoritative post-end `match:update` | scores (final) | **Yes** — final authoritative |
-| `match:rejoinState` (active) (`rooms.ts:464-484`) — **no `scores`, no `maxRounds`** | rejoin handler | *rejected as a raw state snapshot*; resync comes from the following `match:update` | n/a | *Not present in rejoinState* |
+| `match:update` `{ scores, round, maxRounds, phase, suddenDeathRound?, matchInstance }` (`index.ts:720-740`) — a **complete** snapshot | `scores`, `maxRounds`, `phase`, `matchInstance` state | `match_state_sync` `{ scores, round, maxRounds, phase, suddenDeathRound? }` | scores, round, maxRounds, phase | **Yes** — authoritative snapshot only |
+| `match:end` `{ scores, tournamentId? }` (`index.ts:1347`), then a full `match:update` (`:1355`) | `getUnityMatchEndPresentation(scores)` (`MatchRoomPanel.tsx:278-301`) | terminal `match_state_sync` (via `buildTerminalStateSyncEnvelope`) or the authoritative post-end `match:update` | scores (final) | **Yes** — final authoritative |
+| `match:rejoinState` (active) (`rooms.ts:474-485`) — **no `scores`, no `maxRounds`** | rejoin handler | *rejected as a raw state snapshot*; resync comes from the following `match:update` | n/a | *Not present in rejoinState* |
 | `matchInstance: number` (on `match:update`, `match:aborted`, `match:rejoinState`) | `matchInstance` state (`MatchRoomPanel.tsx:853`, `:1265-1266`) | `matchInstanceId = deriveMatchInstanceId(roomCode, matchInstance)` | `<ROOMCODE>:<matchInstance>` | n/a |
 
 **Not-yet-mapped events [Verified as unmapped].** `staging_begin`, reveal-stage
@@ -276,22 +322,24 @@ comparison), then **discarded**; only numeric values are displayed, e.g.
 `Scores: 0 / 1` (B6D2B §5.1). The applied ack carries `scoreValues` (numeric,
 ordered) and `playerCount` and **no player-id keys, usernames, email, auth, or
 wallet fields** (B6D2B §8.1;
-`app/dev/unity-staging/unityStagingProtocol.ts:132-144`, `:251-308`).
+`app/dev/unity-staging/unityStagingProtocol.ts:132-144`, `:251-308`). The 11/11
+authenticated harness proof (§2.1, item 11) confirmed no player IDs and no raw
+JSON in the runtime evidence.
 
-**[Verified — a gap]** `match_state_sync.scores` is a
+**[Verified — the principal B6D3A design problem]** `match_state_sync.scores` is a
 `Record<string, number>` keyed by the server's **internal auth `playerId`** (the
 same keys `room.scores` uses — `types/room.ts:41`; `scores` keys on
 `match:update` `index.ts:726` and `match:end` `index.ts:1347-1348`). Raw
-`playerId` is in fact pervasive across the live wire contract (`roles`/`scores`/
-`playerNames` map keys, `kickerPlayerId`/`keeperPlayerId`, `room:update.players`),
-with `username` carried only as a value inside the `playerNames` map. Today Unity
-discards those keys, so no identity leaks. **But
-a player-facing scoreboard needs to know which visual side is which player** — and
-that mapping does **not** exist yet (B6D2B §5.1, explicitly "unauthorized for B6D3
-review"). Note also that the legacy shadow `getUnityMatchEndPresentation` returns
-a `winnerId` that **is** a raw score-map key (`MatchRoomPanel.tsx:278-301`); that
+`playerId` is pervasive across the live wire contract
+(`scores`/`roles` map keys, `kickerPlayerId`/`keeperPlayerId`,
+`room:update.players`). Today Unity discards those keys, so no identity leaks.
+**But a player-facing scoreboard needs to know which visual side is which
+player** — and that identity/visual-side mapping does **not** exist yet (B6D2B
+§5.1). Note also that the legacy shadow `getUnityMatchEndPresentation` returns a
+`winnerId` that **is** a raw score-map key (`MatchRoomPanel.tsx:278-301`); that
 value is legacy-shadow-only and must **never** be forwarded on the versioned
-player-facing path.
+player-facing path. Resolving this mapping (privacy-safe, deterministic) is the
+central deliverable of the recommended first subphase, **B6D3A**.
 
 **[Proposed B6D3 — requires review before implementation]** A player-facing
 identity model that introduces **no raw internal player ID / user UUID** into any
@@ -340,7 +388,8 @@ Unity-bound payload:
   before an active state is rejected (`no_active_instance`); a new instance
   replaces the active one **only** when it is a complete `match_state_sync`, the
   room-code prefix matches, the numeric suffix is strictly greater, and
-  `sequence == 1`.
+  `sequence == 1`. **All of these were exercised and PASSED in the 11/11
+  authenticated harness proof (§2.1).**
 
 **[Proposed B6D3 — player-facing state machine]** For a controlled player-facing
 view, the following transitions must be specified and tested (all presentation-only):
@@ -389,6 +438,8 @@ when all three are exactly `"true"`.
   **distinct additional flag** (e.g. a proposed
   `NEXT_PUBLIC_UNITY_PLAYER_FACING_ENABLED`, **not created here**) so that turning
   on the shadow can never, by itself, promote Unity to the player-facing renderer.
+  **This separate player-facing flag + cohort design must be accepted before
+  B6D3B.**
 - **Cohort restriction is server-side, not `NEXT_PUBLIC_*`.** Which sessions are
   in the controlled cohort must be decided by a **server-gated** condition
   (mirroring the `/dev/unity-staging` server-gate pattern), never by a
@@ -397,9 +448,9 @@ when all three are exactly `"true"`.
   view returns `notFound()` / is inert when `VERCEL_ENV === "production"`.
 - **Default-off and single-flag disable.** Disabling the player-facing flag (or
   any of the three shadow flags) instantly reverts every session to React.
-- **Staged progression:** shadow-with-real-match evidence → internal opt-in
-  player-facing on a preview surface → (later, separate authorization) any wider
-  cohort. Production remains NO-GO throughout B6D3.
+- **Staged progression:** mock/preview runtime proof → controlled two-user
+  real-match staging proof (separate authorization) → (later, separate
+  authorization) any wider cohort. Production remains NO-GO throughout B6D3.
 
 > No flag is created, enabled, or configured by this document. All flags remain
 > default-off; `NEXT_PUBLIC_UNITY_B6D2_SHADOW_ENABLED` stays **UNCONFIGURED**.
@@ -416,7 +467,8 @@ when all three are exactly `"true"`.
   → React.
 - **Malformed / stale / duplicate / foreign message:** dropped by the adapter
   (returns `null`), the React sequence/instance guards, and the Unity parser/gate
-  — no sequence consumed, no instance change, no scene apply (B6D2B §6E).
+  — no sequence consumed, no instance change, no scene apply (B6D2B §6E;
+  duplicate/stale/foreign rejection **PASSED** in the 11/11 proof, §2.1).
 - **Overflow:** the pending-UNSENT buffer cap is an explicit overflow; the
   renderer fails open.
 
@@ -452,16 +504,19 @@ when all three are exactly `"true"`.
   (`unityPresentationProtocol.ts:100-192`).
 - **No identity in acks:** Unity → React acks carry numeric `scoreValues` +
   `playerCount` only — no player-id keys, usernames, email, auth/session/token,
-  socket, or wallet fields (B6D2B §8.1).
-- **No network from Unity:** the A–H runtime proof recorded **0** Socket.IO /
+  socket, or wallet fields (B6D2B §8.1; **confirmed at runtime**, §2.1 item 11).
+- **No network from Unity:** the runtime proof recorded **0** Socket.IO /
   WebSocket / Railway / Supabase / auth / wallet requests (B6D2B §15A).
 
-**[Verified — residual items / blockers]**
+**[Verified — residual hardening item]**
 
 - **Unity engine default diagnostics endpoints** (`cdp.cloud.unity3d.com`,
   `config.uca.cloud.unity3d.com`) were observed at runtime; they carry no
   project/player/auth/wallet data but are **flagged for B6D3 hardening** (B6D2B
   §15 network evidence). A player-facing step should **disable/verify** these.
+  (Disabling requires `ProjectSettings` changes handled in a dedicated, separately
+  reviewed change — the local `ProjectSettings.asset` must never be touched by
+  planning work.)
 
 **[Proposed B6D3 — additional isolation requirements]**
 
@@ -502,34 +557,51 @@ adds no render/timing cost when off (mirrors run only while enabled,
 ## 13. PROPOSED IMPLEMENTATION SPLIT (B6D3A–B6D3E)
 
 **[Proposed B6D3 — each subphase requires its own separate review/gate. None is
-authorized here.]**
+authorized here.]** The order is strictly prerequisite-before-dependent: the pure
+contract precedes the lifecycle host, which precedes mock/runtime proof, which
+precedes any real-match testing.
 
-- **B6D3A — Identity & correlation contract.** Define the non-identifying
-  player/seat label model (§7) and the exact `round_result` ↔ `match_state_sync`
-  correlation rule (§8); pure TypeScript + unit tests proving **no raw ID/PII**
-  crosses the boundary and no local score/result derivation. No Unity activation.
-- **B6D3B — Player-facing render mode (default-off, dev surface).** Introduce the
-  separate player-facing flag + **server-side cohort gate** (§9) and mount Unity
-  as the visible renderer for the cohort **with React mounted underneath as
-  fallback**. Non-production only; `notFound()`/inert in production. Minimal,
-  additive, lifecycle-safe changes to `MatchRoomPanel.tsx` only where unavoidable
-  (§14).
-- **B6D3C — Real-match shadow evidence (prerequisite proof).** With the three
-  existing shadow flags enabled on a **preview** surface against a **real
-  free-play** match, capture identity-free audit evidence that the versioned
-  envelopes track the authoritative match correctly (this closes the “never
-  enabled against a real match” gap). Still non-player-facing.
-- **B6D3D — Controlled player-facing runtime validation.** For the opt-in cohort
-  on the preview surface, validate normal rounds, sudden death, timeout,
-  disconnect/reconnect, rematch, and every failure/fallback path (§10, §15). No
-  production.
-- **B6D3E — B6D3 closeout.** Documentation, runtime evidence, perf/device
-  results, isolation verification, rollback rehearsal, and a **recommendation for
-  a separate future production-hardening phase**. Production remains NO-GO.
+- **B6D3A — Identity/visual-side & correlation contract (TypeScript + unit tests
+  ONLY).** Define the non-identifying player/seat/visual-side label model (§7) and
+  the exact `round_result` ↔ `match_state_sync` correlation rule (§8); pure
+  TypeScript + unit tests proving **no raw ID/PII** crosses the boundary and no
+  local score/result derivation. **No Unity activation, no real match, no
+  `MatchRoomPanel` change, no `MatchRenderer3D` change, no server change, no Unity
+  C# change, no environment change, no deployment.** Permitted files: the three
+  standalone TS modules + their tests + this doc (§14). Real matches: **No.**
+  Production: **NO-GO.**
+- **B6D3B — Isolated React lifecycle host & fail-open fallback logic
+  (default-off, dev surface).** Build an isolated host component + the separate
+  player-facing flag design + **server-side cohort gate** design (§9) and the
+  fail-open fallback logic, mounting Unity as the visible renderer for the cohort
+  **with React mounted underneath as fallback**. **No real match and no flag
+  configuration in this subphase** — driven by mock/deterministic events only.
+  Non-production only; `notFound()`/inert in production. Minimal, additive,
+  lifecycle-safe changes to `MatchRoomPanel.tsx` only where unavoidable (§14).
+  Real matches: **No.** Production: **NO-GO.**
+- **B6D3C — Protected-preview mock/runtime proof.** On a protected (SSO) preview
+  surface, drive the lifecycle host with deterministic mock Protocol v1 events and
+  capture identity-free evidence (ordering, instance, reload/bootstrap, fallback),
+  extending the sanctioned `/dev/unity-staging` model. Still **no real match**.
+  Real matches: **No.** Production: **NO-GO.**
+- **B6D3D — Controlled two-user real-match staging proof (separate explicit
+  authorization required).** Only after B6D3C passes and a **separate explicit
+  real-match testing authorization** is granted: with the player-facing flag on
+  for **internal free-play test accounts only**, render a real two-user match to
+  opted-in viewers, React fallback always available; validate normal rounds,
+  sudden death, timeout, disconnect/reconnect, rematch, abort, match end, and
+  every failure/fallback path (§10, §15). Real matches: **Yes — free-play only,
+  internal accounts only, separately authorized.** Production: **NO-GO.**
+- **B6D3E — Closeout & production-readiness decision.** Documentation, runtime
+  evidence, perf/device results, isolation verification, rollback rehearsal, and a
+  **recommendation for a separate future production-hardening phase**. Real
+  matches: N/A (decision only). Production: **remains NO-GO** until a separate,
+  explicit authorization.
 
-> Prerequisite ordering: the **sanctioned `/dev/unity-staging` harness-route run**
-> (B6D2B §15) and **B6D3C real-match shadow evidence** are **entry gates** for the
-> player-facing subphases (B6D3B/B6D3D), not tasks performed inside them.
+> Prerequisite ordering: **B6D3C protected-preview mock/runtime proof** is an
+> **entry gate** for the real-match subphase (B6D3D); player-facing runtime
+> activation is never described as happening before its prerequisite mock/preview
+> evidence.
 
 ---
 
@@ -539,19 +611,35 @@ authorized here.]**
 document.]** Sensitivity is marked; anything touching `MatchRoomPanel.tsx` must be
 **narrow, additive, lifecycle-safe, and specifically reviewed**.
 
-| File | Proposed role in B6D3 | Sensitivity |
+### 14.1 First recommended subphase (B6D3A) — permitted files
+
+| File | Role in B6D3A | Sensitivity |
 |---|---|---|
-| `apps/web/src/components/match/unityPresentationProtocol.ts` | Possibly extend types for non-identifying labels (B6D3A) — additive only | Medium (shared contract) |
-| `apps/web/src/components/match/unityPresentationAdapter.ts` | Identity/correlation mapping (B6D3A) — new pure functions | Medium |
-| `apps/web/src/components/match/unityPresentationShadow.ts` | Correlation/audit support (B6D3A) — pure | Medium |
+| `apps/web/src/components/match/unityPresentationProtocol.ts` | Additive types for non-identifying labels/visual-side — additive only | Medium (shared contract) |
+| `apps/web/src/components/match/unityPresentationAdapter.ts` | Identity/visual-side + correlation mapping — new pure functions | Medium |
+| `apps/web/src/components/match/unityPresentationShadow.ts` | Correlation/audit support — pure | Medium |
+| `apps/web/src/components/match/*.test.ts` | New identity-model + correlation-rule unit tests | Low |
+| `apps/web/package.json` | **Only** to register a new test file in `test:unity-presentation` (no dependency change; lockfile unchanged) | Low |
+| `docs/unity-b6d3-player-facing-integration-scope.md` (+ a new B6D3A design doc) | Documentation | Low |
+
+### 14.2 Files requiring special review (later subphases, NOT B6D3A)
+
+| File | Proposed role | Sensitivity |
+|---|---|---|
 | `apps/web/src/components/match/MatchRenderer3D.tsx` | Player-facing render mode wiring (B6D3B) — additive prop; keep origin/source/allowlist/fallback intact | **High** (security boundary) |
 | `apps/web/src/components/match/MatchRoomPanel.tsx` | **Sensitive** — owns timers, reveals, scores, reconnect, and the whole match lifecycle. Any B6D3 change here must be **minimal, additive, lifecycle-safe, and specifically reviewed**; must not alter timer/reveal/score/reconnect logic | **HIGHEST** (real-match regression risk for all players) |
-| `apps/web/src/app/dev/unity-staging/*` | Reference-only for the server-gate + cohort pattern; not the player-facing surface itself | Low (dev-only) |
 | New player-facing surface (proposed, dev/preview only) | Server-gated route/component mirroring `/dev/unity-staging` isolation | Medium |
-| Unity C# (`UnityPresentationProtocolV1.cs`, `UnityBridgeReceiver.cs`, `PenaltySceneController.cs`) | **No change expected** for B6D3A/B; consumption already implemented (B6D2B) | High (rebuild + revalidate if touched) |
-| `apps/realtime-server/**` | **No change** — server is untouched | N/A (out of scope) |
-| Supabase schema / auth | **No change** | N/A (out of scope) |
-| `unity/Penalty444Client/ProjectSettings/ProjectSettings.asset` | **Untouched** — never staged/reset/normalized | **Protected** |
+
+### 14.3 Prohibited files (all B6D3 subphases unless separately authorized)
+
+| File | Status |
+|---|---|
+| Unity C# (`UnityPresentationProtocolV1.cs`, `UnityBridgeReceiver.cs`, `PenaltySceneController.cs`) | **No change** for B6D3A/B; consumption already implemented (B6D2B) |
+| `apps/realtime-server/**` | **No change** — server is untouched |
+| Supabase schema / auth, `packages/shared/**` | **No change** |
+| `unity/Penalty444Client/ProjectSettings/**` incl. `ProjectSettings.asset` | **Untouched** — never staged/reset/normalized |
+| `.github/**`, `next.config.*`, Vercel/Railway config, production env | **No change** |
+| Generated WebGL output, `audit-artifacts/**` | Never committed |
 
 > **`MatchRoomPanel.tsx` is the highest-sensitivity file.** It owns the live match
 > state machine; a regression breaks real matches for every player, Unity or not.
@@ -563,104 +651,143 @@ document.]** Sensitivity is marked; anything touching `MatchRoomPanel.tsx` must 
 ## 15. TEST & EVIDENCE MATRIX
 
 **[Proposed B6D3.]** For each row: authoritative behaviour (server-decided,
-unchanged) · Unity presentation · fallback · required evidence.
+unchanged) · Unity presentation · fallback · required evidence. "Allowed before
+real-match authorization" = permissible in B6D3A–C (TS/mock/preview only);
+"Requires later explicit authorization" = B6D3D+ (real matches).
 
-| Scenario | Authoritative behaviour | Unity presentation (expected) | Fallback | Evidence |
+| Scenario | Authoritative behaviour | Unity presentation (expected) | Evidence | When allowed |
 |---|---|---|---|---|
-| Identity mapping | server keys internal | non-identifying label/seat only; **no raw ID/PII** | React | Unit test + payload capture |
-| Bootstrap before result | `match:update` snapshot | `match_state_sync` applied first | React | Ordered capture |
-| Normal GOAL/SAVE/DRAW | `match:result` | animation; score changes only on `match_state_sync` | React overlay | Round capture |
-| Result-before-state | `room.scores` incremented pre-`match:result` | scoreboard does not pre-change; later sync applies | React | Ordered before/after capture |
-| Duplicate / stale / foreign | n/a | dropped, not animated | React | Sequence/instance log |
-| Sudden death | `phase=SUDDEN_DEATH`, `suddenDeathRound` | applied exactly; no local progression | React | Phase capture |
-| Reconnect / resume | post-`rejoinState` `match:update` | full-state resync; no replay | React | Resync capture |
-| Rematch | new `matchInstance` | old messages dropped; reset + bootstrap | React | Instance-id capture |
-| Match end | `match:end {scores}` | final `match_state_sync` | React end overlay | End capture |
-| iframe never ready | normal | none | `markUnavailable` → React (15 s) | Timeout log |
-| Unity error after ready | normal | stops | `markUnavailable` → React | `error` capture |
-| Cohort gating | server-side | player-facing only for cohort | React for everyone else | Gate audit |
-| Isolation | normal | 0 Socket.IO/WebSocket/Supabase/auth/wallet; engine diagnostics disabled/verified | React | Network inventory |
-| Perf (device matrix) | normal | within agreed budget | React below threshold | FPS/mem/load capture |
-| Sanctioned harness-route run (B6D2B §15) | n/a (mock) | A–H via the actual `/dev/unity-staging` UI | n/a | Harness evidence table |
+| Identity/visual-side mapping | server keys internal | non-identifying label/seat only; **no raw ID/PII** | Unit test + payload capture | B6D3A (now) |
+| Correlation rule (result↔state) | `room.scores` incremented pre-`match:result` | scoreboard changes only on `match_state_sync` | Unit test + ordered capture | B6D3A (now) |
+| Hostile-input / prototype-pollution | n/a | adapter/parser return null; no throw | Unit test | B6D3A (now) |
+| Duplicate / stale / foreign | n/a | dropped, not animated | Sequence/instance log | B6D3A unit + B6D3C mock |
+| Instance transition / rematch | new `matchInstance` | old messages dropped; reset + bootstrap | Instance-id capture | B6D3A unit + B6D3C mock |
+| Bootstrap before result | `match:update` snapshot | `match_state_sync` applied first | Ordered capture | B6D3C mock |
+| Reload / post-reload bootstrap (seq>1) | n/a | fresh ready; complete snapshot; no replay | Reload capture | B6D3C mock |
+| Fallback (ready-timeout / error) | normal | none; `markUnavailable` → React | Timeout/error log | B6D3B unit + B6D3C mock |
+| Web production build | n/a | n/a | CI build green | B6D3A (now) |
+| Realtime build (regression guard) | unchanged | n/a | CI build green | B6D3A (now) |
+| Sudden death | `phase=SUDDEN_DEATH`, `suddenDeathRound` | applied exactly; no local progression | Phase capture | B6D3C mock; B6D3D real |
+| Reconnect / resume | post-`rejoinState` `match:update` | full-state resync; no replay | Resync capture | B6D3D real |
+| Two-browser real match | server-decided | side-by-side vs React | Two-browser capture | **B6D3D — requires authorization** |
+| Mobile / browser compatibility | normal | within agreed budget | FPS/mem/load capture | **B6D3D — requires authorization** |
+| Cohort gating | server-side | player-facing only for cohort | Gate audit | **B6D3D — requires authorization** |
+| No-auth/no-wallet/no-player-ID leakage | normal | 0 prohibited requests; no PII | Network + payload inventory | B6D3A unit + B6D3D real |
+| Production route safety | n/a | `notFound()` in production | 200/404 capture | every subphase |
 
 **Web unit tests [Verified today]:** `npm run test:unity-presentation` runs
 `unityPresentationAdapter.test.ts`, `unityPresentationShadow.test.ts`, and
 `unityStagingProtocol.test.ts` — **149 pass** (B6D2B §10); enforced by the CI Web
-job before the TypeScript check. B6D3A/B must add identity-model and
-correlation-rule tests to this suite before any player-facing activation.
+job before the TypeScript check. B6D3A must add identity-model and correlation-rule
+tests to this suite before any player-facing activation.
 
 ---
 
 ## 16. RISKS & BLOCKERS REGISTER
 
-**[Proposed B6D3 — planning estimates.]** B = pre-existing **Blocker** that must
-clear before B6D3 player-facing subphases.
+**[Proposed B6D3 — planning estimates.]** "Blocks" indicates the earliest subphase
+a risk gates; a risk that gates B6D3D does **not** block the pure B6D3A
+TypeScript/test subphase.
 
-| # | Risk / Blocker | Prob. | Impact | Mitigation | Rollback |
-|---|---|---|---|---|---|
-| B1 | **Sanctioned `/dev/unity-staging` harness-route run not yet done** (Vercel SSO 302, B6D2B §15) | Known | High | Complete the literal harness-route A–H run before B6D3 player-facing | n/a (entry gate) |
-| B2 | **No player-facing identity/order model** (identity-neutral only, B6D2B §5.1) | Known | High | B6D3A non-identifying label model + unit tests | Flag off → React |
-| B3 | **Versioned live-shadow never run against a real match** | Known | High | B6D3C real-match shadow evidence on preview | Flag off → React |
-| B4 | **Unity engine diagnostics endpoints active** (B6D2B §15) | Known | Med | Disable/verify engine diagnostics in the player-facing build | Revert build |
-| 5 | Unity shows a **different result** than the server | Low | Critical | Result comes only from `match:result`; Unity never computes | Flag off → React |
-| 6 | **Raw player ID / PII leaks** into a Unity payload | Low | Critical | §7 sanitizer + unit tests; field-by-field build | Flag off → React |
-| 7 | **`MatchRoomPanel` regression** breaks real matches | Med | Critical | Minimal additive lifecycle-safe diffs only (§14); full match test matrix; CI | Revert |
-| 8 | **Stale pre-result score** shown (scores not atomic) | Med | High | Split `round_result`/`match_state_sync`; never infer a score | Flag off → React |
-| 9 | Duplicate / out-of-order / rematch contamination | Med | High | Existing sequence + instance guards (React + Unity) | Flag off → React |
-| 10 | **Player-facing failure interrupts the match** | Low | Critical | React mounted underneath; seamless fallback; Unity strictly additive | Flag off → React |
-| 11 | **Production flag accidentally enabled** | Low | Critical | Separate player-facing flag; server-side cohort gate; `notFound()` in prod; env audit | Flag off |
-| 12 | **Mobile performance** (jank/heat) | High | Med | Perf budget as a gate (§12); React default | Flag off → React |
-| 13 | **Strict-origin / allowlist regression** | Low | Critical | Keep `event.origin`+`event.source` checks; never `"*"`; allowlist audit | Revert |
-| 14 | **Cohort self-selection** from the client | Low | High | Cohort decided server-side, never a `NEXT_PUBLIC_*` flag | Flag off |
-| 15 | **Build non-determinism** (documented BLOCKED) | Known | Med | Immutable versioned artifacts; redeploy known-good | Redeploy |
+| # | Risk / Blocker | Prob. | Impact | Mitigation | Blocks | Status |
+|---|---|---|---|---|---|---|
+| C1 | **Sanctioned `/dev/unity-staging` harness-route run** | — | — | Authenticated same-origin route driven end-to-end, **11/11 PASSED** (§2.1) | — | **CLEARED** |
+| 1 | **Identity/visual-side mapping** absent (identity-neutral only) — principal B6D3A design problem | Known | High | B6D3A non-identifying label/visual-side model + unit tests | B6D3A design (resolved *by* B6D3A) | Open (B6D3A deliverable) |
+| 2 | **Separate player-facing flag + server-side cohort gate** not yet designed | Known | High | Design + accept before B6D3B | **B6D3B** | Open |
+| 3 | **No controlled real-match evidence** for the player-facing path | Known | High | B6D3D two-user real-match staging proof (after B6D3C) | **B6D3D and later** (not B6D3A) | Open |
+| 4 | **Unity engine diagnostics endpoints** active | Known | Med | Disable/verify in the player-facing build (dedicated ProjectSettings change) | B6D3D | Open (non-blocking for B6D3A) |
+| 5 | Unity shows a **different result** than the server | Low | Critical | Result comes only from `match:result`; Unity never computes; **PASSED** at runtime (§2.1) | — | Mitigated |
+| 6 | **Raw player ID / PII leaks** into a Unity payload | Low | Critical | §7 sanitizer + unit tests; field-by-field build; **runtime-confirmed clean** (§2.1) | B6D3A verifies | Mitigated |
+| 7 | **`MatchRoomPanel` regression** breaks real matches | Med | Critical | Minimal additive lifecycle-safe diffs only (§14); full match test matrix; CI | B6D3B/D | Managed |
+| 8 | **Stale pre-result score** shown (scores not atomic) | Med | High | Split `round_result`/`match_state_sync`; never infer a score; **PASSED** at runtime (§2.1) | — | Mitigated |
+| 9 | Duplicate / out-of-order / rematch contamination | Med | High | Existing sequence + instance guards (React + Unity); **PASSED** at runtime (§2.1) | — | Mitigated |
+| 10 | **Player-facing failure interrupts the match** | Low | Critical | React mounted underneath; seamless fallback; Unity strictly additive | B6D3B/D | Managed |
+| 11 | **Production flag accidentally enabled** | Low | Critical | Separate player-facing flag; server-side cohort gate; `notFound()` in prod; env audit | every subphase | Managed |
+| 12 | **Mobile performance** (jank/heat) | High | Med | Perf budget as a gate (§12); React default | B6D3D | Open (non-blocking for B6D3A) |
+| 13 | **Strict-origin / allowlist regression** | Low | Critical | Keep `event.origin`+`event.source` checks; never `"*"`; allowlist audit | B6D3B | Managed |
+| 14 | **Cohort self-selection** from the client | Low | High | Cohort decided server-side, never a `NEXT_PUBLIC_*` flag | B6D3B | Managed |
+| 15 | **Artifact reproducibility** (documented BLOCKED) | Known | Med | Immutable versioned artifacts; redeploy known-good | B6D3E | **BLOCKED** |
+
+**Production remains NO-GO.**
 
 ---
 
 ## 17. AUTHORIZATION GATES
 
-**[Proposed gates.]** Before **any** B6D3 subphase may begin:
+**[Proposed gates — this document authorizes none of them.]** Gates are separated
+by subphase so the pure test-only first subphase is not blocked by real-match
+prerequisites.
 
-- B6D2B remains **merged and stable** on master; master CI green (Web + Realtime).
-- **Production Unity off**; no production Vercel variable set; free-play-only
-  policy unchanged.
-- **Entry blockers cleared:** B1 (sanctioned harness-route run), and — for the
-  player-facing subphases specifically — B2 (identity model) and B3 (real-match
-  shadow evidence).
-- The **identity & correlation contract (§7, §8) reviewed and accepted** with
-  unit tests proving no raw ID/PII crosses the boundary.
-- **Exact B6D3A/B file scope approved in advance** (§14), with `MatchRoomPanel.tsx`
-  changes reviewed line-by-line.
-- **Separate player-facing flag + server-side cohort gate** design approved (§9).
-- **Rollback rehearsed:** single-flag disable → React, no interruption.
-- **No unresolved critical realtime gameplay defect**; no local generated-artifact
-  contamination (`git ls-files "apps/web/public/unity/penalty444/**"` and
-  `git ls-files "audit-artifacts/**"` empty).
-- **Each subphase (B6D3A–B6D3E) requires its own separate review/gate.** No blanket
-  authorization.
+### Before B6D3A implementation authorization
+- This **planning PR merged**.
+- **Exact B6D3A file scope reviewed** and approved (§14.1).
+- **Pure TypeScript / test-only scope accepted** — no runtime path, no Unity
+  activation, no `MatchRoomPanel`/`MatchRenderer3D`/server/Unity-C# change.
+- **No environment or flag changes** of any kind.
+
+### Before B6D3B
+- **B6D3A merged and reviewed.**
+- **Separate player-facing flag + server-side cohort design accepted** (§9).
+- **Lifecycle host + fail-open fallback design accepted** (§8, §10).
+- Still non-production, mock-driven only.
+
+### Before B6D3C
+- **B6D3B merged and reviewed.**
+- Protected (SSO) preview surface available; production route 404 verified.
+
+### Before B6D3D (real-match staging)
+- **Protected-preview mock/runtime proof (B6D3C) passed.**
+- **Explicit, separate real-match testing authorization granted.**
+- **Controlled free-play test accounts only**; internal cohort gated server-side.
+- **No production.** Rollback (single-flag disable → React) rehearsed.
+
+### Before production-readiness review (B6D3E)
+- All above + perf/device thresholds met + isolation verified + rollback
+  rehearsed. **Production remains NO-GO until a separate, explicit authorization.**
+
+> Standing gates for every subphase: B6D2B remains merged and stable; master CI
+> green (Web + Realtime); production Unity off; free-play-only policy unchanged; no
+> local generated-artifact contamination
+> (`git ls-files "apps/web/public/unity/penalty444/**"` and `audit-artifacts/**`
+> empty). Each subphase (B6D3A–B6D3E) requires its own separate review/gate.
 
 ---
 
 ## 18. RECOMMENDATION (GO / HOLD)
 
-**Recommendation: HOLD.**
+**Recommendation: GO for B6D3A only.**
 
-The controlled player-facing objective (§3) is coherent and the existing
-invariants, contract, and guards (§2, §5–§8, §10–§11) are strong. However, B6D3
-must **not** be authorized yet because three pre-existing blockers are open:
+B6D3A is **planning-approved as the recommended first bounded subphase, proposed
+for separate implementation authorization**:
 
-1. the **sanctioned `/dev/unity-staging` harness-route run** was blocked by Vercel
-   SSO and remains a required prerequisite (B6D2B §15);
-2. there is **no player-facing identity/order model** — the scoreboard is
-   identity-neutral only (B6D2B §5.1);
-3. the **versioned live-shadow path has never run against a real match**, so the
-   player-facing step has no real-match evidence yet.
+- pure TypeScript;
+- unit tests;
+- identity / visual-side contract;
+- correlation contract;
+- **no Unity activation;**
+- **no real match;**
+- **no `MatchRoomPanel` change;**
+- **no `MatchRenderer3D` change;**
+- **no server change;**
+- **no Unity C# change;**
+- **no environment change;**
+- **no deployment.**
 
-These are **entry gates**, to be cleared *before* B6D3, not tasks inside it. The
-recommended next authorization, if any, is **B6D3A only** (identity & correlation
-contract + tests, no Unity activation), after the harness-route run is completed —
-every later subphase requires its own separate review and gate. This document
-changes no code, enables no flag, configures no environment, activates no runtime,
-and leaves the production decision **NO-GO**.
+The central design problem it resolves is the **player-identity → visual-side
+mapping** (§7), which today does not exist; it can be designed and unit-tested
+with **zero runtime risk**, reusing the already-verified B6D1 adapter/protocol
+patterns and the now-**CLEARED** authenticated harness proof (§2.1, 11/11 PASSED).
+
+- **GO for B6D3A as the next subphase proposed for separate implementation
+  authorization.**
+- **HOLD on B6D3B and every later player-facing or real-match phase** until B6D3A
+  is merged and reviewed, the separate player-facing flag + cohort design is
+  accepted (before B6D3B), and — for real-match testing — B6D3C passes and a
+  separate real-match authorization is granted (before B6D3D).
+
+This document itself **authorizes no implementation**: it changes no code, enables
+no flag, configures no environment, activates no runtime, and leaves the
+production decision **NO-GO**.
 
 ---
 
