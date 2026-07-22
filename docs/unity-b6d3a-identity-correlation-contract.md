@@ -39,7 +39,7 @@ groundwork to be reviewed before B6D3B.
 - Feature branch: `feat/unity-b6d3a-identity-correlation-contract`
 - Built in a **separate clean Linux worktree** (`/home/user/penalty444-b6d3a`).
   Scope of the `unity/Penalty444Client/ProjectSettings/ProjectSettings.asset`
-  guarantee (see §12): the remote PR contains **no** ProjectSettings change; this
+  guarantee: the remote PR contains **no** ProjectSettings change; this
   Linux worktree did **not** modify ProjectSettings; the user's Windows main
   checkout was **not accessible to this run** and is therefore not claimed to have
   been inspected or verified here.
@@ -58,7 +58,7 @@ groundwork to be reviewed before B6D3B.
 - **No new `postMessage` event** is introduced; **no protocol version bump**.
 - **No raw player id, UUID, email, auth token, socket data, or wallet data** may
   appear in any sanitized presentation output.
-- Existing tests and behaviour remain **green** (210/210 unit tests).
+- Existing tests and behaviour remain **green** (226/226 unit tests).
 
 ---
 
@@ -259,7 +259,7 @@ No function throws on any input.
 
 No other tracked file is changed. No lockfile changed. No generated artifact added.
 The remote PR contains **no** `ProjectSettings.asset` change and this Linux
-worktree did not modify it (see §12 for the exact scope; the Windows main checkout
+worktree did not modify it (see §2 for the exact scope; the Windows main checkout
 was not accessible to this run).
 
 ---
