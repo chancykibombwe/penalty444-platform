@@ -109,7 +109,7 @@ test("score values come only from the state sync (result carries none)", () => {
 
 test("SUDDEN_DEATH snapshot carries phase and suddenDeathRound verbatim", () => {
   const res = correlateResultToStateSync(
-    roundResult({ sequence: 5 }),
+    roundResult({ sequence: 5, round: 5 }),
     stateSync({ sequence: 6, round: 6, phase: "SUDDEN_DEATH", suddenDeathRound: 1, scores: { p1: 5, p2: 5 } }),
   );
   assert.ok(res.correlated === true);
@@ -118,7 +118,7 @@ test("SUDDEN_DEATH snapshot carries phase and suddenDeathRound verbatim", () => 
   assert.deepStrictEqual(res.summary.scoreValues, [5, 5]);
 });
 
-test("state sync round equal to result round is still accepted (sequence governs)", () => {
+test("state sync round equal to result round is accepted (terminal final state)", () => {
   const res = correlateResultToStateSync(
     roundResult({ sequence: 2, round: 3 }),
     stateSync({ sequence: 4, round: 3 }),
@@ -126,6 +126,69 @@ test("state sync round equal to result round is still accepted (sequence governs
   assert.ok(res.correlated === true);
   assert.equal(res.summary.resultRound, 3);
   assert.equal(res.summary.stateSyncRound, 3);
+});
+
+// ── Round-order relationship (validated, never calculated) ──────────────────────
+
+test("exactly next round (result.round + 1) is accepted (non-terminal continuation)", () => {
+  const res = correlateResultToStateSync(
+    roundResult({ sequence: 2, round: 4 }),
+    stateSync({ sequence: 3, round: 5 }),
+  );
+  assert.ok(res.correlated === true);
+  assert.equal(res.summary.resultRound, 4);
+  assert.equal(res.summary.stateSyncRound, 5);
+});
+
+test("a lower state-sync round → invalid-round-order", () => {
+  const res = correlateResultToStateSync(
+    roundResult({ sequence: 2, round: 5 }),
+    stateSync({ sequence: 3, round: 4 }),
+  );
+  assert.ok(res.correlated === false);
+  assert.equal(res.reason, "invalid-round-order");
+});
+
+test("a jump of two or more rounds → invalid-round-order", () => {
+  const res = correlateResultToStateSync(
+    roundResult({ sequence: 2, round: 3 }),
+    stateSync({ sequence: 3, round: 5 }),
+  );
+  assert.ok(res.correlated === false);
+  assert.equal(res.reason, "invalid-round-order");
+});
+
+test("NORMAL continuation snapshot at the exact next round correlates", () => {
+  const res = correlateResultToStateSync(
+    roundResult({ sequence: 2, round: 2 }),
+    stateSync({ sequence: 3, round: 3, phase: "NORMAL", scores: { p1: 1, p2: 1 } }),
+  );
+  assert.ok(res.correlated === true);
+  assert.equal(res.summary.phase, "NORMAL");
+});
+
+test("SUDDEN_DEATH terminal snapshot at the same round correlates", () => {
+  const res = correlateResultToStateSync(
+    roundResult({ sequence: 8, round: 7 }),
+    stateSync({ sequence: 9, round: 7, phase: "SUDDEN_DEATH", suddenDeathRound: 2, scores: { p1: 6, p2: 5 } }),
+  );
+  assert.ok(res.correlated === true);
+  assert.equal(res.summary.phase, "SUDDEN_DEATH");
+  assert.equal(res.summary.stateSyncRound, 7);
+  assert.equal(res.summary.resultRound, 7);
+});
+
+test("invalid-round-order rejection carries no payload or player id", () => {
+  const res = correlateResultToStateSync(
+    roundResult({ sequence: 2, round: 3 }),
+    stateSync({ sequence: 3, round: 9, scores: { "player-self-uuid": 2, "player-opp-uuid": 1 } }),
+  );
+  assert.ok(res.correlated === false);
+  assert.equal(res.reason, "invalid-round-order");
+  const serialized = JSON.stringify(res);
+  assert.ok(!serialized.includes("player-self-uuid"));
+  assert.ok(!serialized.includes("player-opp-uuid"));
+  assert.ok(!serialized.includes("scores"));
 });
 
 // ── Sequence protection ─────────────────────────────────────────────────────────

@@ -37,8 +37,12 @@ groundwork to be reviewed before B6D3B.
 - Base commit: **`5d3148027850b8448f593f9c597f5591375a6a53`** (PR #211 merged —
   B6D3 planning brief).
 - Feature branch: `feat/unity-b6d3a-identity-correlation-contract`
-- Built in a **separate clean worktree** so the main checkout's locally-modified
-  `unity/Penalty444Client/ProjectSettings/ProjectSettings.asset` is never touched.
+- Built in a **separate clean Linux worktree** (`/home/user/penalty444-b6d3a`).
+  Scope of the `unity/Penalty444Client/ProjectSettings/ProjectSettings.asset`
+  guarantee (see §12): the remote PR contains **no** ProjectSettings change; this
+  Linux worktree did **not** modify ProjectSettings; the user's Windows main
+  checkout was **not accessible to this run** and is therefore not claimed to have
+  been inspected or verified here.
 
 ---
 
@@ -147,6 +151,13 @@ discarded** from output.
 - no alphanumeric character → `null`;
 - otherwise trimmed and truncated to **`MAX_DISPLAY_LABEL_LENGTH = 24`**.
 
+**Raw-id containment (defence-in-depth).** After the generic sanitizer, the
+candidate is additionally compared against **both** raw participant ids: if it
+**contains either raw id anywhere** (equal to, or as an embedded substring), the
+label is **omitted**. The rejected raw value is never emitted, returned, or logged.
+This composes with — and never weakens — the email/UUID/hex/control-character
+checks above.
+
 A missing or unsafe label is simply **omitted**; it never makes the identity
 mapping unsafe or fails the whole context. **Display labels are not wired into
 Unity in B6D3A.**
@@ -163,7 +174,10 @@ Unity in B6D3A.**
 2. `rawStateSync` validates and is a `match_state_sync` envelope;
 3. both carry the **same `matchInstanceId`** (this separates a rematch/new-instance
    state sync from an old-instance result);
-4. `stateSync.sequence` is **strictly greater than** `result.sequence`.
+4. `stateSync.sequence` is **strictly greater than** `result.sequence`;
+5. the **round relationship** is authoritative — `stateSync.round === result.round`
+   (terminal final state) **or** `stateSync.round === result.round + 1`
+   (non-terminal continuation).
 
 On accept it returns a sanitized `CorrelationSummary`:
 
@@ -174,10 +188,13 @@ On accept it returns a sanitized `CorrelationSummary`:
 
 - **Only `match_state_sync` is score-bearing** (`isScoreBearingEvent`);
   `scoreValues` are sorted numeric values taken **only** from the state sync.
-- Round numbers are copied verbatim; the rule is governed by **sequence**, not
-  round equality (the authoritative post-result snapshot may carry the next round
-  number), so a state sync whose round equals or exceeds the result round is
-  accepted. **No next round, score delta, winner, or phase is derived.**
+- **Round-order rule (validated, never calculated).** The two supplied
+  authoritative round values are *validated*, not computed: a state-sync round
+  **lower** than the result round, or a **jump of two or more** rounds, is
+  rejected with `invalid-round-order`. Equal-round (terminal) and exactly-next-round
+  (continuation) are accepted. The next round is never calculated.
+- Round numbers are copied verbatim into the summary. **No next round, score delta,
+  winner, phase, or sudden-death progression is derived.**
 
 ---
 
@@ -187,13 +204,18 @@ On accept it returns a sanitized `CorrelationSummary`:
 viewer not among participants; fewer/more than two players; non-object/array score
 map; missing/non-number/negative/fractional/non-finite score; dangerous keys
 (`__proto__`/`prototype`/`constructor`); partial or non-partitioning roles;
-duplicate role ids; unknown winner id; conflicting draw+winner; hostile throwing
-getter; null/non-object input.
+duplicate role ids; unknown winner id; conflicting draw+winner; **malformed
+`isDraw`** (any supplied value other than a boolean — `false` is valid, `true`
+means DRAW, `undefined` means absent); hostile throwing getter; null/non-object
+input. **Note (not a rejection):** a display label that fails sanitization *or*
+contains a raw participant id is **omitted**, and the context is still returned.
 
 **Correlation** → typed rejection reason: `invalid-result-envelope`;
 `invalid-state-sync-envelope`; `wrong-event-type` (swapped or non-state-sync);
 `foreign-instance` (different room or rematch instance); `stale-or-duplicate`
-(state-sync sequence ≤ result sequence); hostile throwing getter.
+(state-sync sequence ≤ result sequence); **`invalid-round-order`** (state-sync
+round lower than the result round, or a jump of two or more); hostile throwing
+getter.
 
 No function throws on any input.
 
@@ -236,38 +258,65 @@ No function throws on any input.
 | `docs/unity-b6d3a-identity-correlation-contract.md` | **new** — this document |
 
 No other tracked file is changed. No lockfile changed. No generated artifact added.
-The main checkout's `ProjectSettings.asset` is untouched.
+The remote PR contains **no** `ProjectSettings.asset` change and this Linux
+worktree did not modify it (see §12 for the exact scope; the Windows main checkout
+was not accessible to this run).
 
 ---
 
 ## 15. Test results
 
-- **`npm run test:unity-presentation`: 210 tests, 210 pass, 0 fail** (149
-  pre-existing + 61 new: 44 identity + 17 correlation).
+- **`npm run test:unity-presentation`: 226 tests, 226 pass, 0 fail** (149
+  pre-existing + 77 new: 54 identity + 23 correlation).
 - **Web `tsc --noEmit`:** PASS (exit 0).
 - **Web `next build` (Turbopack, CI Supabase placeholders):** PASS —
   "✓ Compiled successfully", 27/27 static pages generated.
 - **Realtime `tsc --noEmit` and `npm run build`:** PASS (exit 0) — server files
   unchanged; run as a regression check.
-- `git diff --check`: clean.
+- `git diff --check`: clean; only the five authorized correction files changed.
 
 ---
 
-## 16. Remaining blockers for B6D3B
+## 16. Phase governance and remaining blockers
 
-- **B1 — Sanctioned `/dev/unity-staging` harness-route run** still blocked by
-  Vercel SSO (B6D2B §15); must be completed before any player-facing runtime.
-- **B3 — Versioned live-shadow never run against a real match**; B6D3C real-match
-  shadow evidence still owed.
-- **B4 — Unity engine default diagnostics endpoints** must be disabled/verified in
-  a player-facing build.
-- **Wiring/UX for a player-facing surface** (separate flag + **server-side cohort
-  gate**, React-underneath fallback, perf budget) is B6D3B and remains
-  **unauthorized**. This contract must be **reviewed** before it is wired.
+**Cleared / current state:**
 
-The identity-contract blocker (B2) is **addressed at the contract level** by this
-phase, pending review; it is not considered cleared until reviewed and wired under
-B6D3B authorization.
+- **Authenticated same-origin harness proof: 11/11 PASSED and CLEARED.** The
+  sanctioned same-origin staging harness has been driven under authentication; it
+  is **not** an open blocker. Vercel SSO is **no longer** an open B6D3 blocker.
+- **Artifact reproducibility remains BLOCKED** (documented; unchanged by B6D3A).
+- **Production remains NO-GO.**
+
+**Phase definitions (each later phase requires its own separate authorization):**
+
+- **B6D3A (this phase)** — pure identity/visual-side + result-to-state correlation
+  contracts and tests; no runtime wiring.
+- **B6D3B** — the isolated **React lifecycle / fail-open host** phase: a separate
+  player-facing flag + server-side cohort design, React-underneath fallback, and
+  lifecycle/fail-open host wiring. **No real match.**
+- **B6D3C** — **protected-preview mock/runtime proof** on a protected preview
+  surface, **with no real match** (deterministic mock Protocol v1 events only).
+- **B6D3D and later** — the **controlled two-user real-match staging proof**;
+  requires **separate explicit real-match authorization**, controlled free-play
+  internal accounts only, and **no production**.
+
+**Remaining blockers for B6D3B:**
+
+- **B6D3A must pass review and merge.**
+- A **separate player-facing flag + server-side cohort** design must be accepted.
+- The **isolated lifecycle / fail-open fallback** design must be accepted.
+- **No real match.**
+
+**Remaining blockers for B6D3D and later:**
+
+- The **B6D3C protected-preview mock proof** must pass.
+- **Explicit real-match authorization** is required.
+- **Controlled free-play internal accounts only.**
+- **No production.**
+
+The identity-contract design problem (B6D3 §7) is **addressed at the contract
+level** by this phase, pending review; it is not considered fully closed until
+reviewed and wired under B6D3B authorization.
 
 ---
 

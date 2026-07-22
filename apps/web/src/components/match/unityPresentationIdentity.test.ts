@@ -164,9 +164,35 @@ test("conflicting authoritative outcome (draw AND winner) → null", () => {
   );
 });
 
-test("isDraw only responds to the literal true (not a truthy string)", () => {
-  const ctx = buildViewerIdentityContext(baseInput({ isDraw: "yes" as unknown }));
-  assert.equal(ctx?.outcome, undefined);
+// ── isDraw shape contract ───────────────────────────────────────────────────────
+// undefined = absent; false = valid (no draw); true = DRAW; any other type → null.
+
+test("isDraw=false is valid and yields no DRAW outcome", () => {
+  const ctx = buildViewerIdentityContext(baseInput({ isDraw: false }));
+  assert.ok(ctx);
+  assert.equal(ctx.outcome, undefined);
+});
+
+test("isDraw=undefined is treated as absent (no outcome)", () => {
+  const ctx = buildViewerIdentityContext(baseInput({ isDraw: undefined }));
+  assert.ok(ctx);
+  assert.equal(ctx.outcome, undefined);
+});
+
+test("isDraw as a string → null", () => {
+  assert.equal(buildViewerIdentityContext(baseInput({ isDraw: "yes" as unknown })), null);
+});
+
+test("isDraw as a number → null", () => {
+  assert.equal(buildViewerIdentityContext(baseInput({ isDraw: 1 as unknown })), null);
+});
+
+test("isDraw as an object → null", () => {
+  assert.equal(buildViewerIdentityContext(baseInput({ isDraw: {} as unknown })), null);
+});
+
+test("isDraw as null → null (null is not a valid boolean isDraw)", () => {
+  assert.equal(buildViewerIdentityContext(baseInput({ isDraw: null as unknown })), null);
 });
 
 // ── New instance = new context ──────────────────────────────────────────────────
@@ -327,6 +353,69 @@ test("missing displayNames map → labels simply absent, mapping still valid", (
   assert.ok(ctx);
   assert.equal(ctx.self.displayLabel, undefined);
   assert.equal(ctx.opponent.displayLabel, undefined);
+});
+
+// ── Display-label raw-id leakage protection (defence-in-depth) ───────────────────
+
+test("self display label equal to the self raw id is omitted", () => {
+  const ctx = buildViewerIdentityContext(
+    baseInput({ displayNames: { "player-self-uuid": "player-self-uuid", "player-opp-uuid": "Blake" } }),
+  );
+  assert.ok(ctx);
+  assert.equal(ctx.self.displayLabel, undefined);
+  assert.equal(ctx.opponent.displayLabel, "Blake");
+});
+
+test("self display label equal to the opponent raw id is omitted", () => {
+  const ctx = buildViewerIdentityContext(
+    baseInput({ displayNames: { "player-self-uuid": "player-opp-uuid", "player-opp-uuid": "Blake" } }),
+  );
+  assert.ok(ctx);
+  assert.equal(ctx.self.displayLabel, undefined);
+  assert.equal(ctx.opponent.displayLabel, "Blake");
+});
+
+test("opponent display label equal to either raw id is omitted", () => {
+  const a = buildViewerIdentityContext(
+    baseInput({ displayNames: { "player-self-uuid": "Ada", "player-opp-uuid": "player-opp-uuid" } }),
+  );
+  assert.ok(a);
+  assert.equal(a.self.displayLabel, "Ada");
+  assert.equal(a.opponent.displayLabel, undefined);
+  const b = buildViewerIdentityContext(
+    baseInput({ displayNames: { "player-self-uuid": "Ada", "player-opp-uuid": "player-self-uuid" } }),
+  );
+  assert.ok(b);
+  assert.equal(b.opponent.displayLabel, undefined);
+});
+
+test("a label with an EMBEDDED raw id (not equal) is still omitted", () => {
+  const ctx = buildViewerIdentityContext(
+    baseInput({ displayNames: { "player-self-uuid": "hi player-self-uuid !", "player-opp-uuid": "Blake" } }),
+  );
+  assert.ok(ctx);
+  assert.equal(ctx.self.displayLabel, undefined);
+  assert.equal(ctx.opponent.displayLabel, "Blake");
+});
+
+test("raw-id-bearing labels never leak into serialized output; context stays valid", () => {
+  const ctx = buildViewerIdentityContext(
+    baseInput({
+      displayNames: {
+        "player-self-uuid": "player-self-uuid",
+        "player-opp-uuid": "prefix-player-opp-uuid-suffix",
+      },
+    }),
+  );
+  assert.ok(ctx);
+  // Both labels omitted; identity mapping otherwise intact.
+  assert.equal(ctx.self.displayLabel, undefined);
+  assert.equal(ctx.opponent.displayLabel, undefined);
+  assert.equal(ctx.self.participant, "SELF");
+  assert.equal(ctx.opponent.participant, "OPPONENT");
+  const serialized = JSON.stringify(ctx);
+  assert.ok(!serialized.includes("player-self-uuid"));
+  assert.ok(!serialized.includes("player-opp-uuid"));
 });
 
 // ── sanitizeDisplayLabel direct coverage ────────────────────────────────────────

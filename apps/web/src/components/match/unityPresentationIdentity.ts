@@ -155,6 +155,17 @@ function resolveDisplayLabel(displayNames: unknown, playerId: string): string | 
   return sanitizeDisplayLabel(displayNames[playerId]);
 }
 
+/**
+ * Defence-in-depth: a sanitized label must not CONTAIN either raw participant id
+ * (even as a substring), so no internal id can ride into presentation via a name
+ * field. The rejected value is never returned or logged — the label is simply
+ * omitted. This composes with (never weakens) the generic
+ * email/UUID/hex/control-character rejections in `sanitizeDisplayLabel`.
+ */
+function labelIsFreeOfRawIds(label: string, rawIds: readonly string[]): boolean {
+  return !rawIds.some((id) => id.length > 0 && label.includes(id));
+}
+
 // ── Public builder ──────────────────────────────────────────────────────────────
 
 /**
@@ -172,10 +183,14 @@ function resolveDisplayLabel(displayNames: unknown, playerId: string): string | 
  *   - `viewerPlayerId` must be one of those two keys (missing/unknown → null).
  *   - Roles: if EITHER kicker/keeper id is present, BOTH must be present, distinct,
  *     and be exactly the two participants (any other shape → null).
+ *   - `isDraw` shape: `undefined` = absent; `false` = valid, no draw; `true` =
+ *     DRAW; any other supplied type → null.
  *   - Outcome: set ONLY from an explicit authoritative source. `isDraw === true`
  *     → DRAW; otherwise a supplied `winnerPlayerId` must be one of the two
  *     participants (unknown → null). A draw flag AND a winner id together → null.
  *     Scores are NEVER compared to derive an outcome.
+ *   - Display labels: attached only when they survive `sanitizeDisplayLabel` AND
+ *     contain NEITHER raw participant id (an unsafe label is omitted, not fatal).
  *   - Visual side: SELF → LEFT, OPPONENT → RIGHT (deterministic, viewer-relative).
  */
 export function buildViewerIdentityContext(
@@ -219,6 +234,9 @@ export function buildViewerIdentityContext(
     }
 
     // ── Optional authoritative outcome (NEVER derived from scores) ──
+    // `isDraw` shape rule: `undefined` = absent; a boolean is valid (`true` → DRAW,
+    // `false` → no draw); ANY other supplied type is malformed → controlled null.
+    if (input.isDraw !== undefined && typeof input.isDraw !== "boolean") return null;
     let outcome: OutcomeParticipant | undefined;
     const drawFlag = input.isDraw === true;
     const hasWinner = input.winnerPlayerId !== undefined && input.winnerPlayerId !== null;
@@ -247,10 +265,17 @@ export function buildViewerIdentityContext(
     if (selfRole !== undefined) self.role = selfRole;
     if (opponentRole !== undefined) opponent.role = opponentRole;
 
+    // A display label is attached only when it survives generic sanitization AND
+    // contains NEITHER raw participant id (so no internal id leaks via a name).
+    const rawIds: readonly string[] = [viewerId, opponentId];
     const selfLabel = resolveDisplayLabel(input.displayNames, viewerId);
-    if (selfLabel !== null) self.displayLabel = selfLabel;
+    if (selfLabel !== null && labelIsFreeOfRawIds(selfLabel, rawIds)) {
+      self.displayLabel = selfLabel;
+    }
     const opponentLabel = resolveDisplayLabel(input.displayNames, opponentId);
-    if (opponentLabel !== null) opponent.displayLabel = opponentLabel;
+    if (opponentLabel !== null && labelIsFreeOfRawIds(opponentLabel, rawIds)) {
+      opponent.displayLabel = opponentLabel;
+    }
 
     const context: ViewerIdentityContext = {
       matchInstanceId: input.matchInstanceId,

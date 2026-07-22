@@ -40,7 +40,8 @@ export type CorrelationRejectReason =
   | "invalid-state-sync-envelope"
   | "wrong-event-type"
   | "foreign-instance"
-  | "stale-or-duplicate";
+  | "stale-or-duplicate"
+  | "invalid-round-order";
 
 /** Sanitized correlation summary. No raw payloads; no player ids. */
 export interface CorrelationSummary {
@@ -95,11 +96,16 @@ function sortedScoreValues(envelope: MatchStateSyncEnvelope): number[] {
  *      what separates a rematch/new-instance state sync from an old result).
  *   4. `stateSync.sequence` is STRICTLY greater than `result.sequence` (a lower or
  *      equal sequence is `stale-or-duplicate`).
+ *   5. the round relationship is authoritative: `stateSync.round === result.round`
+ *      (terminal final state) OR `stateSync.round === result.round + 1`
+ *      (non-terminal continuation). A lower round or a jump of two or more is
+ *      `invalid-round-order`. The next round is VALIDATED, never calculated.
  *
  * On accept, returns a sanitized `CorrelationSummary` (score values only, no ids
  * beyond `matchInstanceId`, no raw payload). The round numbers are copied verbatim
  * and never used to derive a "next round"; the score values come only from the
- * state sync (never from the result). Never throws.
+ * state sync (never from the result). No winner, score delta, phase, or
+ * sudden-death progression is derived. Never throws.
  */
 export function correlateResultToStateSync(
   rawResult: unknown,
@@ -129,6 +135,17 @@ export function correlateResultToStateSync(
     // The authoritative state sync must strictly follow the result in sequence.
     if (stateEnv.sequence <= resultEnv.sequence) {
       return { correlated: false, reason: "stale-or-duplicate" };
+    }
+
+    // Round-order relationship — VALIDATE the two supplied authoritative round
+    // values; NEVER calculate the next round. Per current server behaviour after a
+    // `match:result` (see contract doc §10):
+    //   - terminal final state sync:      stateSync.round === result.round
+    //   - non-terminal continuation sync: stateSync.round === result.round + 1
+    // A lower round, or a jump of two or more, is `invalid-round-order`.
+    const roundDelta = stateEnv.payload.round - resultEnv.payload.round;
+    if (roundDelta !== 0 && roundDelta !== 1) {
+      return { correlated: false, reason: "invalid-round-order" };
     }
 
     const summary: CorrelationSummary = {
