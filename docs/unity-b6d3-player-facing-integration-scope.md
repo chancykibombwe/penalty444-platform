@@ -14,6 +14,13 @@
 > are quoted verbatim from the repository as of master
 > `be2baeb6d8bae90f1229bf41fda0b5c4897967cc` (B6D2B merged). No payload field is
 > invented; where a field does not exist it is marked *Not present*.
+>
+> **Status update (B6D3A merged; B6D3B planning in review).** B6D3A is COMPLETE
+> AND LOCKED (`docs/unity-b6d3a-identity-correlation-contract.md`). The B6D3B
+> isolated React lifecycle host is under a separate planning/repository review:
+> see `docs/unity-b6d3b-react-host-scope-risk-review.md` (recommendation: GO WITH
+> CONDITIONS for a separately-authorized B6D3B; implementation NOT AUTHORIZED;
+> B6D3C/B6D3D NOT AUTHORIZED; production NO-GO).
 
 ---
 
