@@ -2,6 +2,10 @@
  * B6D3B streaming feasibility harness — proof route tests.
  * Runs on Node `node:test` via `tsx`. Loopback mock upstream only; no internet,
  * no Vercel, no real artifact body.
+ *
+ * The LIVE handlers (`./route`) require an https: origin. Happy-path streaming
+ * against a loopback http mock uses the explicitly test-injected handler
+ * (`createProofRequestHandler({ allowHttp: true })`).
  */
 
 import test from "node:test";
@@ -12,6 +16,9 @@ import { createServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
 import { GET, HEAD } from "./route";
+import { createProofRequestHandler } from "../../../../../../lib/unity-stream-proof/streamProxy";
+
+const injected = createProofRequestHandler({ allowHttp: true });
 
 const WASM_PATH = ["Build", "b6b-local-fb840878-d.wasm.gz"];
 const WASM_PATH_STR = WASM_PATH.join("/");
@@ -64,6 +71,36 @@ function baseEnabledEnv(origin: string) {
   });
 }
 
+// ── Correction 1: live route requires https ─────────────────────────────────
+test("route (live): http loopback origin returns opaque 404 even with all gates valid", async () => {
+  // Live handlers use allowHttp:false → a loopback http origin is rejected.
+  const up = await startUpstream((res) => {
+    res.writeHead(200, { "content-encoding": "gzip" });
+    res.end(MOCK);
+  });
+  const restore = baseEnabledEnv(up.origin); // http://127.0.0.1:...
+  try {
+    const res = await GET(req("raw", WASM_PATH_STR, { authorization: `Bearer ${BEARER}` }), ctx("raw", WASM_PATH));
+    assert.equal(res.status, 404);
+    assert.equal(res.headers.get("cache-control"), "no-store");
+  } finally {
+    restore();
+    await up.close();
+  }
+});
+
+test("route (live): https origin passes the origin gate (upstream error, not 404)", async () => {
+  // With a valid https origin, the origin gate passes; the request then fails at
+  // the (unreachable) upstream — proving the gate itself did not 404.
+  const restore = baseEnabledEnv("https://cdn.invalid.example");
+  try {
+    const res = await GET(req("raw", WASM_PATH_STR, { authorization: `Bearer ${BEARER}` }), ctx("raw", WASM_PATH));
+    assert.notEqual(res.status, 404);
+  } finally {
+    restore();
+  }
+});
+
 // ── gating → indistinguishable 404 ──────────────────────────────────────────
 test("route: production returns opaque 404", async () => {
   const restore = applyEnv({
@@ -88,6 +125,8 @@ test("route: every gate failure yields an identical opaque 404", async () => {
     () => applyEnv({ VERCEL_ENV: "preview", UNITY_STREAM_PROOF_ENABLED: "true", UNITY_STREAM_PROOF_BEARER: undefined, UNITY_STREAM_PROOF_ARTIFACT_ORIGIN: "https://cdn.example.com" }),
     () => applyEnv({ VERCEL_ENV: "preview", UNITY_STREAM_PROOF_ENABLED: "true", UNITY_STREAM_PROOF_BEARER: BEARER, UNITY_STREAM_PROOF_ARTIFACT_ORIGIN: undefined }),
     () => applyEnv({ VERCEL_ENV: "preview", UNITY_STREAM_PROOF_ENABLED: "true", UNITY_STREAM_PROOF_BEARER: BEARER, UNITY_STREAM_PROOF_ARTIFACT_ORIGIN: "http://evil.example.com" }),
+    // live handler + loopback http origin (allowHttp:false) also collapses to 404
+    () => applyEnv({ VERCEL_ENV: "preview", UNITY_STREAM_PROOF_ENABLED: "true", UNITY_STREAM_PROOF_BEARER: BEARER, UNITY_STREAM_PROOF_ARTIFACT_ORIGIN: "http://127.0.0.1:9" }),
   ];
   const snapshots: Array<{ status: number; body: string; ct: string | null }> = [];
   for (const setup of cases) {
@@ -99,7 +138,6 @@ test("route: every gate failure yields an identical opaque 404", async () => {
       restore();
     }
   }
-  // also: missing/invalid auth and unknown transport / bad path
   const restore = baseEnabledEnv("https://cdn.example.com");
   try {
     for (const r of [
@@ -122,8 +160,8 @@ test("route: every gate failure yields an identical opaque 404", async () => {
   }
 });
 
-// ── happy path (raw + real wasm allowlist path) ─────────────────────────────
-test("route: raw wasm streams with sanitized success headers", async () => {
+// ── happy path via test-injected handler (loopback http) ────────────────────
+test("route (injected): raw wasm streams with sanitized success headers", async () => {
   const up = await startUpstream((res) => {
     res.writeHead(200, {
       "content-encoding": "gzip",
@@ -135,7 +173,7 @@ test("route: raw wasm streams with sanitized success headers", async () => {
   });
   const restore = baseEnabledEnv(up.origin);
   try {
-    const res = await GET(req("raw", WASM_PATH_STR, { authorization: `Bearer ${BEARER}` }), ctx("raw", WASM_PATH));
+    const res = await injected.GET(req("raw", WASM_PATH_STR, { authorization: `Bearer ${BEARER}` }), ctx("raw", WASM_PATH));
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("content-type"), "application/wasm");
     assert.equal(res.headers.get("content-encoding"), "gzip");
@@ -154,14 +192,14 @@ test("route: raw wasm streams with sanitized success headers", async () => {
   }
 });
 
-test("route: HEAD returns headers and no body", async () => {
+test("route (injected): HEAD returns headers and no body", async () => {
   const up = await startUpstream((res) => {
     res.writeHead(200, { "content-encoding": "gzip" });
     res.end();
   });
   const restore = baseEnabledEnv(up.origin);
   try {
-    const res = await HEAD(req("raw", WASM_PATH_STR, { authorization: `Bearer ${BEARER}` }), ctx("raw", WASM_PATH));
+    const res = await injected.HEAD(req("raw", WASM_PATH_STR, { authorization: `Bearer ${BEARER}` }), ctx("raw", WASM_PATH));
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("content-type"), "application/wasm");
     const buf = Buffer.from(await res.arrayBuffer());
@@ -197,10 +235,10 @@ test("boundary: harness sources import no forbidden modules", () => {
     "unity-arena",
     "socket.io",
     "@supabase",
+    "next/server",
   ];
   for (const f of files) {
     const src = readFileSync(f, "utf8");
-    // only inspect import/require lines to avoid matching prose in comments
     const importLines = src.split("\n").filter((l) => /\b(import|require)\b/.test(l) && /["']/.test(l));
     for (const bad of forbidden) {
       for (const line of importLines) {

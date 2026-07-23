@@ -59,6 +59,14 @@ jobs:
       - name: Unity presentation contract tests
         run: npm run test:unity-presentation
 
+      - name: B6D3B streaming harness tests
+        run: >-
+          npx tsx --test
+          src/lib/unity-stream-proof/manifest.test.ts
+          src/lib/unity-stream-proof/security.test.ts
+          src/lib/unity-stream-proof/streamProxy.test.ts
+          'src/app/api/dev/unity-stream-proof/[transport]/[...path]/route.test.ts'
+
       - name: TypeScript check
         run: npx tsc --noEmit -p tsconfig.json
 

@@ -99,20 +99,35 @@ apps/web/src/lib/unity-stream-proof/
   fixtures/b6b-local-fb840878-d.manifest.json   (merged; unchanged)
   manifest.ts        load + strictly validate the fixture; derive Content-Type;
                      exact-path resolution (no arbitrary lookup)
-  security.ts        constant-time bearer compare; env gate; origin validation;
+  security.ts        constant-time bearer compare; env gate; origin validation
+                     (https-only unless loopback-http is explicitly injected);
                      path allowlisting; ordered evaluateGate()
   streamProxy.ts     fetchTransport() + rawTransport(); non-buffering instrumented
-                     ReadableStream; sanitized response headers; diagnostics
+                     ReadableStream; sanitized response headers; diagnostics;
+                     createProofRequestHandler({ allowHttp }) factory
+                     (allowHttp defaults to false)
 
 apps/web/src/app/api/dev/unity-stream-proof/[transport]/[...path]/route.ts
   export const runtime = "nodejs";
   export const dynamic = "force-dynamic";
-  GET + HEAD → evaluateGate → runTransport → sanitized Response | opaque 404
+  const live = createProofRequestHandler();   // allowHttp: false → HTTPS-only
+  export const GET  = live.GET;
+  export const HEAD = live.HEAD;
 ```
 
-The route composes the pure modules. All gating collapses to a single
-indistinguishable 404. The transports perform the only outbound request and never
-buffer the whole body.
+The route file exports **only** route-segment fields (`runtime`, `dynamic`, `GET`,
+`HEAD`); the reusable, injectable handler lives in `streamProxy.ts` so tests can
+supply loopback-HTTP injection without adding non-route exports (which the
+Next-generated route type-check rejects). The handler composes the pure modules,
+all gating collapses to a single indistinguishable 404, and the transports
+perform the only outbound request and never buffer the whole body.
+
+**Live route is HTTPS-only.** `createProofRequestHandler()` defaults to
+`allowHttp: false`, so the deployed `GET`/`HEAD` require an `https:` artifact
+origin. A loopback `http:` origin is reachable **only** through the explicit
+test-injected handler `createProofRequestHandler({ allowHttp: true })`; this is a
+dependency-injection seam, **not** a `NODE_ENV` check. Non-loopback `http:` is
+denied in every mode.
 
 ## 6. Environment and access gate
 
@@ -159,23 +174,40 @@ path input is **never** passed to `new URL()` before allowlist resolution; the
 only upstream URL constructed is `validated origin + fixture record path`.
 
 `UNITY_STREAM_PROOF_ARTIFACT_ORIGIN` must parse as an absolute URL, be `https:`
-(preview) — `http:` is permitted **only** for loopback hosts as local test
-injection — contain no username/password, no query, no fragment, and normalize to
-a bare origin. It is never returned from request input, never logged, never
-echoed. Redirects to another origin are rejected.
+for the deployed/live route, contain no username/password, no query, no fragment,
+and normalize to a bare origin. `http:` is accepted **only** for loopback hosts
+(`127.0.0.0/8`, `localhost`, `::1`) **and only** when a caller explicitly injects
+`allowHttp: true` — which the live route never does. It is never returned from
+request input, never logged, never echoed. Redirects to another origin are
+rejected.
 
 ## 8. Built-in fetch transport
 
 `fetchTransport` uses the platform `fetch()` (Undici) with `redirect: "manual"`,
-rejecting every 3xx / opaque redirect. It forwards `Range` when supplied,
-propagates client abort, applies a bounded `AbortController` timeout, and returns
-a streamed body. It never calls `arrayBuffer()`, `blob()`, `text()`, or `json()`.
+rejecting every 3xx / opaque redirect. It forwards `Range` when supplied and
+returns a streamed body. It never calls `arrayBuffer()`, `blob()`, `text()`, or
+`json()`.
+
+**Full-lifecycle abort/timeout.** The transport uses two distinct phases whose
+timers/listeners survive header return and are removed exactly once at a terminal
+point:
+
+- a **header-phase timeout** remains active until `fetch()` returns headers
+  (a stall here fails `headers_timeout`, HTTP 504);
+- after headers, a **body inactivity timeout** (reset on each chunk) remains
+  active until stream completion, cancellation or error (a stall after the first
+  chunk fails `body_timeout`, and aborts the upstream via the `AbortController`);
+- the client-abort listener stays connected to the upstream `AbortController` for
+  the entire streamed response — an abort after the first chunk yields
+  `client_abort`;
+- consumer cancellation of the response body cancels the upstream request (via
+  the reader), and diagnostics emit exactly once.
 
 Because Undici may transparently decompress a gzip response and drop
 `Content-Encoding`, this transport **fails closed** for a gzip artifact whenever
 the upstream response no longer advertises `content-encoding: gzip` (a detectable
-byte/header transformation). It does **not** fabricate `Content-Length` when the
-declared length is not verifiably equal to the pinned compressed byte count.
+byte/header transformation), and it **omits `Content-Length`** for gzip because
+the body may be transformed. It does not claim deployed byte identity.
 **Fetch mode cannot be marked PASS from unit tests** — only a protected-preview
 measurement can prove deployed compressed length, SHA-256, gzip validity, and
 headers.
@@ -187,27 +219,65 @@ dependency, no zlib/gunzip/Brotli). It selects the protocol from the validated
 origin, rejects redirects, preserves the raw compressed bytes, forwards `Range`,
 preserves `200` / `206` / `416`, supports `HEAD` without a body, and converts the
 `IncomingMessage` to a Web stream via `Readable.toWeb()` (no chunk concatenation,
-no whole-body retention). It applies bounded connect/header/body timeout handling
-and destroys the upstream request on client abort or timeout.
+no whole-body retention).
+
+**Three distinct bounded timeout phases**, each cleaned up exactly once with no
+timer firing after successful completion:
+
+1. **connection timeout** — armed at request start, cleared when the socket
+   `connect`/`secureConnect`s (fails `connect_timeout`, HTTP 504);
+2. **response-header timeout** — armed after connection, cleared when the response
+   callback begins (fails `headers_timeout`, HTTP 504);
+3. **response-body inactivity timeout** — armed after headers, reset on each
+   chunk, active until complete/cancel/error; a stall destroys the upstream
+   response/request and yields `body_timeout`.
+
+Client abort destroys both the request and any active response; `connect_timeout`,
+`headers_timeout`, `body_timeout`, `client_abort`, `upstream_abort` and
+`upstream_error` are classified accurately in diagnostics. The request factory is
+injectable so the connection-timeout phase can be tested deterministically without
+any external network request.
 
 ## 10. Response-header contract
 
-Successful authorized responses set:
+Response-header construction knows the transport, the status, the pinned artifact
+record, and the safe (already-stripped) upstream headers. Successful authorized
+`200`/`206` responses set:
 
 - `Cache-Control: private, no-store`
 - `Vary: Authorization`
 - `X-Content-Type-Options: nosniff`
 - `Content-Type` from the reviewed suffix mapping
-- `Content-Encoding` from the fixture/upstream consistency check
-- `Content-Length` only when verified accurate for the returned compressed bytes
-- `Accept-Ranges`; `Content-Range` and `206`/`416` where applicable
-- no `Set-Cookie`, no public caching, no `s-maxage`
+
+**Content-Encoding (fail closed on contradiction, before streaming).** A `gzip`
+record requires upstream `Content-Encoding: gzip` on **both** transports (fetch
+would have dropped it if it decompressed); an `identity` record accepts only an
+absent or explicit `identity` encoding. Any detectable contradiction fails closed
+with `header_mismatch`.
+
+**Content-Length.** For a raw full `200`: if the upstream declares a length that
+differs from the pinned byte count, it fails closed with `byte_mismatch` before
+streaming; when absent, the streamed total is compared at terminal completion and
+a differing completed length becomes `byte_mismatch` (not `complete`). For fetch,
+`Content-Length` is **omitted for gzip** (possible transparent transform) and only
+echoed for `identity` when it matches the pinned count. For `206`, a partial
+`Content-Length` is preserved only when consistent with the partial span.
+
+**Accept-Ranges is never fabricated.** It is set only when the upstream value is
+exactly `bytes`; an absent or unknown upstream value stays absent.
+
+**Content-Range / 416.** A syntactically safe `Content-Range` is preserved for
+`206`, and `Content-Range: bytes */<total>` is preserved for `416`. A `416`
+returns status 416 with **no upstream body** (the upstream 416 body is
+destroyed/cancelled and never forwarded — no upstream error page leaks) and
+carries **no artifact `Content-Encoding` and no artifact `Content-Length`**.
 
 Stripped from upstream: `Server`, `Via`, `X-Powered-By`, `Location`,
-`Set-Cookie`, upstream cache directives (`Cache-Control`/`Age`/`Expires`/
-`CDN-Cache-Control`), and host/origin-identifying headers (e.g. `X-Vercel-*`,
-`CF-Ray`), plus unknown headers. `404` denials carry no detail, no origin, no
-secret, no fixture information, and no cacheable protected body.
+`Set-Cookie`, `ETag`, upstream cache directives (`Cache-Control`/`Age`/`Expires`/
+`CDN-Cache-Control`/`Surrogate-Control`), and host/origin-identifying headers
+(e.g. `X-Vercel-*`, `CF-Ray`, `CF-Cache-Status`), plus unknown headers. `404`
+denials carry no detail, no origin, no secret, no fixture information, and no
+cacheable protected body.
 
 ## 11. Streaming diagnostics
 
@@ -237,16 +307,30 @@ no Vercel, no real artifact body (the real 8.19 MB wasm is never embedded).
   mismatch, extra/empty segment all denied); ordered gate (production first,
   disabled, bearer env, auth missing/malformed/invalid, origin, transport, path).
 - **streamProxy.test.ts** — raw: exact bytes/count/SHA preserved,
-  `Content-Encoding` + `application/wasm` preserved, delayed multi-chunk stays
-  streamed with first chunk before completion, redirect rejected, timeout, HEAD,
-  Range + `206`/`Content-Range`, `416`, pre-aborted + mid-stream client abort
-  (destroys upstream), unsafe headers stripped; fetch: identity streams,
-  detectable gzip decompression fails closed, redirect rejected, Range, abort,
-  timeout, HEAD.
-- **route.test.ts** — production/opaque 404s are byte-identical across every gate
-  failure; raw wasm happy path with sanitized headers; HEAD; boundary regression
-  (harness sources import no match/presentation/realtime/shared/unity-arena/
-  socket.io/supabase module).
+  `Content-Encoding` + `application/wasm` preserved, unsafe headers stripped,
+  **absent `Accept-Ranges` stays absent**, **gzip missing/wrong encoding fails
+  closed** (`header_mismatch`), **full `Content-Length` mismatch fails closed**
+  (`byte_mismatch`), **completed byte-count mismatch reflected in diagnostics**,
+  delayed multi-chunk stays streamed with first chunk before completion, redirect
+  rejected, **connect timeout (deterministic, injected request)**, **headers
+  timeout**, **body timeout after first chunk**, **successful completion cleans up
+  (no later timer, single emission)**, HEAD, Range + `206`/`Content-Range`,
+  **`416` preserves safe `Content-Range`, empty body, upstream body not
+  forwarded**, pre-aborted + mid-stream client abort (destroys upstream); fetch:
+  identity streams (single emission), detectable gzip decompression fails closed,
+  **gzip response omits `Content-Length`** (header-build rule), `416` header
+  builder (no encoding/length/type), redirect rejected, Range, pre-aborted +
+  **mid-stream client abort (cancels upstream)**, **body stall → `body_timeout`**,
+  **header-phase timeout**, **successful completion cleans up (single emission)**,
+  HEAD.
+- **route.test.ts** — **live handler returns opaque 404 for a loopback `http:`
+  origin even with all gates valid** (HTTPS-only); a valid `https:` origin passes
+  the origin gate (upstream error, not 404); production/opaque 404s are
+  byte-identical across every gate failure (including live loopback-http);
+  raw wasm happy path with sanitized headers via the test-injected
+  (`allowHttp: true`) handler; HEAD; boundary regression (harness sources import
+  no match/presentation/realtime/shared/unity-arena/socket.io/supabase/next-server
+  module).
 
 ## 13. Local validation results
 
@@ -254,8 +338,8 @@ Run in the clean worktree; no package/lockfile modification resulted.
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Harness tests | `npx tsx --test <harness files>` | **42 pass / 0 fail** |
-| Presentation contract tests | `npm run test:unity-presentation` | **226 pass / 0 fail** |
+| Harness tests | `npx tsx --test <harness files>` | **54 pass / 0 fail** |
+| Presentation contract tests | `npm run test:unity-presentation` | **pass / 0 fail** |
 | TypeScript | `npx tsc --noEmit -p tsconfig.json` | **pass** |
 | Next production build | `npm run build` | **pass** — route emitted as `ƒ /api/dev/unity-stream-proof/[transport]/[...path]` |
 | Realtime build | `npm run build` (apps/realtime-server) | **pass** |
@@ -264,6 +348,27 @@ Run in the clean worktree; no package/lockfile modification resulted.
 > The build requires the same placeholder public Supabase env used by CI
 > (`NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`) for the
 > pre-existing `/leaderboard` Server Component; this is unrelated to the harness.
+
+### 13.1 CI enforcement (required GitHub step)
+
+The harness tests are now a **required** step in `.github/workflows/ci.yml`,
+added immediately after the Unity presentation contract tests and before the
+TypeScript check, using the repository's installed `tsx` (no `package.json`
+change):
+
+```yaml
+- name: B6D3B streaming harness tests
+  run: >-
+    npx tsx --test
+    src/lib/unity-stream-proof/manifest.test.ts
+    src/lib/unity-stream-proof/security.test.ts
+    src/lib/unity-stream-proof/streamProxy.test.ts
+    'src/app/api/dev/unity-stream-proof/[transport]/[...path]/route.test.ts'
+```
+
+Every PR into `master` (and every push to `master`) therefore runs the Unity
+presentation tests, the B6D3B harness tests, the TypeScript check, the Next
+production build, and the realtime build.
 
 ## 14. Protected-preview measurement procedure (DOCUMENT ONLY — NOT EXECUTED)
 
@@ -357,7 +462,7 @@ and redeploy/invalidate so the route returns 404.
 ## 20. Final status
 
 - B6D3B STREAM-PROOF MANIFEST EVIDENCE: COMPLETE AND LOCKED
-- B6D3B STREAMING HARNESS: COMPLETE / IN REVIEW
+- B6D3B STREAMING HARNESS: COMPLETE / HARDENING REVIEW
 - B6D3B PROTECTED-PREVIEW STREAMING MEASUREMENT: NOT AUTHORIZED
 - B6D3B SECURITY/DELIVERY PR-1: NOT AUTHORIZED
 - B6D3B REACT INTEGRATION PR-2: NOT AUTHORIZED
