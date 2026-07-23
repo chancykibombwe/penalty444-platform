@@ -23,6 +23,12 @@
 > above; (4) a **protected artifact delivery contract**; (5) updated risks, file
 > scope, and gates.
 
+> **Follow-up (merged):** the file-by-file implementation authorization package
+> that builds on this review lives at
+> [`docs/unity-b6d3b-implementation-authorization.md`](./unity-b6d3b-implementation-authorization.md)
+> (includes the independent artifact proxy/streaming review). B6D3B runtime
+> implementation remains **NOT AUTHORIZED**.
+
 Evidence labels: **[Verified]** (exists at the baseline SHA; cited by file/line),
 **[Contract]** (stated in a merged design doc at the baseline SHA),
 **[Proposed B6D3B]** (future, separately-authorized design; not built here),
