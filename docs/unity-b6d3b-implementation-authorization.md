@@ -10,6 +10,19 @@
 > recommendation (§24) for a **later, separately-authorized** B6D3B implementation
 > PR. **B6D3B RUNTIME IMPLEMENTATION REMAINS NOT AUTHORIZED.**
 
+> **This revision (hardening correction pass)** applies six corrections versus the
+> first revision: (1) a **unified `/unity-arena` protected namespace** — entry
+> `/unity-arena/player` and artifact `/unity-arena/artifact/[...path]` under one
+> `Path=/unity-arena` cookie; (2) an **exact `next.config.ts` same-origin framing
+> override** for `/unity-arena/player` (the global `X-Frame-Options: DENY` cannot be
+> undone by the route handler alone) — `next.config.ts` moves to MINIMAL
+> MODIFICATION; (3) **private, non-cacheable delivery** (`Cache-Control: private,
+> no-store`, `Vary: Cookie`); (4) **exact TTL-bounded revocation semantics** (entry
+> rechecks allowlist; artifacts bounded by a 10-minute TTL; emergency revocation via
+> secret rotation / token-version bump); (5) the **official Vercel 4.5 MB
+> non-streaming body limit** cited, streaming proof kept as a blocker; (6) updated
+> PR-1/PR-2 file scope.
+
 Evidence labels: **[Verified]** (exists at the baseline SHA; cited by file/line or
 manifest), **[Contract]** (stated in a merged design doc at the baseline SHA),
 **[Proposed B6D3B]** (future design; not built here), **[Recommendation]**,
@@ -119,7 +132,7 @@ proposed. Raw ids permitted only where marked.
 | 6 | Host lifecycle | `UnityPresentationHost` | `UnityPresentationHost.tsx` | sanitized props | visibility decision, callbacks | presentation-only | New | **No** | fail-open to decorative underlay |
 | 7 | Exactly one renderer | `MatchRenderer3D` | `MatchRenderer3D.tsx` | FIFO messages | `postMessage`, ack callbacks | same-origin iframe bridge | Exists | **No** | `markUnavailable` (15 s / error) |
 | 8 | Protected entry | entry route | `app/unity-arena/player/route.ts` | cohort session cookie | trusted entry HTML | **server session gate** | New | **No** | 404 if unauthorized / production |
-| 9 | Protected artifact requests | artifact route | `app/api/unity-arena/artifact/[...path]/route.ts` | session cookie, path | streamed artifact bytes | **server session gate + manifest allowlist** | New | **No** | 404 unauthorized/traversal/unknown; 5xx upstream |
+| 9 | Protected artifact requests | artifact route | `app/unity-arena/artifact/[...path]/route.ts` | session cookie, path | streamed artifact bytes | **server session gate + manifest allowlist** | New | **No** | 404 unauthorized/traversal/unknown; 5xx upstream |
 | 10 | Unity acknowledgement | Unity iframe → React | `MatchRenderer3D.tsx` (`validateUnityMessage`) | `ready`/`animation_complete`/`error` | callbacks | inbound allowlist | Exists | **No** | invalid → ignored |
 | 11 | React fail-open | host + renderer | `UnityPresentationHost.tsx`, `MatchRenderer3D.tsx` | failure signal | hide Unity, show React underlay | presentation-only | New/Exists | **No** | no server call; match continues |
 
@@ -296,37 +309,65 @@ one sequence emitter, one ready lifecycle, one ack path (all already singletons 
 - **Mint endpoint:** `POST /api/unity-cohort/session` — verifies a **Supabase
   bearer access token** server-side via `admin.auth.getUser(token)` (the audited
   pattern in `app/api/admin/me/route.ts:26-57`), checks a **server-only allowlist**
-  (e.g. `UNITY_COHORT_EMAILS`, mirroring `ADMIN_EMAILS`), and on success sets a
-  **short-lived signed HttpOnly Secure SameSite cookie**.
+  (e.g. `UNITY_COHORT_EMAILS`, mirroring `ADMIN_EMAILS`), and on success signs a
+  token and sets the **short-lived signed HttpOnly Secure cookie** below.
 - **Status endpoint:** `GET /api/unity-cohort/status` → `{ inCohort: boolean }`
   (convenience only).
-- **Cookie:** name `p444_unity_cohort` (proposed); value = compact signed token
-  (payload: `sub` hash or opaque id, `exp`, `iat`, `ver`); **HttpOnly; Secure;
-  SameSite=Lax (or Strict); Path=/unity-arena and /api/unity-arena; no Domain
-  widening.** **Never** in URL or browser-readable storage.
+- **Signed token payload:** `{ sub, iat, exp, ver }` where `sub` = the **stable
+  Supabase user id**, `ver` = a **token-version** integer (bumped for emergency
+  revocation). No email, no service data.
+- **Cookie (single, unambiguous):**
+  - **name:** `p444_unity_cohort`
+  - **HttpOnly**
+  - **Secure**
+  - **SameSite=Lax** *(accepted recommendation; `Strict` also acceptable — one
+    value only; `Lax` chosen so a top-level same-origin navigation to
+    `/unity-arena/player` reliably carries the cookie while cross-site sends are
+    still blocked)*
+  - **Path=/unity-arena** *(one value — covers both `/unity-arena/player` and
+    `/unity-arena/artifact/...`)*
+  - **host-only; no `Domain` attribute**
+  - **Max-Age aligned to the signed-token `exp`** (see TTL)
+  - **Never** in URL or browser-readable storage.
 - **Signing:** **Node `crypto` HMAC-SHA-256** (no new dependency) over the payload
   with a **server-only secret** `UNITY_COHORT_SIGNING_SECRET`; constant-time
   compare on verify. (Web Crypto `subtle.sign` HMAC is an acceptable alternative;
   prefer whichever the route runtime supports without a dependency.)
-- **TTL:** short (proposed **10–15 minutes**); the client re-mints as needed;
-  short expiry bounds revocation latency.
+- **TTL:** **10 minutes** (recommended); `Max-Age` matches; the client re-mints as
+  needed; short expiry bounds allowlist-removal revocation latency.
 - **Env vars (server-only, names proposed, not configured here):**
-  `UNITY_COHORT_EMAILS`, `UNITY_COHORT_SIGNING_SECRET`; reuse
-  `SUPABASE_SERVICE_ROLE_KEY` (via `createAdminClient`) and `VERCEL_ENV`.
+  `UNITY_COHORT_EMAILS`, `UNITY_COHORT_SIGNING_SECRET`, `UNITY_COHORT_TOKEN_VERSION`
+  (integer for emergency revocation); reuse `SUPABASE_SERVICE_ROLE_KEY` (via
+  `createAdminClient`) and `VERCEL_ENV`.
 - **Production:** **never mints**; mint + entry + artifact all return 404 when
   `VERCEL_ENV === "production"`.
 - **CSRF:** mint is a POST authorized by the **bearer token** (not ambient cookie),
   so it is not CSRF-forgeable; the cookie is used only for **GET** reads of same-
   origin protected resources; `SameSite` further limits cross-site sends.
-- **Revocation:** remove from allowlist (verified on protected requests where
-  practical — see below) and/or rotate `UNITY_COHORT_SIGNING_SECRET`; short TTL
-  bounds exposure.
-- **Allowlist recheck:** where practical, protected **entry** requests re-verify
-  current allowlist membership (cheap); per-**artifact** request re-check may be
-  skipped for performance and instead bounded by the short cookie TTL — this
-  trade-off must be decided at implementation review.
-- **Logout/expiry:** clear cookie; expired cookie ⇒ 404 on protected resources ⇒
-  client falls open to React.
+
+### 11.1 Exact revocation semantics (bounded model)
+
+- **Session mint** — verifies the bearer token; verifies **current** allowlist
+  membership; signs `{ sub, iat, exp, ver }`; sets the cookie. A removed user
+  **cannot mint**.
+- **Entry route (`/unity-arena/player`)** — validates signature + expiry +
+  token-version + production status; **re-resolves the Supabase user by `sub` and
+  rechecks current allowlist membership**; a removed member gets **404**. (Cheap:
+  one lookup per page open.)
+- **Artifact route (`/unity-arena/artifact/[...path]`)** — validates signature +
+  expiry + token-version + production status; **does not** perform a Supabase
+  lookup per artifact request (17 files per load). Ordinary revocation by allowlist
+  removal is therefore **bounded by the 10-minute TTL** for an already-issued
+  session; the next mint/entry is denied immediately.
+- **Emergency immediate revocation** — rotate `UNITY_COHORT_SIGNING_SECRET` **or**
+  increment `UNITY_COHORT_TOKEN_VERSION`; this **immediately** invalidates entry
+  **and** every artifact request for all existing cookies.
+- **Correctness note:** allowlist removal alone does **not** instantly invalidate an
+  already-issued artifact session — it is bounded by the short TTL; only expiry,
+  secret rotation, or a token-version bump denies in-flight artifact requests
+  immediately.
+- **Logout/expiry:** clear cookie; expired/invalid cookie ⇒ 404 on protected
+  resources ⇒ client falls open to React.
 - **Errors:** unauthenticated/not-allowlisted/expired/invalid ⇒ **404** (not 401/403)
   to avoid confirming the feature's existence, matching the staging `notFound()`
   posture.
@@ -344,21 +385,34 @@ then fails ⇒ deny ⇒ React-only. Acceptable and safe.
 **[Proposed B6D3B]** `apps/web/src/app/unity-arena/player/route.ts`.
 
 **Chosen behaviour: construct/stream a minimal trusted entry HTML** that references
-**only protected same-origin artifact URLs** under `/api/unity-arena/artifact/...`
+**only protected same-origin artifact URLs** under `/unity-arena/artifact/...`
 and boots the Unity loader (the Unity `index.html` template is small — **5,669
 bytes [Verified]** — so a minimal trusted loader HTML is straightforward and avoids
 proxying the template's relative URLs). The route:
 
-- validates the signed HttpOnly session (§11); **404** when absent/invalid/expired;
+- validates the signed HttpOnly session (§11) incl. allowlist recheck (§11.1);
+  **404** when absent/invalid/expired/revoked;
 - **404** when `VERCEL_ENV === "production"`;
 - uses **no** `roomCode`/user info in the URL and **no** capability query string;
-- references only protected same-origin artifact URLs; **never** exposes the
-  upstream origin;
-- sets security + cache headers: `X-Frame-Options: SAMEORIGIN` (same-origin iframe),
-  `X-Content-Type-Options: nosniff`, `Cache-Control: private, no-store` for the
-  entry HTML (it embeds session-scoped URLs), `Content-Type: text/html`;
+- references only protected same-origin artifact URLs under `/unity-arena/artifact/`;
+  **never** exposes the upstream origin;
+- sets `Content-Type: text/html`, `X-Content-Type-Options: nosniff`, and
+  `Cache-Control: private, no-store` (see §13.5 — the entry HTML embeds
+  session-scoped URLs and must never be cached);
 - runs on the **nodejs runtime** (`export const runtime = "nodejs"`), consistent
   with `admin/me`.
+
+**Framing (Correction — see §14 / §15):** the global `next.config.ts` header
+`X-Frame-Options: DENY` applies to `/:path*` and **cannot be undone by a per-route
+handler header in a way that reliably wins** — a conflicting `DENY` from the global
+config can survive alongside a route `SAMEORIGIN`, producing an ambiguous/duplicate
+result that browsers may resolve as `DENY`. Therefore the same-origin framing of
+`/unity-arena/player` **must** be established in `next.config.ts` with an **exact
+path rule** (not a route-handler header alone): preserve the global `DENY`, add an
+exact `/unity-arena/player` rule setting `X-Frame-Options: SAMEORIGIN` and a scoped
+`Content-Security-Policy: frame-ancestors 'self'`, and **do not** relax framing for
+the artifact routes or any unrelated route. Deployment-level header tests must prove
+the final response (not the source config) is correct (§16, Entry/Framing).
 
 Match identity continues via sanitized Protocol v1 `postMessage`, preserving the
 renderer's existing same-origin checks (`MatchRenderer3D.tsx:374-375`).
@@ -371,7 +425,8 @@ URL-selection change.
 ## 13. Protected artifact proxy and streaming review (independent)
 
 **This is the principal independent review.** Route:
-`apps/web/src/app/api/unity-arena/artifact/[...path]/route.ts`.
+`apps/web/src/app/unity-arena/artifact/[...path]/route.ts` (unified `/unity-arena`
+namespace so a single `Path=/unity-arena` cookie covers entry **and** artifacts).
 
 ### 13.1 Repository-verified artifact facts (manifest `schemaVersion:1`)
 
@@ -398,23 +453,26 @@ revoked; **404 in production**; **never** accept a capability via query string;
 **never** expose the upstream origin; **reject** `..`, decoded/double-encoded
 traversal, absolute paths, and unknown files; **serve only manifest-allowlisted
 paths** (exact path + expected `contentEncoding` from the manifest); preserve
-`Content-Type`, `Content-Encoding`, `Content-Length`, `ETag`, `Cache-Control`
-(`public, max-age=31536000, immutable` for immutable artifacts, but behind the
-session gate consider `private`), `Accept-Ranges`; **forward Range** and return
-`206`/`Content-Range` where the loader requires it; support `HEAD`; handle upstream
-timeout/abort; reject upstream redirects; enforce a max file size; **never** fall
-back to the unauthenticated staging rewrite.
+`Content-Type`, `Content-Encoding`, `Content-Length`, `ETag`, `Accept-Ranges`;
+set **`Cache-Control: private, no-store` and `Vary: Cookie`** (see §13.5 — the
+prior "public, immutable" idea is **rejected** for protected delivery);
+**forward Range** and return `206`/`Content-Range` where the loader requires it;
+support `HEAD`; handle upstream timeout/abort; reject upstream redirects; enforce a
+max file size; **never** fall back to the unauthenticated staging rewrite.
 
 ### 13.3 Platform-limit analysis (the crux)
 
-- **Largest body = 8.19 MB `wasm.gz`.** Next.js route handlers on Vercel run as
-  functions; historically Vercel documented a **response body cap around ~4.5 MB
-  for buffered function responses**, with **streaming** responses able to exceed
-  that. A route that **`fetch()`es the upstream and returns `response.body`
-  (a `ReadableStream`) directly** streams through without buffering the whole 8.19
-  MB in memory, which is the correct pattern and likely stays within limits — **but
-  the exact current Vercel limit and its interaction with streamed proxies must be
-  verified against official documentation and measured on a preview**, not assumed.
+- **Largest body = 8.19 MB `wasm.gz`.** Per Vercel's current documented platform
+  position, **Vercel Functions have a 4.5 MB request/response body limit for
+  non-streaming responses**, and **Vercel recommends streaming responses for
+  payloads larger than that**. The 8.19 MB `wasm.gz` therefore **exceeds the
+  non-streaming limit** and is only viable if the route streams end-to-end. A route
+  that **`fetch()`es the upstream and returns `response.body` (a `ReadableStream`)
+  directly** streams through without buffering the whole 8.19 MB in memory, which is
+  the required pattern — **but a protected-preview proof is still required to show
+  the actual Next/Vercel route remains streamed end-to-end and preserves the gzip
+  headers** (build/runtime layers can silently buffer or re-encode). This remains a
+  [Blocker].
 - **Runtime must be `nodejs`** (`export const runtime = "nodejs"`), not edge, for
   predictable streaming + larger limits + `crypto`.
 - **Content-Encoding correctness:** the `.gz` files are **pre-compressed**. The
@@ -455,9 +513,31 @@ assumptions are preserved (or a minimal renderer change is defined). Signed CDN/
 object-storage URLs are a further fallback but risk a shareable URL, so they must
 be short-lived and, ideally, cookie-bound.
 
-**Platform limits are marked as a [Blocker] requiring official-documentation
-verification/measurement in a later authorized research step; this package does not
-guess them.**
+The security/delivery implementation is **not authorized** until: this
+documentation package is merged; the cookie/header/cache/revocation designs are
+accepted; and the streaming research/proof is **separately authorized and
+completed**.
+
+### 13.5 Cache policy (private, non-cacheable)
+
+Protected delivery is per-user and session-scoped, so **no protected response may
+be publicly cacheable**:
+
+- **Entry HTML (`/unity-arena/player`):** `Cache-Control: private, no-store`.
+- **All protected artifacts** (manifest, loader, data, wasm, framework, template):
+  `Cache-Control: private, no-store` **and** `Vary: Cookie`.
+- **Prohibited:** `public` caching; `s-maxage`; shared/immutable caching;
+  unauthenticated CDN caching of protected bodies.
+- The manifest's immutable filename + `sha256` remain useful for **integrity**
+  verification, but do **not** authorize public caching.
+- Any future private-browser-cache or capability-aware CDN optimization requires a
+  **separate cache-isolation/security review**; it is out of scope for initial
+  B6D3B.
+
+### 13.6 Conclusion (unchanged verdict)
+
+**ROUTE PROXY FEASIBLE WITH CONDITIONS**, with the streamed 8.19 MB `wasm.gz`
+end-to-end proof retained as a **[Blocker]** (§13.3–§13.4, §23).
 
 ---
 
@@ -467,16 +547,26 @@ guess them.**
   `:374-375`); inbound allowlist `ready|animation_complete|error` (`:132-164`).
 - **No raw ids past step 5** (§5, §9); host props id-free; legacy raw `winnerId`
   never used player-facing.
-- **Session cookie:** HttpOnly, Secure, SameSite, Path-scoped, signed, short TTL;
-  never in URL/logs (§11).
+- **Session cookie:** `p444_unity_cohort` — HttpOnly, Secure, SameSite=Lax,
+  `Path=/unity-arena` (single path, host-only, no `Domain`), signed HMAC-SHA-256,
+  10-min TTL; never in URL/logs (§11).
+- **Unified namespace:** entry `/unity-arena/player` + artifacts
+  `/unity-arena/artifact/[...path]` under the one `Path=/unity-arena` cookie.
+- **Cache:** `private, no-store` on entry + artifacts, `Vary: Cookie` on artifacts;
+  no public/`s-maxage`/shared-immutable/CDN caching (§13.5).
 - **Artifact route:** manifest allowlist, traversal-safe, upstream-origin-secret,
   header-correct, session-gated, production-denied (§13).
 - **Production hard-block:** server-side via `VERCEL_ENV` at mint/entry/artifact.
-- **Headers:** global `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`,
-  `Permissions-Policy` (`next.config.ts:30-48`); entry relaxes framing to
-  `SAMEORIGIN` for its path only. **CSP is intentionally omitted globally**
-  (`next.config.ts:19-23`); a scoped CSP for the entry route is a **separately
-  reviewed hardening** item, not a B6D3B blocker unless implementation shows a need.
+- **Framing (must be set in `next.config.ts`, not the route handler):** the global
+  `X-Frame-Options: DENY` (`next.config.ts:30-48`, applied to `/:path*`) cannot be
+  reliably overridden by a route-handler header (a duplicate/contradictory `DENY`
+  may survive and browsers may resolve to `DENY`). Add an **exact `/unity-arena/player`
+  path rule** that sets `X-Frame-Options: SAMEORIGIN` **and** a scoped
+  `Content-Security-Policy: frame-ancestors 'self'`, preserving the global `DENY`
+  for all other routes and **not** relaxing framing for artifact/unrelated routes.
+  The global `Content-Security-Policy` stays intentionally omitted
+  (`next.config.ts:19-23`) except this scoped `frame-ancestors` rule; deployment-
+  level header tests must prove the **final** response headers (§16, Framing).
 - **Iframe input isolation:** host applies `pointer-events:none` + `inert` + focus
   exclusion; Unity `aria-hidden`; renderer security-prop change only if host-side
   isolation cannot be proven.
@@ -493,13 +583,19 @@ guess them.**
 `apps/web/src/app/api/unity-cohort/session/route.ts` (+ test);
 `apps/web/src/lib/unity-cohort/capability.ts` (+ test);
 `apps/web/src/app/unity-arena/player/route.ts` (+ test);
-`apps/web/src/app/api/unity-arena/artifact/[...path]/route.ts` (+ test);
+`apps/web/src/app/unity-arena/artifact/[...path]/route.ts` (+ test);
 optionally `apps/web/src/components/match/MatchArenaViewport.tsx` (small extraction).
 
-**Minimal modification:** `apps/web/src/components/match/MatchRoomPanel.tsx`
-(decorative-underlay extraction + single-renderer XOR branch + sanitized host props;
-**no** authority change); `apps/web/package.json` (register new tests in
-`test:unity-presentation` — script only, no dependency/lockfile change).
+**Minimal modification:**
+- `apps/web/next.config.ts` — **PR-1** — add an exact `/unity-arena/player`
+  framing override (`X-Frame-Options: SAMEORIGIN` + scoped CSP
+  `frame-ancestors 'self'`) only; preserve the global `DENY`; do not touch artifact
+  or unrelated routes (§12, §14).
+- `apps/web/src/components/match/MatchRoomPanel.tsx` — **PR-2** —
+  decorative-underlay extraction + single-renderer XOR branch + sanitized host
+  props; **no** authority change.
+- `apps/web/package.json` — register new tests in `test:unity-presentation`
+  (script only, no dependency/lockfile change).
 
 **Conditional modification:** `apps/web/src/components/match/MatchRenderer3D.tsx`
 (only if host-side input/focus isolation cannot be proven — isolation prop only,
@@ -507,12 +603,14 @@ not URL).
 
 **Inspect only:** `unityPresentationIdentity.ts`, `unityPresentationCorrelation.ts`,
 `unityPresentationProtocol.ts`, `unityPresentationAdapter.ts`,
-`unityPresentationShadow.ts`, `app/dev/unity-staging/**`, `next.config.ts`,
-`apps/realtime-server/**`, `packages/shared/**`, Unity files.
+`unityPresentationShadow.ts`, `app/dev/unity-staging/**`,
+`apps/realtime-server/**`, `packages/shared/**`, Unity files. (`next.config.ts` is
+no longer inspect-only — it is a bounded MINIMAL MODIFICATION for the framing rule.)
 
 **Prohibited:** Unity `ProjectSettings`; Unity C#; generated WebGL; realtime
 authority; Protocol v1 changes; database schema; wallet/economy; production config;
-environment configuration; lockfiles; `next.config.ts` edits; `audit-artifacts/**`.
+environment configuration; lockfiles; `audit-artifacts/**`. (Any `next.config.ts`
+change beyond the exact `/unity-arena/player` framing rule is prohibited.)
 
 ---
 
@@ -533,19 +631,32 @@ New test files accompany each new module (colocated `*.test.ts(x)`), registered 
   correlation accepted (terminal/continuation) and rejected (stale/duplicate/
   foreign/invalid-round-order).
 - **Session** (`session.route.test.ts`, `capability.test.ts`): unauthenticated →
-  404; invalid JWT → 404; not allowlisted → 404; allowlisted → mints cookie;
-  production → 404 (no mint); expiry → 404 on protected reads; tampered cookie →
-  reject; revocation (allowlist removal / secret rotation) → deny; cookie attrs
-  (HttpOnly/Secure/SameSite/Path); no token in logs or URLs.
-- **Entry** (`player.route.test.ts`): no session → 404; expired → 404; production →
-  404; authorized → trusted HTML referencing only protected artifact URLs; security
-  headers present.
-- **Artifact** (`artifact.route.test.ts`): no/invalid/expired session → 404;
-  production → 404; `..`/encoded/double-encoded traversal → 404; absolute path →
-  404; unknown/non-manifest file → 404; allowlisted files served; correct
-  `Content-Type`/`Content-Encoding`; `HEAD`; Range/`206`/`Content-Range`;
-  `ETag`/`Cache-Control`; upstream timeout → 5xx; abort handling; upstream redirect
-  rejected; no upstream-origin leakage in headers/body.
+  404; invalid JWT → 404; not allowlisted → **cannot mint** (404); allowlisted →
+  mints cookie; production → 404 (no mint); tampered cookie → reject; **cookie
+  attributes** = `HttpOnly` + `Secure` + `SameSite=Lax` + `Path=/unity-arena` +
+  host-only (no `Domain`) + `Max-Age` == token `exp`; no token in logs or URLs.
+- **Revocation** (§11.1): removed user cannot mint; removed user cannot open a new
+  entry (entry allowlist recheck → 404); an already-issued **artifact** session
+  remains valid only **until expiry** unless emergency revocation is invoked;
+  expiry denies all artifact requests; **secret rotation / token-version increment
+  immediately denies both entry and artifacts**.
+- **Entry** (`player.route.test.ts`): no session → 404; expired → 404; revoked
+  (allowlist removed) → 404; production → 404; authorized → trusted HTML referencing
+  only `/unity-arena/artifact/...` URLs; `Cache-Control: private, no-store`.
+- **Framing** (deployment-level header test): the **final** `/unity-arena/player`
+  response has `X-Frame-Options: SAMEORIGIN` + `Content-Security-Policy:
+  frame-ancestors 'self'` (frameable only same-origin); unrelated routes remain
+  `X-Frame-Options: DENY`; no contradictory duplicate `DENY`/`SAMEORIGIN` survives;
+  production still returns 404.
+- **Artifact** (`artifact.route.test.ts`): no/invalid/expired/revoked session →
+  404; production → 404; `..`/encoded/double-encoded traversal → 404; absolute path
+  → 404; unknown/non-manifest file → 404; allowlisted files served; correct
+  `Content-Type`/`Content-Encoding` (no double-compression); `HEAD`;
+  Range/`206`/`Content-Range`; `ETag`; **`Cache-Control: private, no-store` present,
+  `public`/`s-maxage` absent, `Vary: Cookie` present**; unauthorized request never
+  receives a cacheable body; a production denial is not cached as an authorized
+  artifact; upstream timeout → 5xx; abort handling; upstream redirect rejected; no
+  upstream-origin leakage in headers/body.
 - **Regression:** existing **226** Unity-presentation tests remain green;
   `tsc --noEmit`; `next build`; realtime `build`; no duplicate socket listeners; no
   duplicate timers; no Protocol v1 wire change.
@@ -568,11 +679,13 @@ No lockfile change; no dependency added (crypto is built-in).
 - **Immediate React-only rollback:** disable `NEXT_PUBLIC_UNITY_PLAYER_FACING_ENABLED`
   (or any of the three shadow flags) → every session reverts to React; the
   single-renderer branch falls to the shadow/React path.
-- **Server-side denial:** stop minting sessions (unset the allowlist / disable the
-  mint route) → no new sessions; existing sessions expire within the short TTL.
+- **Server-side denial (new sessions):** stop minting (empty the allowlist / disable
+  the mint route) → no new sessions; new entry/mint denied immediately; existing
+  artifact sessions expire within the **10-minute TTL** (§11.1).
 - **Session expiry:** short TTL bounds exposure without action.
-- **Artifact/entry denial:** rotate `UNITY_COHORT_SIGNING_SECRET` → all existing
-  cookies invalid → entry/artifact 404 → fail-open to React.
+- **Emergency immediate denial (entry + in-flight artifacts):** rotate
+  `UNITY_COHORT_SIGNING_SECRET` **or** increment `UNITY_COHORT_TOKEN_VERSION` → all
+  existing cookies invalid at once → entry/artifact 404 → fail-open to React.
 - **No dependence on realtime-server changes; no data migration; no Unity rebuild;
   no ProjectSettings change.** Existing shadow behaviour is retained byte-for-byte
   when the player-facing gate is false.
@@ -599,7 +712,7 @@ No lockfile change; no dependency added (crypto is built-in).
 
 | # | Risk | Lk | Impact | Mitigation | Evidence | Clears in | Blocking |
 |---|---|---|---|---|---|---|---|
-| 1 | **Vercel/Next response-size or streaming limit blocks 8.19 MB wasm proxy** | Med | Critical | streamed nodejs pass-through; contingency CDN/token (§13.4) | official docs + preview measurement | pre-B6D3B research | **Yes [Blocker]** |
+| 1 | **8.19 MB wasm exceeds Vercel's 4.5 MB non-streaming body limit** | High | Critical | streamed nodejs pass-through; contingency CDN/token (§13.4) | official docs (4.5 MB) + preview streaming proof | pre-B6D3B research | **Yes [Blocker]** |
 | 2 | Platform re-compresses/strips `Content-Encoding` on gz bodies | Med | High | explicit headers; verify no re-encode; tests | preview measurement | B6D3B/C | **Yes** |
 | 3 | Traversal / encoded / unknown-file access | Med | Critical | manifest allowlist + normalization + reject `..`/encoded/absolute | artifact tests | B6D3B | **Yes** |
 | 4 | Capability/token in URL or logs | Med | Critical | HttpOnly cookie; never query string; never logged | session/artifact tests | B6D3B | **Yes** |
@@ -612,12 +725,15 @@ No lockfile change; no dependency added (crypto is built-in).
 | 11 | Raw ids cross into host | Low | Critical | sanitized props; id-free assertions | leakage tests | B6D3B | **Yes** |
 | 12 | Host mounted in wrong subtree | Med | High | mount inside extracted decorative wrapper | snapshot/code review | B6D3B | **Yes** |
 | 13 | iframe receives pointer/keyboard focus | Med | High | `pointer-events:none`+`inert`+focus exclusion; renderer prop if needed | isolation tests | B6D3B | **Yes** |
-| 14 | Session leak/replay/expiry mishandling | Med | High | short TTL; signed HttpOnly; verify per request | session tests | B6D3B | **Yes** |
+| 14 | Session leak/replay/expiry mishandling | Med | High | short 10-min TTL; signed HttpOnly; verify per request | session tests | B6D3B | **Yes** |
 | 15 | `MatchRoomPanel` regression | Med | Critical | smallest additive extraction; line-by-line review; full match matrix | regression suite | B6D3B/D | Managed |
 | 16 | Upstream origin leakage | Low | High | never echo upstream headers/origin | artifact tests | B6D3B | Managed |
 | 17 | Local dev has no service-role key | Known | Low | deny ⇒ React-only (safe) | root AGENTS.md | B6D3B | Non-blocking |
-| 18 | Artifact reproducibility | Known | Med | immutable versioned artifacts | manifest sha256 | B6D3E | BLOCKED (non-blocking B6D3B) |
-| 19 | No real-match evidence | Known | High | B6D3D real-match proof | later | B6D3D | Non-blocking B6D3B |
+| 18 | **Global `X-Frame-Options: DENY` blocks entry framing / duplicate DENY survives** | Med | High | set framing in `next.config.ts` exact path rule + scoped `frame-ancestors 'self'`; deployment header test | final-header test | B6D3B (PR-1) | **Yes** |
+| 19 | **Protected artifact publicly cached / cached across users** | Med | Critical | `private, no-store` + `Vary: Cookie`; no `public`/`s-maxage`/CDN | cache-header tests | B6D3B | **Yes** |
+| 20 | **Allowlist removal wrongly assumed to instantly kill in-flight artifact session** | Med | Med | TTL-bounded model + emergency secret/version revocation documented (§11.1) | revocation tests | B6D3B | **Yes** |
+| 21 | Artifact reproducibility | Known | Med | immutable versioned artifacts | manifest sha256 | B6D3E | BLOCKED (non-blocking B6D3B) |
+| 22 | No real-match evidence | Known | High | B6D3D real-match proof | later | B6D3D | Non-blocking B6D3B |
 
 ---
 
@@ -626,19 +742,24 @@ No lockfile change; no dependency added (crypto is built-in).
 **[Recommendation] Split into two PRs** to isolate the security/delivery layer from
 the high-sensitivity `MatchRoomPanel` integration:
 
-**PR-1 (security + delivery, no `MatchRoomPanel` change):**
+**PR-1 (security + delivery — MUST NOT modify `MatchRoomPanel`):**
 1. pure capability/session helpers + tests;
 2. `status` + `session` routes + tests;
-3. protected `entry` + `artifact` routes + tests;
-4. **independent proxy/streaming validation on a protected preview (clears Blocker
+3. protected `/unity-arena/player` entry + `/unity-arena/artifact/[...path]` routes
+   + tests;
+4. **exact `next.config.ts` `/unity-arena/player` framing override** (SAMEORIGIN +
+   scoped `frame-ancestors 'self'`) + deployment header test;
+5. **independent proxy/streaming validation on a protected preview (clears Blocker
    §13/§23-1)**.
 
 **PR-2 (React integration):**
-5. pure `useViewerPresentation` helper + tests;
-6. `UnityPresentationHost` + tests;
-7. bounded `MatchRoomPanel` decorative extraction + XOR branch + sanitized props;
-8. full regression suite;
-9. draft implementation PR(s) → independent review.
+6. pure `useViewerPresentation` helper + tests;
+7. `UnityPresentationHost` + tests;
+8. bounded `MatchRoomPanel` decorative extraction + XOR branch + sanitized props;
+9. `package.json` test registration; conditional `MatchRenderer3D` isolation prop
+   only if required;
+10. full regression suite;
+11. draft implementation PR(s) → independent review.
 
 B6D3C (protected-preview mock/runtime proof) and B6D3D (real match) remain
 separately authorized.
@@ -648,10 +769,13 @@ separately authorized.
 ## 22. Authorization gates
 
 Before **B6D3B implementation** authorization: this package reviewed/merged; **§23
-blockers cleared** (esp. the artifact-limit verification); server session/capability
-design approved; fixed entry + protected artifact contract approved; single-renderer
-XOR rule approved; decorative-underlay/status boundary approved; exact
-`MatchRoomPanel` diff boundary approved; sanitized identity/correlation flow
+blockers cleared** (esp. the streamed-8.19 MB-wasm preview proof); unified
+`/unity-arena` cookie/route namespace + cookie attributes approved; `next.config.ts`
+same-origin framing override approved; private `no-store`/`Vary: Cookie` cache
+policy approved; TTL-bounded revocation semantics approved; server session/
+capability design approved; fixed entry + protected artifact contract approved;
+single-renderer XOR rule approved; decorative-underlay/status boundary approved;
+exact `MatchRoomPanel` diff boundary approved; sanitized identity/correlation flow
 approved; iframe isolation approach approved; complete test matrix approved; no
 unresolved critical risk.
 
@@ -669,33 +793,42 @@ production Unity off; `NEXT_PUBLIC_UNITY_B6D2_SHADOW_ENABLED` UNCONFIGURED.
 
 ## 23. Remaining blockers
 
-1. **[Blocker] Vercel/Next.js function response-size + streaming limits for the
-   8.19 MB `wasm.gz`** must be verified against official documentation and measured
-   on a protected preview (§13.3–§13.4). If exceeded, adopt the §13.4 contingency.
+1. **[Blocker] Streamed 8.19 MB `wasm.gz` end-to-end proof.** Vercel's documented
+   4.5 MB non-streaming body limit is exceeded, so a protected-preview proof must
+   show the actual Next/Vercel route streams end-to-end and preserves gzip headers
+   (§13.3–§13.4). If unachievable, adopt the §13.4 contingency.
 2. **[Blocker] `Content-Encoding` pass-through** (no platform re-compression of
    pre-gzip artifacts) must be confirmed on preview (§13.3).
-3. Server session/capability design approval, incl. env-var names, TTL, cookie
-   attributes, and allowlist-recheck-per-artifact trade-off (§11).
-4. Exact `MatchRoomPanel` decorative-extraction + XOR diff approval (§6) — HIGHEST
+3. **[Blocker] `next.config.ts` same-origin framing override** for
+   `/unity-arena/player` proven at the final response-header level, with unrelated
+   routes still `DENY` and no surviving duplicate (§12, §14, §16).
+4. **[Blocker] Private cache policy** (`private, no-store` + `Vary: Cookie`; no
+   public/`s-maxage`/CDN) proven by cache-header tests (§13.5, §16).
+5. Server session/capability + **revocation** design approval, incl. unified
+   `Path=/unity-arena` cookie attributes, 10-min TTL, and the TTL-bounded-vs-
+   emergency revocation model (§11, §11.1).
+6. Exact `MatchRoomPanel` decorative-extraction + XOR diff approval (§6) — HIGHEST
    sensitivity.
-5. Iframe pointer/focus/`inert` isolation proof (host-side vs. renderer prop) (§14).
-6. Complete test matrix approval (§16).
-7. (B6D3D only) real-match evidence + separate authorization.
-8. (B6D3E only) artifact reproducibility remains BLOCKED.
+7. Iframe pointer/focus/`inert` isolation proof (host-side vs. renderer prop) (§14).
+8. Complete test matrix approval (§16).
+9. (B6D3D only) real-match evidence + separate authorization.
+10. (B6D3E only) artifact reproducibility remains BLOCKED.
 
 ---
 
 ## 24. Final recommendation
 
 **GO WITH CONDITIONS** for a separately-authorized B6D3B implementation, delivered
-as **two sequenced PRs** (security/delivery, then `MatchRoomPanel` integration),
-**conditioned on** clearing every §23 blocker — above all the **independent
-verification/measurement of Vercel/Next.js response-size and streaming limits for
-the 8.19 MB `wasm.gz` artifact and correct `Content-Encoding` pass-through** (§13),
-plus approval of the server session/capability design, the exact `MatchRoomPanel`
-diff boundary, iframe input isolation, and the full test matrix. The artifact proxy
-is judged **ROUTE PROXY FEASIBLE WITH CONDITIONS**; a bounded CDN/token contingency
-is defined if platform limits are exceeded.
+as **two sequenced PRs** (security/delivery incl. the `next.config.ts` framing rule,
+then `MatchRoomPanel` integration), **conditioned on** clearing every §23 blocker —
+above all the **protected-preview proof that the 8.19 MB `wasm.gz` streams
+end-to-end and preserves gzip `Content-Encoding`** (Vercel's 4.5 MB non-streaming
+limit is exceeded), plus the same-origin framing override, the private
+`no-store`/`Vary: Cookie` cache policy, the TTL-bounded revocation model, the server
+session/capability design, the exact `MatchRoomPanel` diff boundary, iframe input
+isolation, and the full test matrix. The artifact proxy is judged **ROUTE PROXY
+FEASIBLE WITH CONDITIONS**; a bounded CDN/token contingency is defined if the
+streaming proof fails.
 
 **A GO here does not authorize implementation.** No runtime code, route, capability,
 flag, environment, deployment, Unity run, or real match is authorized by this
