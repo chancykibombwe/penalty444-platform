@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "releaseId": "b6b-local-fb840878-d",
+  "sourceManifest": {
+    "sha256": "be290569c2f22cc8481a641bbfd720795790ced4e271042f45f367441f6444ae",
+    "fileCount": 17,
+    "totalBytes": 10585492
+  },
+  "files": [
+    {
+      "label": "wasm",
+      "path": "Build/b6b-local-fb840878-d.wasm.gz",
+      "bytes": 8583356,
+      "sha256": "cff67683b8a9ee3850c19a96b70109deb817827e7d709227a0d45820d47d409b",
+      "contentEncoding": "gzip"
+    },
+    {
+      "label": "data",
+      "path": "Build/b6b-local-fb840878-d.data.gz",
+      "bytes": 1866605,
+      "sha256": "b1f91a0117c62de5ef3734d0a2c757e078ce607778f09deccbe664a3e5368339",
+      "contentEncoding": "gzip"
+    },
+    {
+      "label": "framework",
+      "path": "Build/b6b-local-fb840878-d.framework.js.gz",
+      "bytes": 88984,
+      "sha256": "d757c33a4c0be14e18adbfb3078f8ef19baed6091f360f2c07133f99155e1eee",
+      "contentEncoding": "gzip"
+    },
+    {
+      "label": "loader",
+      "path": "Build/b6b-local-fb840878-d.loader.js",
+      "bytes": 26982,
+      "sha256": "de61c3bc8500cb8ff080d6a0791cc7cf53f2128368d94a5dd9dadbf0291dc71d",
+      "contentEncoding": "identity"
+    }
+  ]
+}
