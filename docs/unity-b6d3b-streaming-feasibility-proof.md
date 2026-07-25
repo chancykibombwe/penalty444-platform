@@ -171,15 +171,49 @@ single/repeated percent-encoding, backslashes and encoded backslashes, absolute
 and protocol-relative URLs, leading-slash / drive-letter paths, null bytes, empty
 or extra segments, unknown files, case mismatches, and mixed separators. User
 path input is **never** passed to `new URL()` before allowlist resolution; the
-only upstream URL constructed is `validated origin + fixture record path`.
+only upstream URL constructed is `validated bare origin + derived versioned
+artifact path` (see §7.1).
 
 `UNITY_STREAM_PROOF_ARTIFACT_ORIGIN` must parse as an absolute URL, be `https:`
 for the deployed/live route, contain no username/password, no query, no fragment,
-and normalize to a bare origin. `http:` is accepted **only** for loopback hosts
-(`127.0.0.0/8`, `localhost`, `::1`) **and only** when a caller explicitly injects
-`allowHttp: true` — which the live route never does. It is never returned from
-request input, never logged, never echoed. Redirects to another origin are
-rejected.
+and normalize to a **bare origin** (pathname exactly `/`). `http:` is accepted
+**only** for loopback hosts (`127.0.0.0/8`, `localhost`, `::1`) **and only** when a
+caller explicitly injects `allowHttp: true` — which the live route never does. It
+is never returned from request input, never logged, never echoed. Redirects to
+another origin are rejected.
+
+### 7.1 Versioned upstream artifact path
+
+The B6C dedicated artifact deployment does **not** host WebGL Build files at
+`/Build/…`; it hosts the pinned immutable release under
+`/releases/<release-version>/…` (see `docs/unity-b6c-versioned-staging-delivery.md`
+§3). The harness therefore derives the upstream deployment path from
+`buildUpstreamArtifactPath(record)` as exactly:
+
+```
+releases/${EXPECTED_RELEASE_ID}/${record.path}
+```
+
+using **only** the compile-time-pinned `EXPECTED_RELEASE_ID`
+(`b6b-local-fb840878-d`) and the already-validated fixture `ArtifactRecord.path`
+(release-relative, e.g. `Build/b6b-local-fb840878-d.wasm.gz`).
+
+- **Artifact origin (bare, immutable Vercel preview):**
+  `https://<immutable-artifact-preview>.vercel.app`
+- **Derived upstream artifact path:**
+  `/releases/b6b-local-fb840878-d/Build/<artifact>`
+- **Example wasm final upstream shape:**
+  `https://<immutable-artifact-preview>.vercel.app/releases/b6b-local-fb840878-d/Build/b6b-local-fb840878-d.wasm.gz`
+
+The release prefix is **compile-time/pinned, not request-controlled**: no request
+query, request pathname text, request header, user-provided release version, or
+environment-provided pathname can alter it. `/releases/<version>` is therefore
+**never** placed inside `UNITY_STREAM_PROOF_ARTIFACT_ORIGIN` — an origin carrying a
+non-root path (e.g. `https://host/releases/b6b-local-fb840878-d`) is **rejected**
+by origin validation, because the origin **stays bare** and the versioned prefix is
+derived internally. The pinned evidence **fixture stays unchanged** and continues
+to store release-relative artifact metadata (e.g. `Build/b6b-local-fb840878-d.wasm.gz`).
+Protected-preview measurement remains **NOT AUTHORIZED**.
 
 ## 8. Built-in fetch transport
 
@@ -322,7 +356,11 @@ no Vercel, no real artifact body (the real 8.19 MB wasm is never embedded).
   builder (no encoding/length/type), redirect rejected, Range, pre-aborted +
   **mid-stream client abort (cancels upstream)**, **body stall → `body_timeout`**,
   **header-phase timeout**, **successful completion cleans up (single emission)**,
-  HEAD.
+  HEAD; **versioned upstream path**: `buildUpstreamArtifactPath` derives exactly
+  `releases/b6b-local-fb840878-d/Build/<artifact>` for all four artifacts, **raw**
+  and **fetch** each hit the exact versioned path (never `/Build/…`), the release
+  prefix is pinned/record-only (no query/user input can alter it), and an origin
+  containing `/releases/<version>` remains rejected (origin stays bare).
 - **route.test.ts** — **live handler returns opaque 404 for a loopback `http:`
   origin even with all gates valid** (HTTPS-only); a valid `https:` origin passes
   the origin gate (upstream error, not 404); production/opaque 404s are
@@ -338,7 +376,7 @@ Run in the clean worktree; no package/lockfile modification resulted.
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Harness tests | `npx tsx --test <harness files>` | **54 pass / 0 fail** |
+| Harness tests | `npx tsx --test <harness files>` | **60 pass / 0 fail** |
 | Presentation contract tests | `npm run test:unity-presentation` | **pass / 0 fail** |
 | TypeScript | `npx tsc --noEmit -p tsconfig.json` | **pass** |
 | Next production build | `npm run build` | **pass** — route emitted as `ƒ /api/dev/unity-stream-proof/[transport]/[...path]` |

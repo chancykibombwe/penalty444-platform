@@ -30,8 +30,27 @@ import https from "node:https";
 import { Readable } from "node:stream";
 import type { IncomingMessage } from "node:http";
 
-import type { ArtifactLabel, ArtifactRecord } from "./manifest";
+import { EXPECTED_RELEASE_ID, type ArtifactLabel, type ArtifactRecord } from "./manifest";
 import { evaluateGate, type ProofEnv, type Transport } from "./security";
+
+/**
+ * Derive the upstream deployment path for a pinned artifact record.
+ *
+ * The B6C dedicated artifact deployment does NOT host WebGL Build files at
+ * `/Build/…`; it hosts the pinned immutable release under
+ * `/releases/<releaseVersion>/…` (see docs/unity-b6c-versioned-staging-delivery.md).
+ * The release prefix is therefore the COMPILE-TIME-pinned `EXPECTED_RELEASE_ID`,
+ * and the artifact suffix is the already-validated, release-relative fixture
+ * `ArtifactRecord.path` (e.g. `Build/<name>.wasm.gz`). NO request query, request
+ * pathname text, request header, user-provided release version, or
+ * environment-provided pathname is ever used — the prefix is not request-controlled
+ * and `UNITY_STREAM_PROOF_ARTIFACT_ORIGIN` stays a bare origin.
+ *
+ * Example (wasm): `releases/b6b-local-fb840878-d/Build/b6b-local-fb840878-d.wasm.gz`.
+ */
+export function buildUpstreamArtifactPath(record: ArtifactRecord): string {
+  return `releases/${EXPECTED_RELEASE_ID}/${record.path}`;
+}
 
 export type CompletionReason =
   | "complete"
@@ -415,7 +434,7 @@ export async function fetchTransport(req: ProxyRequest): Promise<ProxyOutcome> {
   if (req.signal?.aborted) onClientAbort();
   else req.signal?.addEventListener("abort", onClientAbort, { once: true });
 
-  const url = new URL(req.record.path, req.origin + "/");
+  const url = new URL(buildUpstreamArtifactPath(req.record), req.origin + "/");
   const reqHeaders = new Headers();
   if (rangeRequested) reqHeaders.set("Range", req.range as string);
 
@@ -540,7 +559,7 @@ export function rawTransport(req: ProxyRequest, deps: RawTransportDeps = {}): Pr
     req.onDiagnostics?.(diag);
   };
 
-  const url = new URL(req.record.path, req.origin + "/");
+  const url = new URL(buildUpstreamArtifactPath(req.record), req.origin + "/");
   const mod = url.protocol === "https:" ? https : http;
   const requestFn: NonNullable<RawTransportDeps["request"]> =
     deps.request ??

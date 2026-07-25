@@ -15,11 +15,13 @@ import {
   rawTransport,
   buildStreamHeaders,
   build416Headers,
+  buildUpstreamArtifactPath,
   type Diagnostics,
   type ProxyOutcome,
   type RawClientRequestLike,
 } from "./streamProxy";
-import type { ArtifactRecord } from "./manifest";
+import { EXPECTED_RELEASE_ID, loadProofManifest, type ArtifactRecord } from "./manifest";
+import { validateArtifactOrigin } from "./security";
 
 type Handler = (reqUrl: string, req: IncomingMessage, res: ServerResponse) => void;
 
@@ -646,4 +648,102 @@ test("fetch: HEAD returns headers and no body (identity)", async () => {
   } finally {
     await s.close();
   }
+});
+
+// ── Versioned upstream artifact path (B6C /releases/<version>/… hosting) ──────
+// The dedicated B6C artifact deployment hosts each immutable release under
+// /releases/<releaseVersion>/…, NOT at /Build/…. The harness must derive the
+// upstream path from the compile-time-pinned EXPECTED_RELEASE_ID + the validated
+// fixture record.path, and the origin must stay a bare HTTPS origin.
+
+const EXPECTED_WASM_UPSTREAM_PATH =
+  "releases/b6b-local-fb840878-d/Build/b6b-local-fb840878-d.wasm.gz";
+
+test("upstream path: wasm derives exactly the pinned versioned release path", () => {
+  const wasm = loadProofManifest().records.find((r) => r.label === "wasm")!;
+  assert.equal(buildUpstreamArtifactPath(wasm), EXPECTED_WASM_UPSTREAM_PATH);
+});
+
+test("upstream path: data/framework/loader use the same pinned release prefix", () => {
+  const prefix = `releases/${EXPECTED_RELEASE_ID}/`;
+  for (const r of loadProofManifest().records) {
+    const p = buildUpstreamArtifactPath(r);
+    assert.equal(p, `releases/${EXPECTED_RELEASE_ID}/${r.path}`);
+    assert.ok(p.startsWith(prefix), `${r.label} must start with ${prefix}`);
+    assert.ok(!p.startsWith("Build/"), `${r.label} must not be a bare /Build path`);
+  }
+  const byLabel = (l: string) => loadProofManifest().records.find((r) => r.label === l)!;
+  assert.equal(
+    buildUpstreamArtifactPath(byLabel("data")),
+    "releases/b6b-local-fb840878-d/Build/b6b-local-fb840878-d.data.gz",
+  );
+  assert.equal(
+    buildUpstreamArtifactPath(byLabel("framework")),
+    "releases/b6b-local-fb840878-d/Build/b6b-local-fb840878-d.framework.js.gz",
+  );
+  assert.equal(
+    buildUpstreamArtifactPath(byLabel("loader")),
+    "releases/b6b-local-fb840878-d/Build/b6b-local-fb840878-d.loader.js",
+  );
+});
+
+test("upstream path: prefix is pinned and record-only (no query/user input can alter it)", () => {
+  const wasm = loadProofManifest().records.find((r) => r.label === "wasm")!;
+  // The function takes ONLY the record; an identical record yields an identical
+  // path, always under the compile-time EXPECTED_RELEASE_ID prefix.
+  assert.equal(buildUpstreamArtifactPath(wasm), buildUpstreamArtifactPath({ ...wasm }));
+  assert.ok(buildUpstreamArtifactPath(wasm).startsWith(`releases/${EXPECTED_RELEASE_ID}/`));
+  assert.equal(EXPECTED_RELEASE_ID, "b6b-local-fb840878-d");
+});
+
+test("raw: upstream request hits the exact versioned path, never /Build/...", async () => {
+  let seenUrl: string | null = null;
+  const s = await startServer((reqUrl, _req, res) => {
+    seenUrl = reqUrl;
+    res.writeHead(200, { "content-encoding": "gzip", "content-length": String(MOCK.length) });
+    res.end(MOCK);
+  });
+  try {
+    const record = gzipRecord({ path: "Build/b6b-local-fb840878-d.wasm.gz", bytes: MOCK.length });
+    const outcome = await rawTransport({ origin: s.origin, record, method: "GET" });
+    assertStream(outcome);
+    await drain(outcome.body!);
+    assert.equal(seenUrl, `/${EXPECTED_WASM_UPSTREAM_PATH}`);
+    assert.equal((seenUrl as string).startsWith("/Build/"), false);
+  } finally {
+    await s.close();
+  }
+});
+
+test("fetch: upstream request hits the exact versioned path, never /Build/...", async () => {
+  let seenUrl: string | null = null;
+  const s = await startServer((reqUrl, _req, res) => {
+    seenUrl = reqUrl;
+    res.writeHead(200, { "content-length": String(MOCK.length) });
+    res.end(MOCK);
+  });
+  try {
+    const record = identityRecord({ path: "Build/b6b-local-fb840878-d.loader.js", bytes: MOCK.length });
+    const outcome = await fetchTransport({ origin: s.origin, record, method: "GET" });
+    assertStream(outcome);
+    await drain(outcome.body!);
+    assert.equal(seenUrl, "/releases/b6b-local-fb840878-d/Build/b6b-local-fb840878-d.loader.js");
+    assert.equal((seenUrl as string).startsWith("/Build/"), false);
+  } finally {
+    await s.close();
+  }
+});
+
+test("origin validation: an origin containing /releases/<version> remains rejected", () => {
+  // The release prefix must be derived internally, never smuggled into the origin.
+  assert.equal(
+    validateArtifactOrigin("https://host.example/releases/b6b-local-fb840878-d"),
+    null,
+  );
+  assert.equal(
+    validateArtifactOrigin("http://127.0.0.1:5000/releases/b6b-local-fb840878-d", { allowHttp: true }),
+    null,
+  );
+  // A bare origin remains accepted (control), and stays bare (no path).
+  assert.equal(validateArtifactOrigin("https://host.example"), "https://host.example");
 });
