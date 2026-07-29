@@ -22,21 +22,25 @@ stream the pinned, pre-compressed Unity WebGL artifacts (especially the
 - corrupting `Content-Type` / `Content-Encoding`,
 - breaking `HEAD` or `Range` behaviour.
 
-Authorization status when this harness was built:
+Authorization status when this harness was built (historical):
 
 - B6D3A IMPLEMENTATION: COMPLETE AND LOCKED
 - B6D3B PLANNING REVIEW: COMPLETE AND LOCKED
 - B6D3B AUTHORIZATION PACKAGE: COMPLETE AND LOCKED
 - B6D3B STREAM-PROOF MANIFEST EVIDENCE: COMPLETE AND LOCKED
 - **B6D3B STREAMING HARNESS: AUTHORIZED** (this document)
-- B6D3B PROTECTED-PREVIEW STREAMING MEASUREMENT: **NOT AUTHORIZED**
+- B6D3B PROTECTED-PREVIEW STREAMING MEASUREMENT: **NOT AUTHORIZED** *(at build
+  time; the measurement was subsequently authorized and executed — see §14)*
 - B6D3B SECURITY/DELIVERY PR-1: NOT AUTHORIZED
 - B6D3B REACT INTEGRATION PR-2: NOT AUTHORIZED
 - PLAYER-FACING UNITY / PRODUCTION UNITY: NOT AUTHORIZED / NO-GO
 
-This task **creates** the harness, its tests, and this procedure. It **does not
-execute** any protected-preview measurement, configure any environment variable,
-or trigger any deployment.
+The harness-creation task **created** the harness, its tests, and the §14
+procedure, and executed no measurement. The protected-preview measurement was
+**separately authorized and has since been executed and closed out**: the **raw**
+Node transport is **PASS** and the **built-in fetch** transport is
+**FAIL — RANGE** (§14, §16). Current authorization state is in §19–§20; PR-1,
+PR-2, player-facing Unity and production Unity all remain unauthorized / NO-GO.
 
 ## 2. Exact baseline SHA
 
@@ -213,7 +217,8 @@ non-root path (e.g. `https://host/releases/b6b-local-fb840878-d`) is **rejected*
 by origin validation, because the origin **stays bare** and the versioned prefix is
 derived internally. The pinned evidence **fixture stays unchanged** and continues
 to store release-relative artifact metadata (e.g. `Build/b6b-local-fb840878-d.wasm.gz`).
-Protected-preview measurement remains **NOT AUTHORIZED**.
+This derived versioned path is the one exercised by the completed
+protected-preview measurement (§14).
 
 ## 8. Built-in fetch transport
 
@@ -244,7 +249,10 @@ byte/header transformation), and it **omits `Content-Length`** for gzip because
 the body may be transformed. It does not claim deployed byte identity.
 **Fetch mode cannot be marked PASS from unit tests** — only a protected-preview
 measurement can prove deployed compressed length, SHA-256, gzip validity, and
-headers.
+headers. **That measurement has now been executed: fetch is classified
+`FAIL — RANGE`** (empty `Range` entity body despite correct `206` metadata; the
+full download was deliberately not run, so deployed fetch byte identity remains
+untested and unclaimed). See §14.4.
 
 ## 9. Raw Node HTTP/HTTPS transport
 
@@ -271,6 +279,13 @@ Client abort destroys both the request and any active response; `connect_timeout
 `upstream_error` are classified accurately in diagnostics. The request factory is
 injectable so the connection-timeout phase can be tested deterministically without
 any external network request.
+
+The protected-preview measurement has now exercised this transport end-to-end:
+**raw is classified `PASS`** — exact `8,583,356` bytes, exact SHA-256, gzip
+preserved, and a 544-chunk streamed transfer that exceeded the ~4.5 MB
+non-streaming limit without a platform body-limit failure. This records deployed
+streaming feasibility only; it is **not** a claim of production readiness. See
+§14.3.
 
 ## 10. Response-header contract
 
@@ -408,7 +423,15 @@ Every PR into `master` (and every push to `master`) therefore runs the Unity
 presentation tests, the B6D3B harness tests, the TypeScript check, the Next
 production build, and the realtime build.
 
-## 14. Protected-preview measurement procedure (DOCUMENT ONLY — NOT EXECUTED)
+## 14. Protected-preview measurement (EXECUTED — COMPLETE AND LOCKED)
+
+> The procedure below was **separately authorized and executed** against the
+> protected Vercel **Preview** only. Results are recorded in §14.1–§14.7.
+> **Raw = PASS; built-in fetch = FAIL — RANGE.** Production was **untouched**
+> throughout. The bearer value and the approved artifact origin are deliberately
+> **not** recorded here.
+
+### Procedure (as executed)
 
 1. Use only the **automatic** Vercel preview deployment created from the draft
    harness PR (do not manually trigger a deployment).
@@ -431,6 +454,197 @@ production build, and the realtime build.
 12. Redeploy or invalidate the preview so the proof route returns 404.
 
 Real secrets and the approved upstream origin are intentionally omitted here.
+
+### 14.1 Measurement scope
+
+- **Surface:** protected Vercel **Preview** only. **Production was untouched**
+  (no production variable, deployment, alias, or route change).
+- **Branch:** `test/unity-b6d3b-streaming-feasibility`
+- **Measured commit:** `91fec3c3f52aeabebf5abd636f7f8453e0f48ec3`
+- **Exact pinned artifact:** `Build/b6b-local-fb840878-d.wasm.gz`
+- **Expected compressed bytes:** `8,583,356`
+- **Expected SHA-256:**
+  `cff67683b8a9ee3850c19a96b70109deb817827e7d709227a0d45820d47d409b`
+- The **bearer value is never** recorded here, and the **approved artifact
+  origin is not published** in this or any tracked file.
+
+### 14.2 Security-gate evidence
+
+- An **unauthorized request issued before** the measurement returned
+  **HTTP 404**, body `Not Found` — identical to every other gate failure.
+- Proof access used a **server-only bearer**, supplied as an `Authorization:
+  Bearer` header.
+- The bearer was **never** placed in a URL, query string, screenshot, or tracked
+  file.
+- Runtime diagnostics contained **aggregate fields only**.
+- **No bearer and no artifact origin appeared** in any inspected log.
+
+### 14.3 Raw `node:http` / `node:https` transport — **PASS**
+
+**Authenticated `HEAD`:**
+
+| Field | Value |
+| --- | --- |
+| Status | `HTTP 200` |
+| `Content-Type` | `application/wasm` |
+| `Content-Encoding` | `gzip` |
+| `Accept-Ranges` | `bytes` |
+| `Cache-Control` | `private, no-store` |
+| `Vary` | `Authorization` |
+| `X-Vercel-Cache` | `BYPASS` |
+
+**Corrected bounded one-byte `Range` request** (see the client note in §14.5):
+
+| Field | Value |
+| --- | --- |
+| Status | `HTTP 206` |
+| `Content-Range` | `bytes 0-0/8583356` |
+| `Content-Length` | `1` |
+| `Content-Encoding` | `gzip` |
+| Body length | `1` |
+| Body hex | `1F` (gzip magic first byte) |
+
+**Full raw download:**
+
+| Field | Value |
+| --- | --- |
+| Status | `HTTP 200`, client exit `0` |
+| Downloaded bytes | `8,583,356` |
+| Saved-file bytes | `8,583,356` |
+| SHA-256 | `cff67683b8a9ee3850c19a96b70109deb817827e7d709227a0d45820d47d409b` — **exact match** |
+| gzip magic | `1F 8B` |
+| gzip validation | `true` |
+| `Content-Type` | `application/wasm` |
+| `Content-Encoding` | `gzip` |
+| `Content-Length` | `8,583,356` |
+| `Accept-Ranges` | `bytes` |
+| `Cache-Control` | `private, no-store` |
+| `Vary` | `Authorization` |
+| `X-Vercel-Cache` | `BYPASS` |
+
+**Client-observed timing** (end-to-end over the network, measured at the client):
+TTFB ≈ **2.85 s**; total ≈ **24.75 s**.
+
+**Server-function diagnostics** (sanitized, emitted inside the deployed route —
+these measure the function's own streaming work, **not** client network time, so
+they are legitimately much smaller than the client-observed figures):
+
+```
+transport: raw
+upstreamStatus: 200
+firstChunkMs: 51.161586
+totalDurationMs: 236.15623700000003
+chunkCount: 544
+totalBytes: 8583356
+rangeUsed: false
+reason: complete
+```
+
+The transfer completed in **544 chunks** totalling **8,583,356 bytes** — i.e. the
+completed multi-chunk transfer **exceeded the ~4.5 MB non-streaming function-body
+limit without any platform body-limit failure**, confirming genuine streaming
+rather than buffering.
+
+**Classification: PASS.**
+
+### 14.4 Built-in `fetch` transport — **FAIL — RANGE**
+
+**Authenticated `HEAD` passed:**
+
+| Field | Value |
+| --- | --- |
+| Status | `HTTP 200` |
+| `Content-Type` | `application/wasm` |
+| `Content-Encoding` | `gzip` |
+| `Accept-Ranges` | `bytes` |
+| `Cache-Control` | `private, no-store` |
+| `Vary` | `Authorization` |
+| `Content-Length` | absent — **as designed** for the fetch gzip path (§10) |
+| `X-Vercel-Cache` | `BYPASS` |
+
+**One-byte `Range` response metadata was correct:**
+
+| Field | Value |
+| --- | --- |
+| Status | `HTTP 206` |
+| `Content-Encoding` | `gzip` |
+| `Content-Range` | `bytes 0-0/8583356` |
+| `Content-Type` | `application/wasm` |
+| `Accept-Ranges` | `bytes` |
+
+**Decisive failure — the entity body was empty:**
+
+| Field | Observed | Expected |
+| --- | --- | --- |
+| Client body bytes | `0` | `1` |
+| Body hex | *(empty)* | `1F` |
+| Outward `Content-Length` | `0` | `1` |
+
+**Server-function diagnostics confirm the failure occurs inside the deployed
+fetch path** (not at the client):
+
+```
+transport: fetch
+upstreamStatus: 206
+firstChunkMs: null
+totalDurationMs: 124.22412000000003
+chunkCount: 0
+totalBytes: 0
+rangeUsed: true
+reason: complete
+```
+
+`chunkCount: 0` / `totalBytes: 0` / `firstChunkMs: null` show the fetch path
+produced **no body chunks at all** despite a correct upstream `206`.
+
+The **full fetch download was deliberately not run** after this bounded, decisive
+failure — so **fetch full-download byte/SHA-256 identity was never tested** and is
+**not** claimed here.
+
+**Classification: FAIL — RANGE.**
+
+This is a failure of **empty `Range` body delivery despite correct `206`
+metadata** — it is **not** a failure of the approved upstream artifact: the raw
+transport served the **same upstream `Range`** correctly (`1F`) and delivered the
+**complete artifact** with an exact SHA-256 match (§14.3).
+
+### 14.5 Measurement-client note (not a transport failure)
+
+A preliminary raw `Range` invocation used the client's `--raw` mode and therefore
+saved only the HTTP **chunk-terminator framing** — bytes `30 0D 0A 0D 0A` —
+rather than the entity body. Server diagnostics for that same request showed the
+raw transport had emitted **exactly one byte**, so the transport was behaving
+correctly. The corrected request explicitly advertised `Accept-Encoding: gzip` and
+allowed the client to strip transfer framing; it then returned the expected
+compressed byte `1F`. **This preliminary result is a measurement-client artifact
+and is explicitly NOT classified as a transport failure.**
+
+### 14.6 Post-measurement cleanup
+
+- **Deleted all proof variables:** `UNITY_STREAM_PROOF_ENABLED`,
+  `UNITY_STREAM_PROOF_BEARER`, the branch-specific
+  `UNITY_STREAM_PROOF_ARTIFACT_ORIGIN`, and the older Preview-wide
+  `UNITY_STREAM_PROOF_ARTIFACT_ORIGIN`.
+- **Production variables were untouched.**
+- **Cleanup Preview redeploy:** deployment `dpl_WL32UpWUoDD2pL4RX3gFikBQNyNb`,
+  state **READY**, `target: Preview` (`target = null`), same branch and same
+  measured commit.
+- **Final disabled-route check:** `HTTP 404`, body `Not Found`.
+- The cleanup deployment's runtime log showed the **404 with no
+  `unity-stream-proof` transport diagnostic**, confirming the gate stopped the
+  request **before any upstream work**.
+- **DPAPI bearer backup deleted**; bearer **removed from the PowerShell session**.
+- Downloaded measurement evidence remains **preserved locally and untracked**.
+
+### 14.7 Measurement outcome
+
+| Transport | Classification |
+| --- | --- |
+| raw (`node:http`/`node:https`) | **PASS** |
+| built-in `fetch` | **FAIL — RANGE** |
+
+Measurement environment cleanup: **COMPLETE**. The proof route is **disabled
+again** and returns 404.
 
 ## 15. Evidence acceptance criteria
 
@@ -461,12 +675,12 @@ Each transport is classified as exactly one of: `PASS`,
 `FAIL — PLATFORM LIMIT`, `FAIL — BUFFERING`, `FAIL — TIMEOUT`, `FAIL — RANGE`,
 `FAIL — SECURITY`, `NOT TESTED`.
 
-Current status (no preview measurement executed):
+Current status (protected-preview measurement **executed** — see §14):
 
 | Transport | Status |
 | --- | --- |
-| fetch | NOT TESTED (deployed) |
-| raw | NOT TESTED (deployed) |
+| fetch | **FAIL — RANGE** (empty `Range` body despite correct `206` metadata; full download deliberately not run) |
+| raw | **PASS** (exact 8,583,356 bytes, exact SHA-256, gzip preserved, 544-chunk streamed transfer) |
 
 ## 17. Fallback decision
 
@@ -479,6 +693,26 @@ Current status (no preview measurement executed):
 - **If both pass:** record both as technically eligible; a separate PR-1
   implementation authorization is still required.
 
+### 17.1 Selected outcome — "only raw passes"
+
+The executed measurement (§14) selects the **"only raw passes"** branch:
+
+- **Recommend raw Node `node:http` / `node:https` streaming** for any future
+  B6D3B PR-1.
+- **Prohibit built-in `fetch`** for pre-compressed Unity WebGL artifacts.
+
+Scope of this recommendation:
+
+- It is a **technical measurement recommendation only**. It authorizes nothing.
+- It does **not** claim raw production readiness — only that raw met the §15
+  acceptance criteria on a protected preview.
+- **B6D3B PR-1 still requires separate explicit authorization.**
+- **No final `/unity-arena` route is authorized.**
+- **React integration remains unauthorized.**
+- **Player-facing Unity remains unauthorized.**
+- **Production Unity remains NO-GO.**
+- **`NEXT_PUBLIC_UNITY_B6D2_SHADOW_ENABLED` remains UNCONFIGURED.**
+
 ## 18. Cleanup and rollback
 
 The harness is self-contained under `apps/web/src/lib/unity-stream-proof/**`,
@@ -487,9 +721,15 @@ delete those paths (and this PR); nothing else imports them, so removal is
 side-effect-free. After any measurement, remove the three Preview env variables
 and redeploy/invalidate so the route returns 404.
 
+**Cleanup for the executed measurement is COMPLETE** — all proof variables were
+deleted, production variables were untouched, the Preview was redeployed
+(`dpl_WL32UpWUoDD2pL4RX3gFikBQNyNb`, READY), and the disabled route returns
+`HTTP 404` / `Not Found` with no transport diagnostic. Full detail in §14.6.
+
 ## 19. Remaining authorization gates
 
-- B6D3B PROTECTED-PREVIEW STREAMING MEASUREMENT: NOT AUTHORIZED
+- B6D3B PROTECTED-PREVIEW STREAMING MEASUREMENT: **COMPLETE AND LOCKED** (§14)
+- MEASUREMENT ENVIRONMENT CLEANUP: **COMPLETE** (§14.6)
 - B6D3B SECURITY/DELIVERY PR-1: NOT AUTHORIZED
 - B6D3B REACT INTEGRATION PR-2: NOT AUTHORIZED
 - B6D3C / B6D3D REAL-MATCH TESTING: NOT AUTHORIZED
@@ -500,8 +740,11 @@ and redeploy/invalidate so the route returns 404.
 ## 20. Final status
 
 - B6D3B STREAM-PROOF MANIFEST EVIDENCE: COMPLETE AND LOCKED
-- B6D3B STREAMING HARNESS: COMPLETE / HARDENING REVIEW
-- B6D3B PROTECTED-PREVIEW STREAMING MEASUREMENT: NOT AUTHORIZED
+- B6D3B STREAMING HARNESS: COMPLETE
+- B6D3B PROTECTED-PREVIEW STREAMING MEASUREMENT: COMPLETE AND LOCKED
+- RAW NODE TRANSPORT: PASS
+- BUILT-IN FETCH TRANSPORT: FAIL — RANGE
+- MEASUREMENT ENVIRONMENT CLEANUP: COMPLETE
 - B6D3B SECURITY/DELIVERY PR-1: NOT AUTHORIZED
 - B6D3B REACT INTEGRATION PR-2: NOT AUTHORIZED
 - B6D3C: NOT AUTHORIZED
