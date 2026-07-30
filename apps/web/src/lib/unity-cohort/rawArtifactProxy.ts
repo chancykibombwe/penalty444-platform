@@ -156,9 +156,17 @@ function parseContentRange(value: string | undefined): { span: number; total: nu
   return { span: end - start + 1, total };
 }
 
-function safeUnsatisfiedContentRange(value: string | undefined): string | null {
+/**
+ * Parse an unsatisfied-range `Content-Range: bytes * /<total>` header into its
+ * numeric total. Returns null when missing or malformed.
+ */
+function parseUnsatisfiedContentRange(value: string | undefined): { value: string; total: number } | null {
   if (typeof value !== "string") return null;
-  return CONTENT_RANGE_UNSATISFIED_RE.test(value) ? value : null;
+  const m = CONTENT_RANGE_UNSATISFIED_RE.exec(value);
+  if (m === null) return null;
+  const total = Number(m[1]);
+  if (!Number.isSafeInteger(total) || total <= 0) return null;
+  return { value, total };
 }
 
 export type ArtifactHeaderBuild =
@@ -222,16 +230,32 @@ export function buildArtifactHeaders(args: {
   return { ok: true, headers: h, expectedBytes: cr.span };
 }
 
-/** 416 headers: safe range metadata only. No artifact type/encoding/length/body. */
-export function build416Headers(
-  upstreamContentRange: string | undefined,
-  upstreamAcceptRanges: string | undefined,
-): Headers {
+export type Build416Result =
+  | { readonly ok: true; readonly headers: Headers }
+  | { readonly ok: false; readonly reason: "header_mismatch" | "byte_mismatch" };
+
+/**
+ * Build 416 headers — safe range metadata ONLY, and only for a genuinely valid
+ * unsatisfied-range response. Fails closed when the upstream `Content-Range` is
+ * missing/malformed (`header_mismatch`) or declares a total that differs from the
+ * pinned byte count (`byte_mismatch`), so a bogus upstream 416 can never be relayed
+ * as an authoritative range answer.
+ *
+ * Never carries an artifact `Content-Type`, `Content-Encoding`, `Content-Length`,
+ * `ETag`, or any part of the upstream body.
+ */
+export function build416Headers(args: {
+  record: ArtifactRecord;
+  upstreamContentRange: string | undefined;
+  upstreamAcceptRanges: string | undefined;
+}): Build416Result {
+  const parsed = parseUnsatisfiedContentRange(args.upstreamContentRange);
+  if (parsed === null) return { ok: false, reason: "header_mismatch" };
+  if (parsed.total !== args.record.bytes) return { ok: false, reason: "byte_mismatch" };
   const h = baseProtectedHeaders();
-  const cr = safeUnsatisfiedContentRange(upstreamContentRange);
-  if (cr !== null) h.set("Content-Range", cr);
-  if (upstreamAcceptRanges === "bytes") h.set("Accept-Ranges", "bytes");
-  return h;
+  h.set("Content-Range", parsed.value);
+  if (args.upstreamAcceptRanges === "bytes") h.set("Accept-Ranges", "bytes");
+  return { ok: true, headers: h };
 }
 
 interface InstrumentArgs {
@@ -343,10 +367,15 @@ function instrumentBody(args: InstrumentArgs): ReadableStream<Uint8Array> {
   });
 }
 
+/**
+ * Map an upstream status to an outward status. A `206` OR a `416` is meaningful
+ * ONLY when the client actually supplied a `Range` header — an unsolicited
+ * range-response is an upstream fault and fails closed (null ⇒ sanitized 502).
+ */
 function classifyStatus(upstreamStatus: number, rangeRequested: boolean): 200 | 206 | 416 | null {
   if (upstreamStatus === 200) return 200;
   if (upstreamStatus === 206 && rangeRequested) return 206;
-  if (upstreamStatus === 416) return 416;
+  if (upstreamStatus === 416 && rangeRequested) return 416;
   return null;
 }
 
@@ -498,13 +527,21 @@ export function streamArtifact(
       };
 
       if (mapped === 416) {
-        const h416 = build416Headers(headerValue("content-range"), headerValue("accept-ranges"));
+        const built416 = build416Headers({
+          record: req.record,
+          upstreamContentRange: headerValue("content-range"),
+          upstreamAcceptRanges: headerValue("accept-ranges"),
+        });
         res.destroy(); // discard the upstream 416 body — never forwarded
+        if (!built416.ok) {
+          fail(502, built416.reason); // missing/malformed/mismatched ⇒ fail closed
+          return;
+        }
         diag.reason = "complete";
         diag.totalDurationMs = now() - startedAt;
         emit();
         cleanup();
-        resolveOnce({ kind: "stream", status: 416, headers: h416, body: null });
+        resolveOnce({ kind: "stream", status: 416, headers: built416.headers, body: null });
         return;
       }
 

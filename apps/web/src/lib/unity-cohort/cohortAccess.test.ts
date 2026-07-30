@@ -67,25 +67,52 @@ test("token version must be an explicit non-negative integer, else fails closed"
 
 // ── artifact origin ───────────────────────────────────────────────────────────
 
-test("accepts a bare immutable-style .vercel.app deployment origin", () => {
-  const ok = "https://proj-abc123hash-team.vercel.app";
+// The dedicated artifact project label is documented in
+// docs/unity-b6c-versioned-staging-delivery.md. The generated deployment suffixes
+// used below are synthetic placeholders — the real artifact origin is never
+// hardcoded or published here.
+const PROJECT = "penalty444-unity-staging";
+
+test("accepts a deployment-shaped hostname of the dedicated artifact project", () => {
+  const ok = `https://${PROJECT}-abc123xyz-team.vercel.app`;
   assert.equal(validateArtifactOrigin(ok), ok);
-  assert.equal(validateArtifactOrigin("https://proj-abc123hash-team.vercel.app/"), ok);
+  assert.equal(validateArtifactOrigin(`${ok}/`), ok);
+  // A shorter deployment-suffix form is also accepted.
+  const ok2 = `https://${PROJECT}-q1.vercel.app`;
+  assert.equal(validateArtifactOrigin(ok2), ok2);
 });
 
-test("rejects a bare project/production alias (no deployment segment)", () => {
-  assert.equal(validateArtifactOrigin("https://someproject.vercel.app"), null);
-  assert.equal(validateArtifactOrigin("https://someproject.vercel.app/"), null);
+test("rejects the EXACT project/production alias (it also contains hyphens)", () => {
+  assert.equal(validateArtifactOrigin(`https://${PROJECT}.vercel.app`), null);
+  assert.equal(validateArtifactOrigin(`https://${PROJECT}.vercel.app/`), null);
+  assert.equal(validateArtifactOrigin(`https://${PROJECT.toUpperCase()}.vercel.app`), null);
+});
+
+test("rejects an empty deployment suffix after the project prefix", () => {
+  assert.equal(validateArtifactOrigin(`https://${PROJECT}-.vercel.app`), null);
+});
+
+test("rejects deployments of unrelated Vercel projects", () => {
+  for (const bad of [
+    "https://penalty444-platform-at1y.vercel.app",
+    "https://penalty444-platform-at1y-abc123-team.vercel.app",
+    "https://some-other-project-abc123-team.vercel.app",
+    "https://proj-abc123hash-team.vercel.app",
+    `https://not-${PROJECT}-abc123.vercel.app`,
+    `https://${PROJECT}x-abc123.vercel.app`,
+  ]) {
+    assert.equal(validateArtifactOrigin(bad), null, `must reject ${bad}`);
+  }
 });
 
 test("rejects non-https, credentials, query, fragment and any non-root path", () => {
   for (const bad of [
-    "http://proj-hash-team.vercel.app",
-    "https://user:pw@proj-hash-team.vercel.app",
-    "https://proj-hash-team.vercel.app?x=1",
-    "https://proj-hash-team.vercel.app#f",
-    "https://proj-hash-team.vercel.app/releases/b6b-local-fb840878-d",
-    "https://proj-hash-team.vercel.app/anything",
+    `http://${PROJECT}-abc123.vercel.app`,
+    `https://user:pw@${PROJECT}-abc123.vercel.app`,
+    `https://${PROJECT}-abc123.vercel.app?x=1`,
+    `https://${PROJECT}-abc123.vercel.app#f`,
+    `https://${PROJECT}-abc123.vercel.app/releases/b6b-local-fb840878-d`,
+    `https://${PROJECT}-abc123.vercel.app/anything`,
   ]) {
     assert.equal(validateArtifactOrigin(bad), null, `must reject ${bad}`);
   }
@@ -94,8 +121,10 @@ test("rejects non-https, credentials, query, fragment and any non-root path", ()
 test("rejects non-vercel hosts, nested subdomains, garbage and empties", () => {
   for (const bad of [
     "https://evil.example.com",
-    "https://proj-hash.vercel.app.evil.com",
-    "https://a.b-c.vercel.app",
+    `https://${PROJECT}-abc123.vercel.app.evil.com`,
+    `https://a.${PROJECT}-abc123.vercel.app`,
+    `https://${PROJECT}-abc123.evil.com`,
+    "https://.vercel.app",
     "not-a-url",
     "",
     "   ",
@@ -104,6 +133,16 @@ test("rejects non-vercel hosts, nested subdomains, garbage and empties", () => {
   ]) {
     assert.equal(validateArtifactOrigin(bad as string | undefined | null), null, `must reject ${String(bad)}`);
   }
+});
+
+test("origin validation does not claim deployment-state knowledge", () => {
+  // Documented limitation: a hostname shape cannot prove immutable / READY /
+  // target=null. Two syntactically identical shapes are indistinguishable here, so
+  // the protected-preview gate must still check Vercel deployment metadata.
+  const a = `https://${PROJECT}-aaaaaaaaa-team.vercel.app`;
+  const b = `https://${PROJECT}-bbbbbbbbb-team.vercel.app`;
+  assert.equal(validateArtifactOrigin(a), a);
+  assert.equal(validateArtifactOrigin(b), b);
 });
 
 // ── bearer ────────────────────────────────────────────────────────────────────

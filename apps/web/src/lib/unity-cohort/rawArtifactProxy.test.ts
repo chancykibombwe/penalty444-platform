@@ -303,28 +303,141 @@ test("invalid or mismatched Content-Range fails closed", async () => {
   }
 });
 
-test("416 preserves only safe range metadata and never forwards the upstream body", async () => {
+test("valid 416 (Range request + matching total) preserves only safe range metadata", async () => {
   const s = await startServer((_u, _req, res) => {
-    res.writeHead(416, { "content-range": `bytes */${GZIP_BODY.length}`, "content-encoding": "gzip" });
+    res.writeHead(416, {
+      "content-range": `bytes */${GZIP_BODY.length}`,
+      "content-encoding": "gzip",
+      "content-length": "33",
+      "accept-ranges": "bytes",
+    });
     res.end("UPSTREAM-ERROR-PAGE-MUST-NOT-LEAK");
   });
   try {
+    const diags: ArtifactDiagnostics[] = [];
     const outcome = await streamArtifact({
       origin: s.origin,
       record: gzipRecord(),
       method: "GET",
       range: "bytes=999-1000",
+      onDiagnostics: (d) => diags.push(d),
     });
     assertStream(outcome);
     assert.equal(outcome.status, 416);
-    assert.equal(outcome.body, null);
+    assert.equal(outcome.body, null, "upstream 416 body must never be forwarded");
     assert.equal(outcome.headers.get("content-range"), `bytes */${GZIP_BODY.length}`);
+    assert.equal(outcome.headers.get("accept-ranges"), "bytes");
     assert.equal(outcome.headers.get("content-encoding"), null);
     assert.equal(outcome.headers.get("content-length"), null);
     assert.equal(outcome.headers.get("content-type"), null);
+    assert.equal(outcome.headers.get("etag"), null);
     assert.equal(outcome.headers.get("cache-control"), "private, no-store");
+    assert.equal(outcome.headers.get("vary"), "Cookie");
+    assert.equal(diags.length, 1, "diagnostics emit exactly once");
+    assert.equal(diags[0].reason, "complete");
   } finally {
     await s.close();
+  }
+});
+
+test("416 Accept-Ranges is forwarded only when upstream supplies exactly `bytes`", async () => {
+  for (const [ar, expected] of [
+    [undefined, null],
+    ["none", null],
+    ["bytes, items", null],
+    ["bytes", "bytes"],
+  ] as const) {
+    const s = await startServer((_u, _req, res) => {
+      const h: Record<string, string> = { "content-range": `bytes */${GZIP_BODY.length}` };
+      if (ar !== undefined) h["accept-ranges"] = ar;
+      res.writeHead(416, h);
+      res.end();
+    });
+    try {
+      const outcome = await streamArtifact({
+        origin: s.origin,
+        record: gzipRecord(),
+        method: "GET",
+        range: "bytes=999-1000",
+      });
+      assertStream(outcome);
+      assert.equal(outcome.headers.get("accept-ranges"), expected, `accept-ranges: ${String(ar)}`);
+    } finally {
+      await s.close();
+    }
+  }
+});
+
+test("upstream 416 WITHOUT a client Range request fails closed as a sanitized 502", async () => {
+  for (const method of ["GET", "HEAD"] as const) {
+    const s = await startServer((_u, _req, res) => {
+      res.writeHead(416, { "content-range": `bytes */${GZIP_BODY.length}` });
+      res.end("UPSTREAM-ERROR-PAGE");
+    });
+    try {
+      const diags: ArtifactDiagnostics[] = [];
+      const outcome = await streamArtifact({
+        origin: s.origin,
+        record: gzipRecord(),
+        method,
+        onDiagnostics: (d) => diags.push(d),
+      });
+      assertError(outcome);
+      assert.equal(outcome.status, 502, `${method}: unsolicited 416 must be sanitized`);
+      assert.equal(outcome.reason, "upstream_error");
+      assert.equal(diags.length, 1);
+    } finally {
+      await s.close();
+    }
+  }
+});
+
+test("416 with a total that mismatches the pinned byte count fails closed (byte_mismatch)", async () => {
+  const s = await startServer((_u, _req, res) => {
+    res.writeHead(416, { "content-range": "bytes */999999" });
+    res.end();
+  });
+  try {
+    const diags: ArtifactDiagnostics[] = [];
+    const outcome = await streamArtifact({
+      origin: s.origin,
+      record: gzipRecord(),
+      method: "GET",
+      range: "bytes=999-1000",
+      onDiagnostics: (d) => diags.push(d),
+    });
+    assertError(outcome);
+    assert.equal(outcome.status, 502);
+    assert.equal(outcome.reason, "byte_mismatch");
+    assert.equal(diags.length, 1);
+    assert.equal(diags[0].reason, "byte_mismatch");
+  } finally {
+    await s.close();
+  }
+});
+
+test("416 with malformed or missing Content-Range fails closed (header_mismatch)", async () => {
+  for (const cr of [undefined, "garbage", "bytes 0-0/12", "bytes */0", "bytes */abc", "items */12"]) {
+    const s = await startServer((_u, _req, res) => {
+      res.writeHead(416, cr === undefined ? {} : { "content-range": cr });
+      res.end("UPSTREAM-ERROR-PAGE");
+    });
+    try {
+      const diags: ArtifactDiagnostics[] = [];
+      const outcome = await streamArtifact({
+        origin: s.origin,
+        record: gzipRecord(),
+        method: "GET",
+        range: "bytes=999-1000",
+        onDiagnostics: (d) => diags.push(d),
+      });
+      assertError(outcome);
+      assert.equal(outcome.status, 502, `must fail closed for ${String(cr)}`);
+      assert.equal(outcome.reason, "header_mismatch", `reason for ${String(cr)}`);
+      assert.equal(diags.length, 1);
+    } finally {
+      await s.close();
+    }
   }
 });
 
@@ -688,14 +801,37 @@ test("buildArtifactHeaders: identity record rejects a gzip upstream encoding", (
 });
 
 test("build416Headers omits artifact type/encoding/length entirely", () => {
-  const h = build416Headers("bytes */12", "bytes");
-  assert.equal(h.get("content-range"), "bytes */12");
-  assert.equal(h.get("accept-ranges"), "bytes");
-  assert.equal(h.get("content-type"), null);
-  assert.equal(h.get("content-encoding"), null);
-  assert.equal(h.get("content-length"), null);
-  assert.equal(h.get("etag"), null);
-  assert.equal(h.get("cache-control"), "private, no-store");
-  // A malformed upstream Content-Range is not echoed.
-  assert.equal(build416Headers("garbage", undefined).get("content-range"), null);
+  const record = gzipRecord();
+  const built = build416Headers({
+    record,
+    upstreamContentRange: `bytes */${record.bytes}`,
+    upstreamAcceptRanges: "bytes",
+  });
+  assert.equal(built.ok, true);
+  if (built.ok) {
+    assert.equal(built.headers.get("content-range"), `bytes */${record.bytes}`);
+    assert.equal(built.headers.get("accept-ranges"), "bytes");
+    assert.equal(built.headers.get("content-type"), null);
+    assert.equal(built.headers.get("content-encoding"), null);
+    assert.equal(built.headers.get("content-length"), null);
+    assert.equal(built.headers.get("etag"), null);
+    assert.equal(built.headers.get("cache-control"), "private, no-store");
+    assert.equal(built.headers.get("vary"), "Cookie");
+  }
+});
+
+test("build416Headers fails closed on malformed, missing or mismatched metadata", () => {
+  const record = gzipRecord();
+  for (const cr of [undefined, "garbage", "bytes 0-0/12", "bytes */0", "items */12"]) {
+    const built = build416Headers({ record, upstreamContentRange: cr, upstreamAcceptRanges: undefined });
+    assert.equal(built.ok, false, `must reject ${String(cr)}`);
+    if (!built.ok) assert.equal(built.reason, "header_mismatch");
+  }
+  const mismatch = build416Headers({
+    record,
+    upstreamContentRange: "bytes */999999",
+    upstreamAcceptRanges: undefined,
+  });
+  assert.equal(mismatch.ok, false);
+  if (!mismatch.ok) assert.equal(mismatch.reason, "byte_mismatch");
 });

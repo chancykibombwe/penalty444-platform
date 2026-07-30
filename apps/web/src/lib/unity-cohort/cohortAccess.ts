@@ -92,20 +92,46 @@ export function resolveTokenVersion(env: CohortEnv): number | null {
 
 // ── Artifact origin ───────────────────────────────────────────────────────────
 
+/** Vercel host suffix for the dedicated artifact project. */
+const VERCEL_HOST_SUFFIX = ".vercel.app";
+/**
+ * Name of the DEDICATED artifact project (already documented in
+ * docs/unity-b6c-versioned-staging-delivery.md). Its bare form is the project /
+ * production alias and is REJECTED; a per-deployment hostname is this name plus a
+ * `-` and a generated deployment suffix. The generated suffix itself is never
+ * hardcoded here.
+ */
+const ARTIFACT_PROJECT_LABEL = "penalty444-unity-staging";
+const ARTIFACT_DEPLOYMENT_PREFIX = `${ARTIFACT_PROJECT_LABEL}-`;
+
 /**
  * Validate `UNITY_COHORT_ARTIFACT_ORIGIN` into a BARE origin (scheme + host [+
  * port], no trailing path). Returns null when absent or invalid. The value is
  * fixed by server configuration, is NEVER request-controlled, and must never be
  * exposed in a header, HTML body, response, or diagnostic.
  *
- * Rules: `https:` only; no username/password; no query; no fragment; pathname
- * exactly `/`; hostname must end in `.vercel.app`.
+ * Rules enforced here:
+ *   - `https:` only;
+ *   - no username/password, no query, no fragment, pathname exactly `/`;
+ *   - single-label `*.vercel.app` hostname (no nested subdomain);
+ *   - the exact project/production alias `penalty444-unity-staging.vercel.app` is
+ *     REJECTED;
+ *   - the hostname must begin with `penalty444-unity-staging-` and carry a
+ *     non-empty deployment suffix after that prefix;
+ *   - any unrelated Vercel project is REJECTED.
  *
- * Immutable-preview heuristic (deterministic, no real hostname hardcoded): a
- * Vercel *deployment* hostname carries a generated deployment segment, so its
- * label contains at least one `-` (e.g. `<project>-<hash>-<scope>.vercel.app`).
- * A bare project/production alias (`<project>.vercel.app`) has no `-` and is
- * REJECTED, so the fixed origin cannot be pointed at a production alias.
+ * **Scope of this check (important, do not overstate).** This validates only that
+ * the configured URL *belongs to the dedicated artifact project* and is *not* that
+ * project's known alias. It does **not** independently prove Vercel deployment
+ * target metadata: it cannot show that the deployment is immutable, `READY`, or
+ * `target=null`. A hostname shape is not deployment state. The later
+ * protected-preview gate must still verify — through Vercel deployment metadata —
+ * that the configured deployment is immutable, `READY` and `target=null`.
+ *
+ * An earlier revision used a generic "any hyphenated label is an immutable
+ * preview" heuristic. That claim was FALSE for this project, because the project
+ * alias `penalty444-unity-staging.vercel.app` also contains hyphens and would have
+ * been accepted. The generic rule has been removed.
  */
 export function validateArtifactOrigin(raw: string | undefined | null): string | null {
   if (typeof raw !== "string" || raw.trim() === "") return null;
@@ -122,13 +148,18 @@ export function validateArtifactOrigin(raw: string | undefined | null): string |
   if (url.pathname !== "/") return null;
 
   const host = url.hostname.toLowerCase();
-  const suffix = ".vercel.app";
-  if (!host.endsWith(suffix)) return null;
-  const label = host.slice(0, host.length - suffix.length);
+  if (!host.endsWith(VERCEL_HOST_SUFFIX)) return null;
+  const label = host.slice(0, host.length - VERCEL_HOST_SUFFIX.length);
   if (label.length === 0) return null;
-  if (label.includes(".")) return null; // no nested subdomain
-  // Reject a bare project/production alias — require a deployment-style label.
-  if (!label.includes("-")) return null;
+  if (label.includes(".")) return null; // single label only — no nested subdomain
+
+  // Explicitly reject the project / production alias.
+  if (label === ARTIFACT_PROJECT_LABEL) return null;
+  // Must be a deployment hostname of the dedicated artifact project…
+  if (!label.startsWith(ARTIFACT_DEPLOYMENT_PREFIX)) return null;
+  // …with a non-empty generated deployment suffix.
+  if (label.length <= ARTIFACT_DEPLOYMENT_PREFIX.length) return null;
+
   return url.origin;
 }
 
