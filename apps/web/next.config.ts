@@ -159,6 +159,28 @@ const STAGING_HEADER_RULES = [
   },
 ];
 
+/**
+ * B6D3B PR-1 — protected Unity entry framing (docs/unity-b6d3b-implementation-authorization.md §12).
+ *
+ * The global `X-Frame-Options: DENY` on `/:path*` cannot be reliably overridden by a
+ * route-handler header (a conflicting `DENY` can survive alongside a route
+ * `SAMEORIGIN`, and browsers may resolve the ambiguity as `DENY`). The same-origin
+ * framing of the protected entry must therefore be established here, with an EXACT
+ * path rule placed AFTER the global block so Next.js header precedence ("the last
+ * header key will override the first") makes it win — for this one path only.
+ *
+ * Deliberately scoped: it does NOT relax framing for `/unity-arena/artifact/**`
+ * (which must stay DENY), does not touch any unrelated route, adds no global CSP,
+ * and changes no other security header or B6C staging rule.
+ */
+const UNITY_ARENA_PLAYER_HEADER_RULE = {
+  source: "/unity-arena/player",
+  headers: [
+    { key: "X-Frame-Options", value: "SAMEORIGIN" },
+    { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+  ],
+};
+
 const nextConfig: NextConfig = {
   // Monorepo has lockfiles at repo root and apps/web — pin Turbopack to
   // this app so `next dev` does not infer the wrong workspace root.
@@ -218,6 +240,10 @@ const nextConfig: NextConfig = {
       // cache for the versioned release path. Inert unless the staging rewrite
       // is configured and reached.
       ...STAGING_HEADER_RULES,
+      // ── B6D3B PR-1: exact protected-entry framing override ───────────────
+      // Last, so it overrides the global DENY for exactly /unity-arena/player.
+      // /unity-arena/artifact/** is intentionally NOT listed and stays DENY.
+      UNITY_ARENA_PLAYER_HEADER_RULE,
     ];
   },
   // ── B6C server-only external rewrite ──────────────────────────────────────

@@ -843,13 +843,24 @@ document. B6D3B implementation remains **NOT AUTHORIZED**; B6D3C and B6D3D remai
 B6D3A IMPLEMENTATION: COMPLETE AND LOCKED
 B6D3B PLANNING REVIEW: COMPLETE AND LOCKED
 B6D3B AUTHORIZATION PACKAGE: COMPLETE / IN REVIEW
-B6D3B RUNTIME IMPLEMENTATION: NOT AUTHORIZED
+B6D3B STREAMING MEASUREMENT: COMPLETE AND LOCKED (raw PASS; fetch FAIL — RANGE)
+B6D3B PR-1 SECURITY/DELIVERY: AUTHORIZED / IMPLEMENTED — IN REVIEW
+B6D3B PR-2 REACT INTEGRATION: NOT AUTHORIZED
 B6D3C PROTECTED-PREVIEW PROOF: NOT AUTHORIZED
 B6D3D REAL-MATCH UNITY TESTING: NOT AUTHORIZED
 PLAYER-FACING UNITY: NOT AUTHORIZED
 PRODUCTION UNITY: NO-GO
 NEXT_PUBLIC_UNITY_B6D2_SHADOW_ENABLED: UNCONFIGURED
 ```
+
+> **PR-1 status update.** The server-side security/delivery layer described in §11–§15
+> (cohort capability + session/status routes, protected entry route, protected raw
+> artifact route, and the exact `/unity-arena/player` framing override) has been
+> **implemented on `feat/unity-b6d3b-security-delivery` and is in review**. It adds
+> no React integration, configures no environment variable, activates no
+> player-facing Unity, and keeps production hard-denied. Per the completed
+> measurement, artifact delivery uses **raw Node `node:https`/`node:http` only** and
+> built-in `fetch` is prohibited. PR-2 remains **unauthorized**.
 
 This package changed no runtime code, no test, no Protocol v1 wire shape, no
 feature flag, no environment, no server/route/middleware, no `next.config.ts`, and

@@ -67,6 +67,12 @@ jobs:
           src/lib/unity-stream-proof/streamProxy.test.ts
           'src/app/api/dev/unity-stream-proof/[transport]/[...path]/route.test.ts'
 
+      # B6D3B PR-1 security/delivery suite. Registered as an npm script (no
+      # dependency change); a CI step is required because this workflow invokes
+      # each Unity suite explicitly rather than one aggregate test command.
+      - name: B6D3B PR-1 security and delivery tests
+        run: npm run test:unity-security-delivery
+
       - name: TypeScript check
         run: npx tsc --noEmit -p tsconfig.json
 
