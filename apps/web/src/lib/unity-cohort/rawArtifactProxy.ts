@@ -492,8 +492,16 @@ export function streamArtifact(
 
     const headers: Record<string, string> = {};
     if (rangeRequested) headers["range"] = req.range as string;
-    // Ask for the compressed representation verbatim; never allow a transformation.
-    headers["accept-encoding"] = "gzip";
+    // Request EXACTLY the representation this artifact is pinned to, so the
+    // upstream can only answer with the encoding the pinned contract expects.
+    //
+    // Sending a blanket `gzip` here was a real defect: for an `identity` record
+    // (the Unity loader) it permitted the artifact host to return a gzip
+    // representation, which `buildArtifactHeaders` then correctly rejected as
+    // `header_mismatch` — a sanitized 502 with zero bytes streamed, even though
+    // upstream answered 200. The accepted encoding is therefore derived from the
+    // pinned record, never hardcoded.
+    headers["accept-encoding"] = req.record.contentEncoding === "gzip" ? "gzip" : "identity";
 
     const clientReq = requestFn(url, { method: req.method, headers }, (res) => {
       if (finished) {

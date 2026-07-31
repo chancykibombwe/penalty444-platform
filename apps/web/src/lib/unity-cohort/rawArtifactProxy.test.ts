@@ -18,7 +18,7 @@ import {
   type ArtifactProxyOutcome,
   type RawClientRequestLike,
 } from "./rawArtifactProxy";
-import type { ArtifactRecord } from "./artifactManifest";
+import { ARTIFACT_RECORDS, type ArtifactRecord } from "./artifactManifest";
 
 type Handler = (reqUrl: string, req: IncomingMessage, res: ServerResponse) => void;
 
@@ -138,6 +138,141 @@ test("identity loader: bytes preserved with identity encoding", async () => {
   } finally {
     await s.close();
   }
+});
+
+// ── Accept-Encoding negotiation is derived from the pinned record ─────────────
+// Regression: a blanket `Accept-Encoding: gzip` let the artifact host return a
+// gzip representation of the IDENTITY loader, which the proxy then correctly
+// rejected as `header_mismatch` (sanitized 502, zero bytes streamed) even though
+// upstream answered 200. The requested encoding must match the pinned contract.
+
+test("gzip record requests Accept-Encoding: gzip", async () => {
+  let seen: string | undefined;
+  const s = await startServer((_u, req, res) => {
+    seen = req.headers["accept-encoding"] as string | undefined;
+    res.writeHead(200, { "content-encoding": "gzip", "content-length": String(GZIP_BODY.length) });
+    res.end(GZIP_BODY);
+  });
+  try {
+    const outcome = await streamArtifact({ origin: s.origin, record: gzipRecord(), method: "GET" });
+    assertStream(outcome);
+    await drain(outcome.body!);
+    assert.equal(seen, "gzip");
+  } finally {
+    await s.close();
+  }
+});
+
+test("identity record requests Accept-Encoding: identity (never gzip)", async () => {
+  let seen: string | undefined;
+  const s = await startServer((_u, req, res) => {
+    seen = req.headers["accept-encoding"] as string | undefined;
+    res.writeHead(200, { "content-length": String(IDENTITY_BODY.length) });
+    res.end(IDENTITY_BODY);
+  });
+  try {
+    const outcome = await streamArtifact({ origin: s.origin, record: loaderRecord(), method: "GET" });
+    assertStream(outcome);
+    await drain(outcome.body!);
+    assert.equal(seen, "identity");
+    assert.notEqual(seen, "gzip", "an identity artifact must never request gzip");
+  } finally {
+    await s.close();
+  }
+});
+
+test("identity loader streams byte-identically when the host honours identity", async () => {
+  // End-to-end regression for the protected-preview FAIL: with the corrected
+  // negotiation the loader now completes instead of failing header_mismatch.
+  const s = await startServer((_u, req, res) => {
+    // Mimic a content-negotiating host: gzip only if the client asked for it.
+    const ae = String(req.headers["accept-encoding"] ?? "");
+    if (ae.includes("gzip")) {
+      res.writeHead(200, { "content-encoding": "gzip", "content-length": String(GZIP_BODY.length) });
+      res.end(GZIP_BODY); // the representation that previously broke the loader
+      return;
+    }
+    res.writeHead(200, { "content-length": String(IDENTITY_BODY.length) });
+    res.end(IDENTITY_BODY);
+  });
+  try {
+    const diags: ArtifactDiagnostics[] = [];
+    const record = loaderRecord();
+    const outcome = await streamArtifact({
+      origin: s.origin,
+      record,
+      method: "GET",
+      onDiagnostics: (d) => diags.push(d),
+    });
+    assertStream(outcome);
+    assert.equal(outcome.status, 200);
+    assert.equal(outcome.headers.get("content-type"), "application/javascript");
+    assert.equal(outcome.headers.get("content-encoding"), "identity");
+    assert.equal(outcome.headers.get("content-length"), String(IDENTITY_BODY.length));
+    const body = await drain(outcome.body!);
+    assert.ok(body.equals(IDENTITY_BODY), "identity bytes must be preserved verbatim");
+    assert.equal(
+      createHash("sha256").update(body).digest("hex"),
+      createHash("sha256").update(IDENTITY_BODY).digest("hex"),
+    );
+    assert.equal(diags.length, 1);
+    assert.equal(diags[0].reason, "complete");
+    assert.equal(diags[0].totalBytes, IDENTITY_BODY.length);
+  } finally {
+    await s.close();
+  }
+});
+
+test("an identity record still fails closed if the host returns gzip anyway", async () => {
+  // The negotiation fix does not weaken the pinned-encoding contract.
+  const s = await startServer((_u, _req, res) => {
+    res.writeHead(200, { "content-encoding": "gzip", "content-length": String(GZIP_BODY.length) });
+    res.end(GZIP_BODY);
+  });
+  try {
+    const diags: ArtifactDiagnostics[] = [];
+    const outcome = await streamArtifact({
+      origin: s.origin,
+      record: loaderRecord(),
+      method: "GET",
+      onDiagnostics: (d) => diags.push(d),
+    });
+    assertError(outcome);
+    assert.equal(outcome.reason, "header_mismatch");
+    assert.equal(outcome.status, 502);
+    assert.equal(diags[0].totalBytes, 0);
+  } finally {
+    await s.close();
+  }
+});
+
+test("Accept-Encoding is derived per record across the whole pinned manifest", async () => {
+  const seen: Record<string, string | undefined> = {};
+  for (const record of ARTIFACT_RECORDS) {
+    const s = await startServer((_u, req, res) => {
+      seen[record.label] = req.headers["accept-encoding"] as string | undefined;
+      // Answer with exactly the pinned encoding so each request completes.
+      const h: Record<string, string> = { "content-length": String(record.contentEncoding === "gzip" ? GZIP_BODY.length : IDENTITY_BODY.length) };
+      if (record.contentEncoding === "gzip") h["content-encoding"] = "gzip";
+      res.writeHead(200, h);
+      res.end(record.contentEncoding === "gzip" ? GZIP_BODY : IDENTITY_BODY);
+    });
+    try {
+      const sized = {
+        ...record,
+        bytes: record.contentEncoding === "gzip" ? GZIP_BODY.length : IDENTITY_BODY.length,
+      };
+      const outcome = await streamArtifact({ origin: s.origin, record: sized, method: "GET" });
+      assertStream(outcome);
+      await drain(outcome.body!);
+    } finally {
+      await s.close();
+    }
+  }
+  assert.equal(seen.loader, "identity");
+  assert.equal(seen.framework, "gzip");
+  assert.equal(seen.data, "gzip");
+  assert.equal(seen.wasm, "gzip");
 });
 
 test("requests the internally pinned versioned upstream path (never /Build/...)", async () => {
