@@ -67,6 +67,10 @@ import {
   type SentSummary,
   type PendingShadowItem,
 } from "./unityPresentationShadow";
+// ── B6D3B PR-2: isolated player-facing host (default-off, presentation only) ──
+import MatchArenaViewport from "./MatchArenaViewport";
+import { buildViewerPresentation } from "./useViewerPresentation";
+import { useUnityPlayerFacingGate } from "./useUnityPlayerFacingGate";
 
 type MatchResultPayload = {
   roomCode?: string;
@@ -1006,6 +1010,42 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           : a.lastSentSequence,
     }));
   }, []);
+
+  // ── B6D3B PR-2: player-facing gate + sanitized viewer presentation ──────────
+  // Presentation only. This block adds NO gameplay authority: it reads existing
+  // authoritative state and reuses the SAME shadow coordinator, pending buffer,
+  // instance and ready/error/sent callbacks declared above. No second coordinator,
+  // sequence emitter, queue or callback chain is created.
+  //
+  // A fourth public build-time flag is required on top of the three existing
+  // shadow flags. None of them is configured by this PR, so the default is off.
+  const unityPlayerFacingRequested =
+    unityB6D2ShadowEnabled &&
+    process.env.NEXT_PUBLIC_UNITY_PLAYER_FACING_ENABLED === "true";
+  // Convenience/UX gate only — the PR-1 server routes remain the real boundary.
+  const unityPlayerFacingGate = useUnityPlayerFacingGate({
+    requested: unityPlayerFacingRequested,
+  });
+  // Sanitized, viewer-relative projection of the pending versioned dispatches.
+  // Raw player ids go IN; only LEFT/RIGHT-keyed presentation data comes OUT.
+  const viewerPresentation = buildViewerPresentation({
+    matchInstanceId: unityB6D2ActiveInstance,
+    viewerPlayerId: identity?.playerId ?? null,
+    scores,
+    kickerPlayerId:
+      Object.keys(roles).find((id) => roles[id] === "KICKER") ?? undefined,
+    keeperPlayerId:
+      Object.keys(roles).find((id) => roles[id] === "KEEPER") ?? undefined,
+    displayNames: playerNames,
+    pending: unityB6D2Pending,
+  });
+  // Single-renderer XOR: the host mounts only when every condition holds.
+  const unityPlayerFacingActive =
+    unityPlayerFacingRequested &&
+    unityPlayerFacingGate === "authorized" &&
+    viewerPresentation.identity !== null &&
+    typeof unityB6D2ActiveInstance === "string" &&
+    unityB6D2ActiveInstance.length > 0;
 
   const [leaveMatchBusy, setLeaveMatchBusy] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -3743,9 +3783,25 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
       ) : null}
 
       {!matchEnded ? (
-        <section className={`relative shrink-0 overflow-hidden rounded-lg border shadow-xl shadow-black/50 transition-colors duration-300 sm:rounded-2xl sm:p-3 md:rounded-[2rem] md:p-5 ${canPick && !isRevealLocked ? "border-zinc-700/60 bg-[#070d0f]" : "border-zinc-800 bg-zinc-900/95"} px-1 py-0.5`}>
-          {/* Subtle pitch-lane dividers */}
-          <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 opacity-[0.03]" style={{backgroundImage: "repeating-linear-gradient(90deg, rgba(255,255,255,0.8) 0, rgba(255,255,255,0.8) 1px, transparent 1px, transparent 33.33%)"}} />
+        // `isolation: isolate` makes this arena its own stacking context so the
+        // decorative presentation viewport can sit on a negative z-index — above
+        // the arena background, below every control and status element.
+        <section style={{ isolation: "isolate" }} className={`relative shrink-0 overflow-hidden rounded-lg border shadow-xl shadow-black/50 transition-colors duration-300 sm:rounded-2xl sm:p-3 md:rounded-[2rem] md:p-5 ${canPick && !isRevealLocked ? "border-zinc-700/60 bg-[#070d0f]" : "border-zinc-800 bg-zinc-900/95"} px-1 py-0.5`}>
+          {/* Subtle pitch-lane dividers — decorative artwork only. When the
+              player-facing path is active this is the Unity underlay and stays
+              mounted; otherwise it renders exactly as before. */}
+          <MatchArenaViewport
+            playerFacingActive={unityPlayerFacingActive}
+            matchInstanceId={unityB6D2ActiveInstance}
+            messages={viewerPresentation.messages}
+            identity={viewerPresentation.identity}
+            correlation={viewerPresentation.correlation}
+            onReady={handleB6D2Ready}
+            onError={handleB6D2Error}
+            onMessageSent={handleB6D2Sent}
+          >
+            <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 opacity-[0.03]" style={{backgroundImage: "repeating-linear-gradient(90deg, rgba(255,255,255,0.8) 0, rgba(255,255,255,0.8) 1px, transparent 1px, transparent 33.33%)"}} />
+          </MatchArenaViewport>
           {revealStage === "LOCKED" && !isRevealLocked ? (
             <div
               className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-black/50 backdrop-blur-[2px] sm:rounded-[2rem]"
@@ -4022,7 +4078,10 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           now forwards staging_begin / round_result / match_end / reset, and the
           renderer fails open to an "unavailable" card (React unaffected) if the
           3D preview cannot load / become ready. */}
-      {unityShadowEnabled ? (
+      {/* Single-renderer XOR: when the player-facing host is mounted in the arena
+          this secondary shadow preview is suppressed, so exactly one Unity iframe
+          can ever exist. Otherwise the existing default-off shadow is unchanged. */}
+      {unityShadowEnabled && !unityPlayerFacingActive ? (
         <section
           className="mt-6 rounded-2xl border border-dashed border-arena-border bg-arena-surface/60 p-3"
           aria-label="Unity live shadow preview (experimental, presentation only)"
