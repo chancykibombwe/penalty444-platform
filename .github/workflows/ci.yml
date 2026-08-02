@@ -59,13 +59,23 @@ jobs:
       - name: Unity presentation contract tests
         run: npm run test:unity-presentation
 
+      # NOTE: the route suite is invoked through `routeSuite.test.ts`, a static-import
+      # shim. The literal `[transport]/[...path]` path is glob magic (`[...]` is a
+      # character class), so passing it directly matched ZERO files and the route
+      # tests never actually executed here.
       - name: B6D3B streaming harness tests
         run: >-
           npx tsx --test
           src/lib/unity-stream-proof/manifest.test.ts
           src/lib/unity-stream-proof/security.test.ts
           src/lib/unity-stream-proof/streamProxy.test.ts
-          'src/app/api/dev/unity-stream-proof/[transport]/[...path]/route.test.ts'
+          src/lib/unity-stream-proof/routeSuite.test.ts
+
+      # B6D3B PR-1 security/delivery suite. Registered as an npm script (no
+      # dependency change); a CI step is required because this workflow invokes
+      # each Unity suite explicitly rather than one aggregate test command.
+      - name: B6D3B PR-1 security and delivery tests
+        run: npm run test:unity-security-delivery
 
       - name: TypeScript check
         run: npx tsc --noEmit -p tsconfig.json

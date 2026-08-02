@@ -843,7 +843,11 @@ document. B6D3B implementation remains **NOT AUTHORIZED**; B6D3C and B6D3D remai
 B6D3A IMPLEMENTATION: COMPLETE AND LOCKED
 B6D3B PLANNING REVIEW: COMPLETE AND LOCKED
 B6D3B AUTHORIZATION PACKAGE: COMPLETE / IN REVIEW
-B6D3B RUNTIME IMPLEMENTATION: NOT AUTHORIZED
+B6D3B STREAMING MEASUREMENT: COMPLETE AND LOCKED (raw PASS; fetch FAIL — RANGE)
+B6D3B PR-1 SECURITY/DELIVERY:
+  IMPLEMENTED + CI GREEN + PROTECTED-PREVIEW PROOF PASS + CLEANUP COMPLETE
+  — FINAL CLOSEOUT REVIEW
+B6D3B PR-2 REACT INTEGRATION: NOT AUTHORIZED
 B6D3C PROTECTED-PREVIEW PROOF: NOT AUTHORIZED
 B6D3D REAL-MATCH UNITY TESTING: NOT AUTHORIZED
 PLAYER-FACING UNITY: NOT AUTHORIZED
@@ -851,8 +855,81 @@ PRODUCTION UNITY: NO-GO
 NEXT_PUBLIC_UNITY_B6D2_SHADOW_ENABLED: UNCONFIGURED
 ```
 
-This package changed no runtime code, no test, no Protocol v1 wire shape, no
-feature flag, no environment, no server/route/middleware, no `next.config.ts`, and
-no Unity file; it ran no Unity, no real match, and no deployment. `MatchRoomPanel.tsx`,
+> **PR-1 status update.** The server-side security/delivery layer described in §11–§15
+> (cohort capability + session/status routes, protected entry route, protected raw
+> artifact route, and the exact `/unity-arena/player` framing override) has been
+> **implemented on `feat/unity-b6d3b-security-delivery`**, is **CI green**, has
+> **passed the protected-preview proof**, and is in **final closeout review**
+> (PR #219, still draft and unmerged). It adds no React integration, persists no
+> environment configuration, activates no player-facing Unity, and keeps production
+> hard-denied. Per the completed measurement, artifact delivery uses **raw Node
+> `node:https`/`node:http` only** and built-in `fetch` is prohibited. PR-2 remains
+> **unauthorized**.
+
+### 25.1 PR-1 protected-preview proof (executed, cleaned up)
+
+| Item | Value |
+|---|---|
+| PR | #219 (open, **draft**, unmerged, base `master`) |
+| Head at proof | `2fe8bb6963ff6c506caa3a5bc0ec02ff1f272342` |
+| Loader identity correction commit | `2fe8bb6963ff6c506caa3a5bc0ec02ff1f272342` |
+| CI | run **#104** — completed **successfully** |
+| Proof script | `B6D3B-PR1-ProtectedPreviewProof-v2.11.ps1` |
+| Proof date | **2026-08-01** |
+| Result | **all authorized functional gates passed before mandatory cleanup**; script exit code **0** |
+| Sanitized local evidence | `B6D3B-PR1-Proof-Sanitized-20260801-214305.txt` (operator-held, untracked) |
+
+Gates recorded by the proof:
+
+1. Exact PR/head and Preview deployment verification — **PASS**.
+2. Dedicated artifact deployment metadata verification — **PASS**.
+3. No same-name temporary branch-scoped variables existed beforehand — **PASS**.
+4. Effective Preview Supabase alignment — **PASS**.
+5. Closed-route baseline returned **opaque 404** — **PASS**.
+6. Exactly **four** temporary branch-scoped Preview variables configured — **PASS**.
+7. Authenticated Supabase session acquisition — **PASS**.
+8. Cohort status returned **HTTP 200**, body limited to `inCohort=true` — **PASS**.
+9. Session mint returned **HTTP 204** with the required host-only `HttpOnly`,
+   `Secure`, `SameSite=Lax`, `Path=/unity-arena` cookie and `Max-Age 600` — **PASS**.
+10. Protected player entry returned **HTTP 200** with exactly one effective
+    `SAMEORIGIN`, `frame-ancestors 'self'`, **no contradictory `DENY`**, exactly one
+    canvas, four protected same-origin artifact references, and no identity,
+    capability, query authorization, `TemplateData` or upstream URL — **PASS**.
+11. Unrelated framing remained `DENY` — **PASS**.
+12. Authenticated wasm `HEAD` — **PASS**.
+13. One-byte wasm `Range`: **HTTP 206**, first byte `1F`, correct pinned total — **PASS**.
+14. Full wasm byte identity: **8,583,356** bytes, exact pinned SHA-256, gzip magic
+    and decompression validation — **PASS**.
+15. Loader identity proof: **HTTP 200**, `application/javascript`, identity
+    delivery, **26,982** bytes, exact pinned SHA-256 — **PASS**.
+16. Safe `416`: **HTTP 416**, matching unsatisfied total, empty body, protected
+    cache policy, no artifact type/encoding/`ETag`, `Content-Length` absent or
+    exactly zero — **PASS**.
+17. Scoped runtime diagnostics review: aggregate-only, no exact secret or identity
+    values, no duplicate diagnostic for an available request id — **PASS**.
+18. Emergency token-version revocation: the old cookie immediately returned
+    **opaque 404** for player and artifact, with **no** artifact transport
+    diagnostic emitted afterwards — **PASS**.
+19. Mandatory cleanup: all four temporary branch-scoped Preview variables removed,
+    closed Preview restored, player/artifact/session routes returned **opaque 404**,
+    no artifact transport diagnostic emitted, **Production untouched**,
+    repository/source untouched, PR remained **draft and unmerged** — **PASS**.
+20. Proof exited successfully (**exit code 0**) — **PASS**.
+
+Deliberately **not** recorded here: passwords, access/refresh tokens,
+signing-secret values, service-role values, temporary environment-variable values,
+the dedicated artifact hostname, authenticated URLs, and cookies.
+
+**Remaining step:** independent final closeout review and explicit merge
+authorization. PR #219 is **not** merged and **not** locked.
+
+**This authorization package itself** (the planning document, as originally
+written) changed no runtime code, no test, no Protocol v1 wire shape, no feature
+flag, no environment, no server/route/middleware, no `next.config.ts`, and no Unity
+file; it ran no Unity, no real match, and no deployment. `MatchRoomPanel.tsx`,
 `MatchRenderer3D.tsx`, and
 `unity/Penalty444Client/ProjectSettings/ProjectSettings.asset` were untouched.
+(The subsequently authorized PR-1 implementation and its protected-preview proof
+are recorded separately in §25.1; the proof temporarily configured four
+branch-scoped **Preview** variables and removed them all during mandatory cleanup,
+never targeting Production.)
