@@ -20,6 +20,34 @@ import { useEffect, useRef, useState } from "react";
 
 export type UnityPlayerFacingGateState = "disabled" | "checking" | "authorized" | "denied";
 
+/**
+ * Single-renderer handoff decision (pure).
+ *
+ * The player-facing host and the legacy shadow preview must NEVER be mounted
+ * together, and there must be no window in which BOTH are mounted or in which the
+ * shadow flickers while the cohort gate is still resolving.
+ *
+ * Once the player-facing path has been *requested*, the shadow is suppressed for
+ * the whole resolution — `disabled` (the initial state before the gate effect
+ * runs), `checking`, and `authorized` all render ZERO Unity iframes from the
+ * shadow. It resumes ONLY after an explicit `denied`, or when the player-facing
+ * path was never requested at all (in which case existing behaviour is untouched).
+ *
+ * Note this deliberately says nothing about whether the HOST mounts: the host has
+ * its own stricter conditions (authorized AND sanitized identity AND a valid
+ * instance), so `authorized`-without-identity correctly shows plain React.
+ */
+export function shouldRenderUnityShadow(args: {
+  shadowEnabled: boolean;
+  playerFacingRequested: boolean;
+  gateState: UnityPlayerFacingGateState;
+}): boolean {
+  const { shadowEnabled, playerFacingRequested, gateState } = args;
+  if (!shadowEnabled) return false;
+  if (!playerFacingRequested) return true; // existing shadow behaviour preserved
+  return gateState === "denied"; // resume only after an explicit denial
+}
+
 /** Minimal shape of the Supabase browser client used here. */
 export interface GateSupabaseLike {
   readonly auth: {

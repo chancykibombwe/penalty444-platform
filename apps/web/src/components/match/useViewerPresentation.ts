@@ -41,6 +41,7 @@ import {
   validateEnvelope,
   type MatchStateSyncEnvelope,
   type PresentationEnvelope,
+  type RoundResultEnvelope,
 } from "./unityPresentationProtocol";
 
 /** Visual-side score keys used by the player-facing projection. */
@@ -83,20 +84,45 @@ const EMPTY: ViewerPresentation = Object.freeze({
 
 /**
  * Project one authoritative `match_state_sync` into the viewer-relative form.
+ *
+ * CRITICAL: the projected scores come from **this envelope's own** authoritative
+ * score map — never from the current outer identity. Each pending dispatch is a
+ * distinct authoritative snapshot (a queue may hold several, and the newest React
+ * state may already be ahead of all of them), so substituting the live scores
+ * would rewrite history and show the wrong scoreboard for older sequences.
+ *
+ * A temporary viewer-relative mapping is derived from the envelope's own scores
+ * via the existing `buildViewerIdentityContext` — with NO roles, names or outcome,
+ * because this mapping exists solely to resolve LEFT/RIGHT for these values. That
+ * helper already enforces exactly two participants and viewer membership, so an
+ * envelope whose score map omits the viewer is rejected.
+ *
  * Returns null when the envelope is malformed, belongs to another instance, or the
  * projection fails re-validation. Never mutates the source envelope.
  */
 export function projectStateSyncForViewer(
   envelope: MatchStateSyncEnvelope,
-  identity: ViewerIdentityContext,
+  viewerPlayerId: string,
+  expectedInstanceId?: string,
 ): MatchStateSyncEnvelope | null {
-  if (envelope.matchInstanceId !== identity.matchInstanceId) return null;
-  // Build a NEW payload field-by-field. Scores are the already-authoritative
-  // values carried on the identity context — copied, never computed.
+  if (typeof viewerPlayerId !== "string" || viewerPlayerId.length === 0) return null;
+  if (expectedInstanceId !== undefined && envelope.matchInstanceId !== expectedInstanceId) {
+    return null;
+  }
+  // Envelope-scoped mapping: this envelope's OWN authoritative scores only.
+  const envelopeIdentity = buildViewerIdentityContext({
+    matchInstanceId: envelope.matchInstanceId,
+    viewerPlayerId,
+    scores: envelope.payload.scores,
+  });
+  if (envelopeIdentity === null) return null; // not two participants, or viewer absent
+
+  // Build a NEW payload field-by-field. Scores are copied from this envelope,
+  // never computed and never taken from live React state.
   const payload: Record<string, unknown> = {
     scores: {
-      [VIEWER_SCORE_KEY_SELF]: identity.self.score,
-      [VIEWER_SCORE_KEY_OPPONENT]: identity.opponent.score,
+      [VIEWER_SCORE_KEY_SELF]: envelopeIdentity.self.score,
+      [VIEWER_SCORE_KEY_OPPONENT]: envelopeIdentity.opponent.score,
     },
     round: envelope.payload.round,
     maxRounds: envelope.payload.maxRounds,
@@ -125,6 +151,44 @@ export function projectStateSyncForViewer(
 /** True when `value` contains either raw participant id anywhere. */
 function containsRawId(value: string, rawIds: readonly string[]): boolean {
   return rawIds.some((id) => id.length > 0 && value.includes(id));
+}
+
+/**
+ * Clone a validated `round_result` field-by-field for the player-facing path.
+ *
+ * `round_result` carries no score map, but its optional `statusMessage` is
+ * server-authored free text and could embed a raw player id. The message is
+ * therefore preserved ONLY when it contains neither participant id (equal to or as
+ * an embedded substring); otherwise it is omitted entirely. It is never replaced
+ * with invented text, and the source envelope is never mutated.
+ */
+export function projectRoundResultForViewer(
+  envelope: RoundResultEnvelope,
+  rawIds: readonly string[],
+): RoundResultEnvelope | null {
+  const payload: Record<string, unknown> = {
+    round: envelope.payload.round,
+    kickerLane: envelope.payload.kickerLane,
+    keeperLane: envelope.payload.keeperLane,
+    result: envelope.payload.result,
+  };
+  const status = envelope.payload.statusMessage;
+  if (typeof status === "string" && !containsRawId(status, rawIds)) {
+    payload.statusMessage = status;
+  }
+  const candidate: Record<string, unknown> = {
+    type: envelope.type,
+    protocolVersion: envelope.protocolVersion,
+    matchInstanceId: envelope.matchInstanceId,
+    sequence: envelope.sequence,
+    event: envelope.event,
+    payload,
+  };
+  if (envelope.emittedAt !== undefined) candidate.emittedAt = envelope.emittedAt;
+
+  const validated = validateEnvelope(candidate);
+  if (validated === null || validated.event !== "round_result") return null;
+  return validated;
 }
 
 /**
@@ -167,10 +231,16 @@ export function buildViewerPresentation(input: ViewerPresentationInput): ViewerP
 
       let projected: PresentationEnvelope | null = null;
       if (validated.event === "match_state_sync") {
-        projected = projectStateSyncForViewer(validated, identity);
+        // Per-envelope projection: this envelope's OWN authoritative scores.
+        projected = projectStateSyncForViewer(
+          validated,
+          identityInput.viewerPlayerId,
+          identity.matchInstanceId,
+        );
       } else {
-        // `round_result` carries lanes/result/round only — no player ids.
-        projected = validated;
+        // `round_result` carries no score map, but its optional statusMessage is
+        // free text that could embed a raw id — cloned and sanitized here.
+        projected = projectRoundResultForViewer(validated, rawIds);
       }
       if (projected === null) continue;
 

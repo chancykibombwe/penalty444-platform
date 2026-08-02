@@ -12,8 +12,12 @@ import assert from "node:assert/strict";
 
 import {
   runUnityPlayerFacingGate,
+  shouldRenderUnityShadow,
   type GateSupabaseLike,
+  type UnityPlayerFacingGateState,
 } from "./useUnityPlayerFacingGate";
+
+const ALL_STATES: UnityPlayerFacingGateState[] = ["disabled", "checking", "authorized", "denied"];
 
 const TOKEN = "supabase-access-token-value-must-never-leak";
 
@@ -313,4 +317,89 @@ test("requests are same-origin, no-store and carry no credentials in the URL", a
     assert.equal(init.credentials, "same-origin");
     assert.equal(init.cache, "no-store");
   }
+});
+
+// ── renderer handoff decision table (review correction) ───────────────────────
+// The shadow must render ZERO Unity iframes for the whole player-facing gate
+// resolution, resuming only after an explicit denial or when never requested.
+
+test("shadow disabled → false in every gate state", () => {
+  for (const gateState of ALL_STATES) {
+    for (const playerFacingRequested of [false, true]) {
+      assert.equal(
+        shouldRenderUnityShadow({ shadowEnabled: false, playerFacingRequested, gateState }),
+        false,
+        `disabled shadow must stay off (${gateState}, requested=${playerFacingRequested})`,
+      );
+    }
+  }
+});
+
+test("shadow enabled + player-facing NOT requested → true (existing behaviour)", () => {
+  for (const gateState of ALL_STATES) {
+    assert.equal(
+      shouldRenderUnityShadow({ shadowEnabled: true, playerFacingRequested: false, gateState }),
+      true,
+      `existing shadow behaviour must be preserved (${gateState})`,
+    );
+  }
+});
+
+test("shadow enabled + requested + gate disabled → false", () => {
+  assert.equal(
+    shouldRenderUnityShadow({ shadowEnabled: true, playerFacingRequested: true, gateState: "disabled" }),
+    false,
+  );
+});
+
+test("shadow enabled + requested + gate checking → false", () => {
+  assert.equal(
+    shouldRenderUnityShadow({ shadowEnabled: true, playerFacingRequested: true, gateState: "checking" }),
+    false,
+  );
+});
+
+test("shadow enabled + requested + gate authorized → false", () => {
+  assert.equal(
+    shouldRenderUnityShadow({ shadowEnabled: true, playerFacingRequested: true, gateState: "authorized" }),
+    false,
+  );
+});
+
+test("shadow enabled + requested + gate denied → true (shadow may resume)", () => {
+  assert.equal(
+    shouldRenderUnityShadow({ shadowEnabled: true, playerFacingRequested: true, gateState: "denied" }),
+    true,
+  );
+});
+
+test("the full decision table matches the specification exactly", () => {
+  const expected: Array<[boolean, boolean, UnityPlayerFacingGateState, boolean]> = [
+    [false, false, "disabled", false],
+    [false, true, "checking", false],
+    [true, false, "disabled", true],
+    [true, false, "checking", true],
+    [true, false, "authorized", true],
+    [true, false, "denied", true],
+    [true, true, "disabled", false],
+    [true, true, "checking", false],
+    [true, true, "authorized", false],
+    [true, true, "denied", true],
+  ];
+  for (const [shadowEnabled, playerFacingRequested, gateState, want] of expected) {
+    assert.equal(
+      shouldRenderUnityShadow({ shadowEnabled, playerFacingRequested, gateState }),
+      want,
+      `shadow=${shadowEnabled} requested=${playerFacingRequested} gate=${gateState}`,
+    );
+  }
+});
+
+test("authorized never renders the shadow, so host and shadow can never coexist", () => {
+  // The host mounts only under `authorized` (plus identity + instance); the shadow
+  // is false for `authorized`, so the two are mutually exclusive by construction.
+  assert.equal(
+    shouldRenderUnityShadow({ shadowEnabled: true, playerFacingRequested: true, gateState: "authorized" }),
+    false,
+  );
 });

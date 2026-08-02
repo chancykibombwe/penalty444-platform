@@ -55,19 +55,26 @@ function stateSync(over: {
   return env;
 }
 
-function roundResult(over: { sequence: number; round?: number; matchInstanceId?: string }) {
+function roundResult(over: {
+  sequence: number;
+  round?: number;
+  matchInstanceId?: string;
+  statusMessage?: string;
+}) {
+  const payload: Record<string, unknown> = {
+    round: over.round ?? 2,
+    kickerLane: "LEFT",
+    keeperLane: "RIGHT",
+    result: "GOAL",
+  };
+  if (over.statusMessage !== undefined) payload.statusMessage = over.statusMessage;
   return {
     type: PRESENTATION_TYPE,
     protocolVersion: PRESENTATION_PROTOCOL_VERSION,
     matchInstanceId: over.matchInstanceId ?? INSTANCE,
     sequence: over.sequence,
     event: "round_result",
-    payload: {
-      round: over.round ?? 2,
-      kickerLane: "LEFT",
-      keeperLane: "RIGHT",
-      result: "GOAL",
-    },
+    payload,
   };
 }
 
@@ -233,25 +240,139 @@ test("inputs are never mutated", () => {
 });
 
 test("projectStateSyncForViewer rejects a foreign instance", () => {
-  const identity = buildViewerIdentityContext({
-    matchInstanceId: INSTANCE,
-    viewerPlayerId: SELF_ID,
-    scores: { [SELF_ID]: 1, [OPP_ID]: 0 },
-  });
-  assert.ok(identity);
   const foreign = stateSync({ sequence: 2, matchInstanceId: "ABCD12:2" });
-  // Build a validated envelope for the foreign instance, then project it.
   const out = buildViewerPresentation(
     baseInput({ pending: [{ id: "f", message: foreign }] }),
   );
   assert.deepStrictEqual(out.messages, []);
   assert.equal(
     projectStateSyncForViewer(
-      { ...(foreign as unknown as MatchStateSyncEnvelope) },
-      identity,
+      foreign as unknown as MatchStateSyncEnvelope,
+      SELF_ID,
+      INSTANCE,
     ),
     null,
   );
+});
+
+// ── per-envelope score preservation (review correction) ───────────────────────
+
+test("A. projection uses the ENVELOPE's scores, not the current React scores", () => {
+  // Live React state is 3–2, but the pending envelope carries 0–0.
+  const out = buildViewerPresentation(
+    baseInput({
+      scores: { [SELF_ID]: 3, [OPP_ID]: 2 },
+      pending: [
+        { id: "s0", message: stateSync({ sequence: 2, scores: { [SELF_ID]: 0, [OPP_ID]: 0 } }) },
+      ],
+    }),
+  );
+  assert.equal(out.messages.length, 1);
+  const msg = out.messages[0].message as MatchStateSyncEnvelope;
+  assert.equal(msg.payload.scores.LEFT, 0, "must be the envelope's own score");
+  assert.equal(msg.payload.scores.RIGHT, 0, "must be the envelope's own score");
+  // The outer identity still reflects live state (host activation only).
+  assert.equal(out.identity?.self.score, 3);
+  assert.equal(out.identity?.opponent.score, 2);
+});
+
+test("B. each pending envelope retains its own values", () => {
+  const out = buildViewerPresentation(
+    baseInput({
+      scores: { [SELF_ID]: 3, [OPP_ID]: 2 },
+      pending: [
+        { id: "a", message: stateSync({ sequence: 2, scores: { [SELF_ID]: 0, [OPP_ID]: 0 } }) },
+        { id: "b", message: stateSync({ sequence: 3, scores: { [SELF_ID]: 1, [OPP_ID]: 0 } }) },
+      ],
+    }),
+  );
+  assert.equal(out.messages.length, 2);
+  const first = out.messages[0].message as MatchStateSyncEnvelope;
+  const second = out.messages[1].message as MatchStateSyncEnvelope;
+  assert.deepStrictEqual(first.payload.scores, { LEFT: 0, RIGHT: 0 });
+  assert.deepStrictEqual(second.payload.scores, { LEFT: 1, RIGHT: 0 });
+});
+
+test("C. reversed raw score-key order still maps SELF→LEFT and OPPONENT→RIGHT", () => {
+  const forward = buildViewerPresentation(
+    baseInput({
+      pending: [{ id: "a", message: stateSync({ sequence: 2, scores: { [SELF_ID]: 4, [OPP_ID]: 1 } }) }],
+    }),
+  );
+  const reversed = buildViewerPresentation(
+    baseInput({
+      pending: [{ id: "a", message: stateSync({ sequence: 2, scores: { [OPP_ID]: 1, [SELF_ID]: 4 } }) }],
+    }),
+  );
+  const a = forward.messages[0].message as MatchStateSyncEnvelope;
+  const b = reversed.messages[0].message as MatchStateSyncEnvelope;
+  assert.deepStrictEqual(a.payload.scores, { LEFT: 4, RIGHT: 1 });
+  assert.deepStrictEqual(b.payload.scores, a.payload.scores);
+});
+
+test("D. an envelope whose score map omits the viewer is rejected", () => {
+  const out = buildViewerPresentation(
+    baseInput({
+      pending: [
+        { id: "a", message: stateSync({ sequence: 2, scores: { other: 1, [OPP_ID]: 0 } }) },
+        // Also rejected: not exactly two participants.
+        { id: "b", message: stateSync({ sequence: 3, scores: { [SELF_ID]: 1 } }) },
+        { id: "c", message: stateSync({ sequence: 4, scores: { [SELF_ID]: 1, [OPP_ID]: 0, third: 0 } }) },
+      ],
+    }),
+  );
+  assert.deepStrictEqual(out.messages, []);
+});
+
+// ── round_result statusMessage sanitization (review correction) ───────────────
+
+test("a safe statusMessage is preserved", () => {
+  const out = buildViewerPresentation(
+    baseInput({
+      pending: [{ id: "r", message: roundResult({ sequence: 4, statusMessage: "Keeper read it." }) }],
+    }),
+  );
+  const msg = out.messages[0].message;
+  assert.equal(msg.event, "round_result");
+  if (msg.event === "round_result") assert.equal(msg.payload.statusMessage, "Keeper read it.");
+});
+
+test("a statusMessage equal to a raw id is omitted", () => {
+  const out = buildViewerPresentation(
+    baseInput({ pending: [{ id: "r", message: roundResult({ sequence: 4, statusMessage: SELF_ID }) }] }),
+  );
+  const msg = out.messages[0].message;
+  assert.equal(msg.event, "round_result");
+  if (msg.event === "round_result") assert.equal(msg.payload.statusMessage, undefined);
+  assert.equal(JSON.stringify(out).includes(SELF_ID), false);
+});
+
+test("a statusMessage EMBEDDING a raw id is omitted", () => {
+  const out = buildViewerPresentation(
+    baseInput({
+      pending: [
+        { id: "r", message: roundResult({ sequence: 4, statusMessage: `Winner: ${OPP_ID} scored!` }) },
+      ],
+    }),
+  );
+  const msg = out.messages[0].message;
+  assert.equal(msg.event, "round_result");
+  if (msg.event === "round_result") assert.equal(msg.payload.statusMessage, undefined);
+  const json = JSON.stringify(out);
+  assert.equal(json.includes(OPP_ID), false);
+  assert.equal(json.includes(SELF_ID), false);
+  // The rest of the round_result is intact — nothing invented.
+  if (msg.event === "round_result") {
+    assert.equal(msg.payload.result, "GOAL");
+    assert.equal(msg.payload.round, 2);
+  }
+});
+
+test("round_result cloning never mutates the source envelope", () => {
+  const source = roundResult({ sequence: 4, statusMessage: SELF_ID });
+  const snapshot = JSON.parse(JSON.stringify(source));
+  buildViewerPresentation(baseInput({ pending: [{ id: "r", message: source }] }));
+  assert.deepStrictEqual(source, snapshot);
 });
 
 // ── correlation ───────────────────────────────────────────────────────────────

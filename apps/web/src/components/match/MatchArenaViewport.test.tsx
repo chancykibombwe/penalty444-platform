@@ -18,6 +18,7 @@ import {
   type PresentationEnvelope,
 } from "./unityPresentationProtocol";
 import { buildViewerIdentityContext } from "./unityPresentationIdentity";
+import { shouldRenderUnityShadow } from "./useUnityPlayerFacingGate";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const panelSource = readFileSync(`${HERE}MatchRoomPanel.tsx`, "utf8");
@@ -123,15 +124,47 @@ test("the existing shadow still receives the ORIGINAL pending messages", () => {
   );
 });
 
-test("single-renderer XOR prevents simultaneous renderers", () => {
-  assert.ok(
+test("the renderer handoff is driven by the pure decision helper", () => {
+  // The old inline `unityShadowEnabled && !unityPlayerFacingActive` condition left
+  // the shadow mounted during `checking`; the helper closes that window.
+  assert.equal(
     /\{unityShadowEnabled && !unityPlayerFacingActive \?/.test(panelSource),
-    "the shadow section must be suppressed while the player-facing host is active",
+    false,
+    "the superseded inline XOR condition must be gone",
+  );
+  assert.ok(
+    /shouldRenderUnityShadow\(\{/.test(panelSource),
+    "MatchRoomPanel must use the pure shadow-decision helper",
+  );
+  assert.ok(
+    /shadowEnabled: unityShadowEnabled/.test(panelSource) &&
+      /playerFacingRequested: unityPlayerFacingRequested/.test(panelSource) &&
+      /gateState: unityPlayerFacingGate/.test(panelSource),
+    "the helper must receive shadow, requested and gate inputs",
+  );
+  assert.ok(
+    /\{unityShadowVisible \?/.test(panelSource),
+    "the shadow section must render from the derived decision",
   );
   assert.ok(
     /playerFacingActive=\{unityPlayerFacingActive\}/.test(panelSource),
-    "the viewport must be driven by the XOR flag",
+    "the viewport must be driven by the host activation flag",
   );
+});
+
+test("zero Unity iframes are possible while the gate is resolving", () => {
+  // Host activation requires `authorized`; the helper returns false for
+  // disabled/checking/authorized — so during resolution neither mounts.
+  for (const gateState of ["disabled", "checking", "authorized"] as const) {
+    assert.equal(
+      shouldRenderUnityShadow({ shadowEnabled: true, playerFacingRequested: true, gateState }),
+      false,
+      `shadow must not mount while gate is ${gateState}`,
+    );
+  }
+  // The host itself additionally needs identity + instance.
+  assert.ok(/unityPlayerFacingGate === "authorized"/.test(panelSource));
+  assert.ok(/viewerPresentation\.identity !== null/.test(panelSource));
 });
 
 test("player-facing requires the fourth public flag plus the cohort gate", () => {

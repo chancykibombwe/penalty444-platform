@@ -70,7 +70,10 @@ import {
 // ── B6D3B PR-2: isolated player-facing host (default-off, presentation only) ──
 import MatchArenaViewport from "./MatchArenaViewport";
 import { buildViewerPresentation } from "./useViewerPresentation";
-import { useUnityPlayerFacingGate } from "./useUnityPlayerFacingGate";
+import {
+  useUnityPlayerFacingGate,
+  shouldRenderUnityShadow,
+} from "./useUnityPlayerFacingGate";
 
 type MatchResultPayload = {
   roomCode?: string;
@@ -1046,6 +1049,15 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
     viewerPresentation.identity !== null &&
     typeof unityB6D2ActiveInstance === "string" &&
     unityB6D2ActiveInstance.length > 0;
+  // Renderer handoff: once the player-facing path is requested, the legacy shadow
+  // stays suppressed for the whole gate resolution (initial `disabled`, `checking`
+  // and `authorized`), so ZERO Unity iframes exist until the host itself mounts.
+  // It resumes only after an explicit denial, or when never requested.
+  const unityShadowVisible = shouldRenderUnityShadow({
+    shadowEnabled: unityShadowEnabled,
+    playerFacingRequested: unityPlayerFacingRequested,
+    gateState: unityPlayerFacingGate,
+  });
 
   const [leaveMatchBusy, setLeaveMatchBusy] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -4078,10 +4090,12 @@ export default function MatchRoomPanel({ roomCode }: { roomCode: string }) {
           now forwards staging_begin / round_result / match_end / reset, and the
           renderer fails open to an "unavailable" card (React unaffected) if the
           3D preview cannot load / become ready. */}
-      {/* Single-renderer XOR: when the player-facing host is mounted in the arena
-          this secondary shadow preview is suppressed, so exactly one Unity iframe
-          can ever exist. Otherwise the existing default-off shadow is unchanged. */}
-      {unityShadowEnabled && !unityPlayerFacingActive ? (
+      {/* Single-renderer handoff (see `shouldRenderUnityShadow`): while the
+          player-facing path is requested — including the initial and `checking`
+          states — this secondary shadow preview is suppressed, so zero Unity
+          iframes exist until the host mounts and never two at once. It resumes
+          only after an explicit denial, or when never requested. */}
+      {unityShadowVisible ? (
         <section
           className="mt-6 rounded-2xl border border-dashed border-arena-border bg-arena-surface/60 p-3"
           aria-label="Unity live shadow preview (experimental, presentation only)"
