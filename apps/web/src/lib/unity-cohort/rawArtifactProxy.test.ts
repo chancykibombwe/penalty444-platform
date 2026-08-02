@@ -223,6 +223,39 @@ test("identity loader streams byte-identically when the host honours identity", 
   }
 });
 
+test("identity record accepts an EXPLICIT upstream Content-Encoding: identity", async () => {
+  // Complements the absent-header case: a host that explicitly echoes
+  // `identity` must be accepted and streamed byte-for-byte, not rejected.
+  const s = await startServer((_u, _req, res) => {
+    res.writeHead(200, {
+      "content-encoding": "identity",
+      "content-length": String(IDENTITY_BODY.length),
+    });
+    res.end(IDENTITY_BODY);
+  });
+  try {
+    const diags: ArtifactDiagnostics[] = [];
+    const outcome = await streamArtifact({
+      origin: s.origin,
+      record: loaderRecord(),
+      method: "GET",
+      onDiagnostics: (d) => diags.push(d),
+    });
+    assertStream(outcome);
+    assert.equal(outcome.status, 200);
+    assert.equal(outcome.headers.get("content-type"), "application/javascript");
+    assert.equal(outcome.headers.get("content-encoding"), "identity");
+    assert.equal(outcome.headers.get("content-length"), String(IDENTITY_BODY.length));
+    const body = await drain(outcome.body!);
+    assert.ok(body.equals(IDENTITY_BODY), "identity bytes must be preserved verbatim");
+    assert.equal(diags.length, 1, "diagnostics emit exactly once");
+    assert.equal(diags[0].reason, "complete");
+    assert.equal(diags[0].totalBytes, IDENTITY_BODY.length);
+  } finally {
+    await s.close();
+  }
+});
+
 test("an identity record still fails closed if the host returns gzip anyway", async () => {
   // The negotiation fix does not weaken the pinned-encoding contract.
   const s = await startServer((_u, _req, res) => {
