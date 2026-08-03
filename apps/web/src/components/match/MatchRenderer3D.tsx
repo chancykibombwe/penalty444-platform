@@ -232,6 +232,16 @@ type MatchRenderer3DProps = {
    * receives raw payloads; callback errors never break the renderer.
    */
   onMessageSent?: (summary: SentSummary) => void;
+  /**
+   * B6D3B PR-2 — decorative-underlay isolation. When true, the iframe and its
+   * wrapper cannot capture pointer input or keyboard focus and are hidden from the
+   * accessibility tree, while still receiving React `postMessage` traffic
+   * normally. Defaults to false, which preserves every existing behaviour exactly
+   * (transport, URL selection, env gates, ready timeout, message validation,
+   * origin checks, FIFO/latest delivery, instance reset, acknowledgement and
+   * failure handling are all untouched).
+   */
+  presentationOnly?: boolean;
 };
 
 export default function MatchRenderer3D({
@@ -244,6 +254,7 @@ export default function MatchRenderer3D({
   onAnimationComplete,
   onError,
   onMessageSent,
+  presentationOnly = false,
 }: MatchRenderer3DProps) {
   // Public, build-time env flags only. No secrets, no tokens.
   const enabled = process.env.NEXT_PUBLIC_UNITY_MATCH_ENABLED === "true";
@@ -528,17 +539,28 @@ export default function MatchRenderer3D({
   // loading | ready → passive iframe shell. A non-interactive "loading" overlay
   // shows until Unity emits `ready`. NO sockets, NO auth, NO match-control input.
   return (
-    <div className="relative h-full w-full">
+    <div
+      className={`relative h-full w-full${presentationOnly ? " pointer-events-none" : ""}`}
+      data-presentation-only={presentationOnly ? "true" : undefined}
+      aria-hidden={presentationOnly ? "true" : undefined}
+      // `inert` removes the subtree from focus/AT where the browser supports it.
+      {...(presentationOnly ? { inert: true } : {})}
+    >
       <iframe
         ref={iframeRef}
         src={buildUrl}
         onLoad={handleIframeLoad}
         onError={handleIframeError}
         title="Penalty444 3D match renderer"
-        className="h-full w-full rounded-2xl border border-arena-border bg-black"
+        className={`h-full w-full rounded-2xl border border-arena-border bg-black${
+          presentationOnly ? " pointer-events-none" : ""
+        }`}
         allow="autoplay; fullscreen"
+        {...(presentationOnly
+          ? { tabIndex: -1, "aria-hidden": true as const, inert: true }
+          : {})}
       />
-      {status === "loading" ? (
+      {status === "loading" && !presentationOnly ? (
         <div
           className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-black/55"
           role="status"
