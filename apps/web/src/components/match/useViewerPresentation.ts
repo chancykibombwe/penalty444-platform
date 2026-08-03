@@ -5,20 +5,23 @@
  * id-bearing React inputs and emits SANITIZED presentation data only.
  *
  * The single most important job here is the PLAYER-FACING MESSAGE PROJECTION.
- * The existing shadow `match_state_sync` envelopes carry a score map keyed by RAW
- * player ids. Those envelopes are fine for the identity-neutral shadow path, but
- * must never reach a player-facing surface. This module therefore clones each
- * state sync into a NEW envelope whose scores are keyed by deterministic visual
- * sides:
+ * Existing shadow `match_state_sync` envelopes carry a score map keyed by RAW
+ * player ids. Those envelopes are valid for the identity-neutral shadow path, but
+ * must never reach a player-facing surface. This module therefore clones every
+ * state sync into a NEW envelope and derives its viewer-relative mapping from
+ * that envelope's OWN authoritative `payload.scores` snapshot:
  *
- *     scores = { LEFT: identity.self.score, RIGHT: identity.opponent.score }
+ *     scores = { LEFT: envelope-relative self, RIGHT: envelope-relative opponent }
  *
- * Everything else is copied verbatim from the authoritative envelope. Nothing is
- * computed: no score arithmetic, no winner, no result, no round, no phase and no
- * sudden-death progression is ever derived here. `round_result` envelopes contain
- * no player ids, so they are copied unchanged.
+ * Live React scores are never substituted into queued envelopes; the outer viewer
+ * identity is used only to decide whether the host may activate. Protocol metadata
+ * and all non-score state fields are copied verbatim, and the clone is revalidated.
  *
- * Protocol v1 and Unity C# are UNCHANGED: the projected envelope keeps the exact
+ * A `round_result` is also cloned field-by-field. Its optional server-authored
+ * `statusMessage` is preserved only when it contains neither raw participant id;
+ * otherwise that field is omitted entirely. No replacement text is invented.
+ *
+ * Protocol v1 and Unity C# are UNCHANGED: every projected envelope keeps the exact
  * top-level shape (`type`, `protocolVersion`, `matchInstanceId`, `sequence`,
  * `event`, `emittedAt`, `payload`) and is re-validated by the existing
  * `validateEnvelope` before it is emitted.
