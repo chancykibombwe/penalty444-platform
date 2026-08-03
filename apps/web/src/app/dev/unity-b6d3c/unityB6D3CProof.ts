@@ -128,9 +128,12 @@ export type SafeFailureCategory =
   | "unexpected_outcome"
   | "unexpected_rejection"
   | "missing_acknowledgement"
+  | "missing_send_confirmation"
   | "iframe_invariant_violation"
   | "sanitization_violation"
   | "network_violation"
+  | "network_observation_unavailable"
+  | "gate_denied"
   | "harness_error";
 
 export const SAFE_FAILURE_CATEGORIES: ReadonlyArray<SafeFailureCategory> = Object.freeze([
@@ -139,9 +142,12 @@ export const SAFE_FAILURE_CATEGORIES: ReadonlyArray<SafeFailureCategory> = Objec
   "unexpected_outcome",
   "unexpected_rejection",
   "missing_acknowledgement",
+  "missing_send_confirmation",
   "iframe_invariant_violation",
   "sanitization_violation",
   "network_violation",
+  "network_observation_unavailable",
+  "gate_denied",
   "harness_error",
 ]);
 
@@ -161,6 +167,13 @@ export type ProofExpectation =
       readonly result?: "GOAL" | "SAVE" | "DRAW";
       readonly phase?: "NORMAL" | "SUDDEN_DEATH";
       readonly scoreValues?: ReadonlyArray<number>;
+      /**
+       * B6D3C-only expectation. The MERGED acknowledgement normalizer already
+       * preserves `suddenDeathRound` for a SUDDEN_DEATH state sync; this field
+       * simply asserts the exact value reached Unity and came back unchanged.
+       * The normalizer itself is NOT modified.
+       */
+      readonly suddenDeathRound?: number;
     }
   | { readonly kind: "rejected"; readonly reason: RejectReason; readonly sequence?: number }
   | { readonly kind: "ready" }
@@ -430,6 +443,44 @@ export function projectedFeedIsSanitized(feed: ProjectedProofFeed): boolean {
 
 export type ProofStatus = "pass" | "fail" | "pending";
 
+/**
+ * Fixed-field observation of the fail-open contract. Booleans only — no free
+ * text, no identity, no DOM content. Every field must be true for gate I.
+ */
+export interface FallbackObservation {
+  readonly hostTerminal: boolean;
+  readonly iframeCountZero: boolean;
+  readonly unityUnderlayPresent: boolean;
+  readonly proofUnderlayPresent: boolean;
+  readonly underlayVisible: boolean;
+  readonly unitySlotAbsent: boolean;
+  readonly noUnavailableCard: boolean;
+  readonly stableNoRemount: boolean;
+  readonly instanceStillTerminal: boolean;
+}
+
+export const FALLBACK_OBSERVATION_KEYS: ReadonlyArray<keyof FallbackObservation> = Object.freeze([
+  "hostTerminal",
+  "iframeCountZero",
+  "unityUnderlayPresent",
+  "proofUnderlayPresent",
+  "underlayVisible",
+  "unitySlotAbsent",
+  "noUnavailableCard",
+  "stableNoRemount",
+  "instanceStillTerminal",
+]);
+
+/**
+ * Fail-open passes ONLY when every field holds. Host state and iframe count
+ * alone are deliberately insufficient: a terminal host that had unmounted the
+ * React underlay, left the renderer's "unavailable" card behind, or silently
+ * remounted an iframe would still be a broken fallback.
+ */
+export function fallbackObservationPassed(observation: FallbackObservation): boolean {
+  return FALLBACK_OBSERVATION_KEYS.every((key) => observation[key] === true);
+}
+
 /** A single sanitized evidence row. No raw JSON, no identity, no free text. */
 export interface ProofEvidenceRow {
   readonly step: number;
@@ -442,11 +493,13 @@ export interface ProofEvidenceRow {
   readonly result: string | null;
   readonly phase: string | null;
   readonly scoreValues: ReadonlyArray<number> | null;
+  readonly suddenDeathRound: number | null;
   readonly playerCount: number | null;
   readonly appliedEvent: string | null;
   readonly rejectionReason: RejectReason | null;
   readonly hostState: string | null;
   readonly iframeCount: number | null;
+  readonly fallback: FallbackObservation | null;
   readonly status: ProofStatus;
   readonly failureCategory: SafeFailureCategory;
 }
@@ -459,11 +512,13 @@ const EMPTY_ROW = {
   result: null,
   phase: null,
   scoreValues: null,
+  suddenDeathRound: null,
   playerCount: null,
   appliedEvent: null,
   rejectionReason: null,
   hostState: null,
   iframeCount: null,
+  fallback: null,
 } as const;
 
 /** Build a sanitized evidence row from a NORMALIZED acknowledgement. */
@@ -492,6 +547,7 @@ export function buildEvidenceRowFromAck(
       result: ack.result ?? null,
       phase: ack.phase ?? null,
       scoreValues: ack.scoreValues ? [...ack.scoreValues] : null,
+      suddenDeathRound: ack.suddenDeathRound ?? null,
       playerCount: ack.playerCount ?? null,
     };
   }
@@ -512,6 +568,7 @@ export function buildHarnessEvidenceRow(args: {
   status: ProofStatus;
   hostState?: string | null;
   iframeCount?: number | null;
+  fallback?: FallbackObservation | null;
   failureCategory?: SafeFailureCategory;
 }): ProofEvidenceRow {
   return {
@@ -521,16 +578,46 @@ export function buildHarnessEvidenceRow(args: {
     direction: "harness",
     hostState: args.hostState ?? null,
     iframeCount: args.iframeCount ?? null,
+    fallback: args.fallback ?? null,
     status: args.status,
     failureCategory: args.failureCategory ?? "none",
   };
 }
 
-/** Build a sanitized evidence row for an outbound (React → Unity) dispatch. */
+/**
+ * Build the gate-I evidence row from a complete fail-open observation. The row
+ * passes only when EVERY boolean holds — see `fallbackObservationPassed`.
+ */
+export function buildFallbackEvidenceRow(
+  step: ProofStep,
+  observation: FallbackObservation,
+  hostState: string | null,
+  iframeCount: number | null,
+): ProofEvidenceRow {
+  const passed = fallbackObservationPassed(observation);
+  return buildHarnessEvidenceRow({
+    step,
+    status: passed ? "pass" : "fail",
+    hostState,
+    iframeCount,
+    fallback: observation,
+    failureCategory: passed ? "none" : "unexpected_outcome",
+  });
+}
+
+/**
+ * Build a sanitized evidence row for an outbound (React → Unity) dispatch.
+ *
+ * The default is `pass` because an outbound row is only ever RETAINED after the
+ * dispatch has been confirmed — by the merged host's `onMessageSent` summary for
+ * a host dispatch, and by the expected acknowledgement in both channels. A
+ * `pending` outbound row must never reach the final evidence collection; the
+ * harness may show a transient pending indicator in the UI, but it is not stored.
+ */
 export function buildOutboundEvidenceRow(
   step: ProofStep,
   envelope: PresentationEnvelope,
-  status: ProofStatus = "pending",
+  status: ProofStatus = "pass",
 ): ProofEvidenceRow {
   const scoreValues =
     envelope.event === "match_state_sync"
@@ -551,10 +638,190 @@ export function buildOutboundEvidenceRow(
     result: envelope.event === "round_result" ? envelope.payload.result : null,
     phase: envelope.event === "match_state_sync" ? envelope.payload.phase : null,
     scoreValues,
+    suddenDeathRound:
+      envelope.event === "match_state_sync" ? envelope.payload.suddenDeathRound ?? null : null,
     playerCount: scoreValues ? scoreValues.length : null,
     status,
     failureCategory: "none",
   };
+}
+
+// ── Send confirmation (the merged host's `onMessageSent` summary) ─────────────
+
+/**
+ * The sanitized subset of the merged `SentSummary` this harness retains. The
+ * message id is deliberately DROPPED: instance + sequence + event identifies the
+ * dispatch uniquely in this deterministic plan and carries strictly less data.
+ */
+export interface SentSummarySnapshot {
+  readonly event: string;
+  readonly matchInstanceId: string | null;
+  readonly sequence: number | null;
+}
+
+/** Normalize a raw `SentSummary` into the bounded snapshot. Never throws. */
+export function normalizeSentSummary(raw: unknown): SentSummarySnapshot | null {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  const event = record.event;
+  if (typeof event !== "string" || event.length === 0) return null;
+  const matchInstanceId = record.matchInstanceId;
+  const sequence = record.sequence;
+  return {
+    event,
+    matchInstanceId: typeof matchInstanceId === "string" ? matchInstanceId : null,
+    sequence: typeof sequence === "number" && Number.isSafeInteger(sequence) ? sequence : null,
+  };
+}
+
+/** Does a send confirmation correspond to exactly this envelope? */
+export function sentSummaryMatches(
+  envelope: PresentationEnvelope,
+  snapshot: SentSummarySnapshot,
+): boolean {
+  return (
+    snapshot.event === envelope.event &&
+    snapshot.matchInstanceId === envelope.matchInstanceId &&
+    snapshot.sequence === envelope.sequence
+  );
+}
+
+// ── Gate C: per-envelope score snapshots, verified at RUNTIME ─────────────────
+
+export interface SnapshotExpectation {
+  readonly matchInstanceId: string;
+  readonly sequence: number;
+  readonly scoreValues: ReadonlyArray<number>;
+}
+
+/**
+ * The two authoritative snapshots gate C must observe COMING BACK FROM UNITY.
+ * The bootstrap must still report 0/0 even though a later envelope (and the
+ * live outer React scores) have already moved on — this is the exact defect
+ * found during PR-2 review, so it is re-checked against the compiled consumer.
+ */
+export const GATE_C_SNAPSHOTS: ReadonlyArray<SnapshotExpectation> = Object.freeze([
+  Object.freeze({
+    matchInstanceId: PROOF_INSTANCE_A,
+    sequence: 1,
+    scoreValues: Object.freeze([0, 0]) as ReadonlyArray<number>,
+  }),
+  Object.freeze({
+    matchInstanceId: PROOF_INSTANCE_A,
+    sequence: 3,
+    scoreValues: Object.freeze([0, 1]) as ReadonlyArray<number>,
+  }),
+]);
+
+function sameMultiset(a: ReadonlyArray<number>, b: ReadonlyArray<number>): boolean {
+  if (a.length !== b.length) return false;
+  const left = [...a].sort((x, y) => x - y);
+  const right = [...b].sort((x, y) => x - y);
+  return left.every((value, index) => value === right[index]);
+}
+
+/**
+ * Locate the applied acknowledgement for one snapshot. Requires an applied ack
+ * for `match_state_sync` at the exact instance and sequence.
+ */
+export function findSnapshotAck(
+  acks: ReadonlyArray<NormalizedUnityAck>,
+  snapshot: SnapshotExpectation,
+): NormalizedUnityAck | null {
+  for (const ack of acks) {
+    if (ack.event !== "presentation_applied") continue;
+    if (ack.appliedEvent !== "match_state_sync") continue;
+    if (ack.matchInstanceId !== snapshot.matchInstanceId) continue;
+    if (ack.sequence !== snapshot.sequence) continue;
+    return ack;
+  }
+  return null;
+}
+
+export interface SnapshotCheck {
+  readonly matchInstanceId: string;
+  readonly sequence: number;
+  readonly found: boolean;
+  readonly scoresMatch: boolean;
+}
+
+export interface PerEnvelopeSnapshotResult {
+  readonly checks: ReadonlyArray<SnapshotCheck>;
+  readonly passed: boolean;
+}
+
+/**
+ * Gate C is proven from the NORMALIZED ACKNOWLEDGEMENTS Unity actually returned,
+ * never from host visibility. Score values are compared as multisets because the
+ * compiled consumer makes no ordering guarantee.
+ */
+export function verifyPerEnvelopeSnapshots(
+  acks: ReadonlyArray<NormalizedUnityAck>,
+  snapshots: ReadonlyArray<SnapshotExpectation> = GATE_C_SNAPSHOTS,
+): PerEnvelopeSnapshotResult {
+  const checks = snapshots.map((snapshot) => {
+    const ack = findSnapshotAck(acks, snapshot);
+    if (ack === null || ack.event !== "presentation_applied") {
+      return {
+        matchInstanceId: snapshot.matchInstanceId,
+        sequence: snapshot.sequence,
+        found: false,
+        scoresMatch: false,
+      };
+    }
+    return {
+      matchInstanceId: snapshot.matchInstanceId,
+      sequence: snapshot.sequence,
+      found: true,
+      scoresMatch: sameMultiset(ack.scoreValues ?? [], snapshot.scoreValues),
+    };
+  });
+  return { checks, passed: checks.every((c) => c.found && c.scoresMatch) };
+}
+
+/**
+ * Build one evidence row per gate-C snapshot, derived from the acknowledgement
+ * itself so the two distinct scoreboards are visibly recorded in the table.
+ */
+export function buildSnapshotEvidenceRows(
+  step: ProofStep,
+  acks: ReadonlyArray<NormalizedUnityAck>,
+  snapshots: ReadonlyArray<SnapshotExpectation> = GATE_C_SNAPSHOTS,
+): ReadonlyArray<ProofEvidenceRow> {
+  return snapshots.map((snapshot) => {
+    const ack = findSnapshotAck(acks, snapshot);
+    if (ack === null || ack.event !== "presentation_applied") {
+      return buildHarnessEvidenceRow({
+        step,
+        status: "fail",
+        failureCategory: "missing_acknowledgement",
+      });
+    }
+    const scoresMatch = sameMultiset(ack.scoreValues ?? [], snapshot.scoreValues);
+    return buildEvidenceRowFromAck(
+      step,
+      ack,
+      scoresMatch ? "pass" : "fail",
+      scoresMatch ? "none" : "unexpected_outcome",
+    );
+  });
+}
+
+// ── Network observation window ────────────────────────────────────────────────
+
+/**
+ * Only entries recorded AFTER the operator started the run may be observed. The
+ * PerformanceObserver is created with `buffered: true` so nothing is missed once
+ * the run begins, but buffering also replays pre-run Preview traffic (the page's
+ * own chunks, an earlier navigation) which is not part of the proof.
+ */
+export function entryIsInsideProofWindow(
+  entryStartTime: unknown,
+  proofStartTime: number | null,
+): boolean {
+  if (proofStartTime === null) return false;
+  if (typeof entryStartTime !== "number" || !Number.isFinite(entryStartTime)) return false;
+  return entryStartTime >= proofStartTime;
 }
 
 // ── Acknowledgement validation ────────────────────────────────────────────────
@@ -586,6 +853,10 @@ export function acknowledgementMatches(step: ProofStep, ack: NormalizedUnityAck)
       const want = [...expect.scoreValues].sort((a, b) => a - b);
       if (got.length !== want.length) return false;
       for (let i = 0; i < got.length; i++) if (got[i] !== want[i]) return false;
+    }
+    if (expect.suddenDeathRound !== undefined) {
+      // The exact value must have survived React → Unity → React unchanged.
+      if (ack.suddenDeathRound !== expect.suddenDeathRound) return false;
     }
     return true;
   }
@@ -702,6 +973,8 @@ export interface ProofReport {
   readonly rows: ReadonlyArray<ProofEvidenceRow>;
   readonly maxIframeCount: number;
   readonly networkCategories: ReadonlyArray<NetworkCategory>;
+  /** True when the harness itself faulted. Always forces `overall: "fail"`. */
+  readonly harnessFault: boolean;
   readonly overall: ProofStatus;
 }
 
@@ -709,23 +982,38 @@ export const PROOF_BASELINE_SHA = "231264be0946941933face8c0d4442adc952d414" as 
 export const PROOF_ROUTE = "/dev/unity-b6d3c" as const;
 
 /**
- * Build the final sanitized report. Fails the proof on any gate failure, on a
- * violated one-iframe invariant, or on a prohibited network category, and throws
- * (rather than emitting) if anything prohibited would be included.
+ * Build the final sanitized report.
+ *
+ * The run FAILS on any gate failure, a violated one-iframe invariant, a
+ * prohibited network category, or a harness fault. A harness fault always wins:
+ * an unexpected exception means the plan did not complete as written, so the
+ * report can never be reported as a pass no matter what evidence was collected.
+ *
+ * The run can never PASS while any row is still `pending`: an unresolved
+ * dispatch is not evidence of anything, so it degrades the run to `pending`.
+ *
+ * Throws (rather than emitting) if anything prohibited would be included.
  */
 export function buildProofReport(args: {
   rows: ReadonlyArray<ProofEvidenceRow>;
   maxIframeCount: number;
   networkCategories: ReadonlyArray<NetworkCategory>;
+  harnessFault?: boolean;
 }): ProofReport {
   const gates = PROOF_GATE_IDS.map((g) => classifyGate(g, args.rows));
   const anyFail = gates.some((g) => g.status === "fail");
-  const anyPending = gates.some((g) => g.status === "pending");
+  const anyPendingGate = gates.some((g) => g.status === "pending");
+  const anyPendingRow = args.rows.some((r) => r.status === "pending");
   const iframeViolation = args.maxIframeCount > 1;
   const networkViolation = args.networkCategories.includes("prohibited");
+  const harnessFault = args.harnessFault === true;
 
   const overall: ProofStatus =
-    anyFail || iframeViolation || networkViolation ? "fail" : anyPending ? "pending" : "pass";
+    anyFail || iframeViolation || networkViolation || harnessFault
+      ? "fail"
+      : anyPendingGate || anyPendingRow
+        ? "pending"
+        : "pass";
 
   const report: ProofReport = {
     baseline: PROOF_BASELINE_SHA,
@@ -734,6 +1022,7 @@ export function buildProofReport(args: {
     rows: args.rows,
     maxIframeCount: args.maxIframeCount,
     networkCategories: args.networkCategories,
+    harnessFault,
     overall,
   };
   assertNoProhibitedValues(report);
@@ -807,10 +1096,13 @@ export const PROOF_STEPS: ReadonlyArray<ProofStep> = Object.freeze([
   {
     step: 5,
     gate: "C_PER_ENVELOPE_SCORES",
-    label: "queued snapshots retain their own values (0/0 then 1/0)",
+    label: "acknowledged snapshots retain their own values (seq 1 = 0/0, seq 3 = 0/1)",
     channel: "harness",
     action: "observe",
     timeoutLabel: "short",
+    // Gate C is proven from the ACKNOWLEDGEMENTS Unity returned for sequences 1
+    // and 3 (see GATE_C_SNAPSHOTS), not from host visibility. The host-state
+    // expectation below is an ADDITIONAL requirement, never a substitute.
     expect: { kind: "host-state", hostState: "UNITY_READY_VISIBLE", iframeCount: 1 },
   },
   {
@@ -852,7 +1144,7 @@ export const PROOF_STEPS: ReadonlyArray<ProofStep> = Object.freeze([
   {
     step: 10,
     gate: "G_SUDDEN_DEATH",
-    label: "SUDDEN_DEATH applied with supplied suddenDeathRound",
+    label: "SUDDEN_DEATH applied with suddenDeathRound exactly 1",
     channel: "host",
     action: "send",
     timeoutLabel: "standard",
@@ -863,6 +1155,7 @@ export const PROOF_STEPS: ReadonlyArray<ProofStep> = Object.freeze([
       matchInstanceId: PROOF_INSTANCE_A,
       phase: "SUDDEN_DEATH",
       scoreValues: [3, 3],
+      suddenDeathRound: 1,
     },
   },
   {
@@ -918,7 +1211,7 @@ export const PROOF_STEPS: ReadonlyArray<ProofStep> = Object.freeze([
   {
     step: 15,
     gate: "I_FAIL_OPEN",
-    label: "native iframe error → terminal fallback, renderer removed",
+    label: "native iframe error → terminal fallback, React underlay exposed",
     channel: "harness",
     action: "induce-error",
     timeoutLabel: "standard",

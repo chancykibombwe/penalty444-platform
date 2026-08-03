@@ -1,6 +1,9 @@
 # B6D3C — Protected-Preview MOCK Proof Harness
 
 Status: **harness only — the proof has NOT been executed.**
+This head is **not proof-executable as it stands**: the route is a 404 everywhere,
+no environment variable is configured, and even on a correctly-configured Preview
+the proof does not start until an operator presses Run (§5.2).
 Baseline: `231264be0946941933face8c0d4442adc952d414` (master, after PR #220).
 Route: `/dev/unity-b6d3c` (404 on every environment today).
 
@@ -51,7 +54,7 @@ separate, separately-authorized step. Production can never be that environment
 | `apps/web/src/app/dev/unity-b6d3c/page.tsx` | new | server component; both gates; renders the client |
 | `apps/web/src/app/dev/unity-b6d3c/UnityB6D3CProofClient.tsx` | new | the harness: banner, host, evidence, report |
 | `apps/web/src/app/dev/unity-b6d3c/unityB6D3CProof.ts` | new | pure proof plan, projection, sanitization, report |
-| `apps/web/src/app/dev/unity-b6d3c/unityB6D3CProof.test.ts` | new | 52 tests (route, plan, sanitization, client guards) |
+| `apps/web/src/app/dev/unity-b6d3c/unityB6D3CProof.test.ts` | new | 85 tests (route, plan, sanitization, client guards, correction regressions) |
 | `docs/unity-b6d3c-protected-preview-proof.md` | new | this document |
 | `apps/web/package.json` | modified | test registration only — no dependency change |
 
@@ -79,26 +82,85 @@ prerendered.
 The gate is never a `NEXT_PUBLIC_*` flag. Public flags are inlined into the client
 bundle and are therefore a build-time convenience, not a boundary.
 
-## 5. Client preconditions
+## 5. Client preconditions and the operator-initiated contract
 
-The harness renders its banner and precondition panel unconditionally, but will
-not run — and issues **no network request at all** — until every one of these
-holds:
+### 5.1 Public preconditions
+
+The harness renders its banner and precondition panel unconditionally. The proof
+cannot start until every one of these holds:
 
 - `NEXT_PUBLIC_UNITY_MATCH_ENABLED === "true"`
 - `NEXT_PUBLIC_UNITY_LIVE_SHADOW_ENABLED === "true"`
 - `NEXT_PUBLIC_UNITY_B6D2_SHADOW_ENABLED === "true"`
 - `NEXT_PUBLIC_UNITY_PLAYER_FACING_ENABLED === "true"`
 - `NEXT_PUBLIC_UNITY_BUILD_URL === "/unity-arena/player"` (the PR-1 protected entry)
-- the merged cohort gate resolves to `authorized`
 
 These are exactly the four public flags `MatchRoomPanel` composes, plus the
 requirement that the build URL is the protected entry point rather than any other
-origin. `useUnityPlayerFacingGate({ requested: preconditionsMet })` performs no
-Supabase read and no fetch while `requested` is false.
+origin.
 
 The precondition panel renders **booleans and the gate state only** — never a
 flag value, URL, origin, token or identity.
+
+### 5.2 The exact operator-initiated contract
+
+The contract is **not** the vaguer "nothing runs on mount". It is:
+
+> **Neither a cohort request nor the Unity renderer begins before the operator
+> presses Run.**
+
+Three pieces of explicit state enforce it:
+
+| State | Gates | Initial |
+| --- | --- | --- |
+| `operatorRequested` | the COHORT REQUESTS | `false` |
+| `proofActivated` | the HOST (and therefore the iframe) | `false` |
+| `proofRunEpoch` | the host's React `key` | `0` |
+
+The merged hook is called as
+`useUnityPlayerFacingGate({ requested: preconditionsMet && operatorRequested })`,
+so while `operatorRequested` is false it performs no Supabase read and issues no
+fetch. The host is passed
+
+```
+playerFacingAuthorized = operatorRequested && proofActivated && gate === "authorized"
+```
+
+so a gate that merely *became* `authorized` mounts nothing — activation
+additionally requires the operator's press and the explicit activation step. On
+mount the surface is the React underlay and zero Unity iframes.
+
+### 5.3 Run sequence
+
+1. verify the public preconditions (§5.1) — nothing happens if they fail;
+2. clear every prior ref and state value;
+3. start the network observation window (§11.1), before any cohort request;
+4. set `operatorRequested = true`, which lets the merged gate run;
+5. wait, bounded, for the gate to resolve;
+   - `denied` or unresolved ⇒ record a bounded `gate_denied` / `timeout` row,
+     stay React-only, and **do not start the proof**;
+6. record the ready-event baseline **before** the host may activate;
+7. set `proofActivated = true`;
+8. require a **fresh** ready event, strictly after that baseline, before step 1
+   can pass — a stale readiness signal cannot satisfy it;
+9. run the deterministic 16-step sequence.
+
+### 5.4 Local reset
+
+A second control, **Reset local proof state**, is disabled while a run is active.
+It deactivates the host, drops `operatorRequested`, clears the gate/run state,
+returns to instance A and its identity, clears the host feed, the acknowledgement
+and send-confirmation refs, the rows and report, the ready count, the iframe
+maximum, the network categories and observation timestamp, the harness-fault flag
+and the one-run guard, and increments `proofRunEpoch`.
+
+`UnityPresentationHost` carries `key={proofRunEpoch}`, so the reset **remounts**
+it. Without that, the merged host's per-instance terminal failure from step 15
+would survive into the next local run and every subsequent run would start in
+`UNITY_FAILED_REACT_FALLBACK`.
+
+Fallback induction stays automatic in step 15; there is no manual fallback
+control.
 
 ## 6. Mock data model
 
@@ -144,24 +206,33 @@ consumer's own gate would go unproven. A unit test enforces that every
 | 2 | A | host | bootstrap `match_state_sync` seq 1, scores 0/0, round 1, NORMAL |
 | 3 | B | host | `round_result` seq 2 GOAL applies and carries **no** score |
 | 4 | B | host | the authoritative sync seq 3 carries the score change |
-| 5 | C | harness | host is `UNITY_READY_VISIBLE` with exactly one iframe |
+| 5 | C | harness | the ACKNOWLEDGEMENTS for seq 1 and seq 3 still report 0/0 and 0/1 — plus `UNITY_READY_VISIBLE` and exactly one iframe |
 | 6 | D | direct | duplicate sequence 3 → `stale_or_duplicate` |
 | 7 | D | direct | stale sequence 2 → `stale_or_duplicate` |
 | 8 | E | harness | a foreign-instance envelope never survives the merged adapter |
 | 9 | E | direct | the compiled consumer rejects it directly → `foreign_instance` |
-| 10 | G | host | seq 4 SUDDEN_DEATH with the supplied `suddenDeathRound` |
+| 10 | G | host | seq 4 SUDDEN_DEATH, scores 3/3, `suddenDeathRound` exactly 1 |
 | 11 | F | host | transition to `B6D3C01:2` accepted at sequence exactly 1 |
 | 12 | F | direct | the superseded instance is still rejected → `foreign_instance` |
 | 13 | H | harness | same-origin reload of the one iframe → fresh `ready` |
 | 14 | H | host | post-reload complete bootstrap at sequence **5** (> 1) is accepted |
-| 15 | I | harness | a native iframe `error` → `UNITY_FAILED_REACT_FALLBACK`, 0 iframes |
+| 15 | I | harness | a native iframe `error` → the COMPLETE fail-open contract (§10.1) |
 | 16 | J | harness | no synthetic id in any projection, evidence row or report |
 
-Gate C (per-envelope scores) is proven by steps 2 and 4 together: the outer live
-scores are deliberately set ahead of the queued envelopes, yet the bootstrap must
-still acknowledge `0/0` and the later sync `1/0`. This is the exact defect that
-was found and fixed during PR-2 review, so the proof re-checks it against the
-compiled consumer rather than only in unit tests.
+**Gate C is proven from the acknowledgements, never from visibility.** Step 5
+locates the two normalized applied acknowledgements for instance `B6D3C01:1`
+sequence 1 and sequence 3, requires `appliedEvent = match_state_sync` and the
+exact instance and sequence, and compares the numeric score values as multisets
+against `[0,0]` and `[0,1]`. The outer live scores are deliberately set ahead of
+both queued envelopes, so a host that substituted them would report `1/0` for the
+bootstrap and fail. This is the exact defect found and fixed during PR-2 review,
+re-checked here against the compiled consumer.
+
+Step 5 emits **two acknowledgement-derived evidence rows** — one per snapshot —
+so both distinct scoreboards are visibly recorded in the table, plus a harness row
+for the host observation. `UNITY_READY_VISIBLE` and exactly one iframe are
+ADDITIONAL requirements; gate C passes only when the score conditions **and** the
+host conditions all pass.
 
 The plan is immutable (`Object.freeze`), contiguously numbered, and contains no
 clock or randomness — `buildRawHostInputs` returns byte-identical output on every
@@ -186,6 +257,14 @@ Acknowledgement score values are compared as a **multiset** (both sides sorted),
 because the consumer makes no ordering guarantee. A genuinely wrong scoreboard
 still fails; a unit test covers exactly that.
 
+`suddenDeathRound` is checked too. Step 10's expectation carries the exact value
+`1`, and a normalized acknowledgement satisfies it only when it contains that
+value — a different value, or its absence, fails. The merged acknowledgement
+normalizer is NOT modified: it already preserves `suddenDeathRound` for a
+SUDDEN_DEATH state sync, and only the B6D3C-side expectation and evidence row are
+extended. The value is retained in sanitized evidence and rendered as a bounded
+numeric `sdRound` column.
+
 ## 10. Isolation invariants
 
 Enforced at runtime by the client:
@@ -204,13 +283,64 @@ Enforced at runtime by the client:
   `window.location.origin` — never `"*"`.
 - **Bounded timeouts.** `short` 1.5 s, `standard` 6 s, `load` 30 s, polled at
   50 ms against a `Date.now()` deadline. No interval, no unbounded wait.
-- **Operator-initiated.** Nothing runs on mount; a single run control starts the
-  run, and a guard prevents a second run.
+- **Operator-initiated.** Neither a cohort request nor the Unity renderer begins
+  before the operator presses Run (§5.2). A guard prevents a second run without a
+  reset.
 - **No harness network.** The client contains no `fetch`, `XMLHttpRequest`,
   `WebSocket` or `EventSource`. Every request during the proof is issued by the
   merged gate or by the iframe itself.
-- **One control.** The harness renders exactly one `<button>` — the run control.
-  There is no pick, room-join, rematch, matchmaking, stake or wallet control.
+- **Two controls.** The harness renders exactly two `<button>` elements — Run and
+  Reset local proof state. There is no pick, room-join, rematch, matchmaking,
+  stake, wallet or manual-fallback control.
+
+### 10.1 The complete fail-open contract
+
+Step 15 dispatches a native `error` event on the real proof iframe and then
+requires **all nine** of these fixed booleans. Host state and iframe count alone
+are deliberately insufficient — a terminal host that had unmounted the React
+underlay, left the renderer's "unavailable" card behind, or silently remounted an
+iframe would still be a broken fallback:
+
+| Field | Requirement |
+| --- | --- |
+| `hostTerminal` | host state is `UNITY_FAILED_REACT_FALLBACK` |
+| `iframeCountZero` | zero Unity iframes inside the harness container |
+| `unityUnderlayPresent` | `[data-unity-underlay]` is still in the DOM |
+| `proofUnderlayPresent` | `[data-b6d3c-underlay]` is still in the DOM |
+| `underlayVisible` | the underlay carries `opacity-100` and not `opacity-0` |
+| `unitySlotAbsent` | `[data-unity-slot]` is gone |
+| `noUnavailableCard` | no "3D preview unavailable" renderer card exists |
+| `stableNoRemount` | nothing remounts during a bounded stability window |
+| `instanceStillTerminal` | the same instance is still terminal at the end of it |
+
+They are booleans only — no free text, no DOM content, no identity — and they are
+retained in the evidence row's `fallback` field and rendered as a compact bounded
+column.
+
+### 10.2 Evidence-row lifecycle
+
+**No successful report retains an unresolved outbound `pending` row.**
+
+For a HOST dispatch the harness records the acknowledgement and send-confirmation
+starting indices, adds the projected message to the host FIFO, waits for the
+matching sanitized `onMessageSent` summary from the MERGED host, then waits for
+the matching normalized acknowledgement. Only after **both** succeed are the
+outbound row and the inbound acknowledgement row retained, both as `pass`. A
+timeout or mismatch instead adds a bounded `missing_send_confirmation`,
+`missing_acknowledgement` or `unexpected_outcome` failure row.
+
+The `onMessageSent` summary is reduced to `{event, matchInstanceId, sequence}` —
+the message id is deliberately dropped, since instance + sequence + event already
+identifies the dispatch uniquely in this deterministic plan and carries strictly
+less data.
+
+For a DIRECT negative dispatch the envelope is posted to the exact iframe at the
+exact origin and the outbound and inbound rows are retained only after the
+expected rejection arrives; otherwise a bounded failure row is added.
+
+A transient pending indicator may appear in the UI, but it is separate state: no
+`pending` row ever enters `rowsRef` or the report. `buildProofReport` additionally
+refuses to report `pass` while any row is `pending`.
 
 ## 11. Sanitization
 
@@ -241,6 +371,35 @@ are never read, stored or rendered. Anything gameplay-authoritative
 `/wallet`, `/economy`, `/payout`) or from an unexpected origin classifies as
 `prohibited` and fails the run.
 
+### 11.1 The network observation window
+
+Observation is **operator-started**, not mount-started, so pre-run Preview traffic
+is never collected and never counted as isolation. At the operator's press, and
+before any cohort request, the harness clears the category set, records
+`performance.now()` as the observation start, and creates the
+`PerformanceObserver`. `buffered: true` is used so nothing is missed once the run
+begins, but every replayed entry whose `startTime` is earlier than the recorded
+start is discarded. The observer is disconnected after the final report, on reset,
+and on unmount.
+
+Unexpected post-start cross-origin or gameplay traffic still fails the proof.
+
+If `PerformanceObserver` is unavailable or cannot start, the harness records a
+bounded `network_observation_unavailable` failure row and sets the harness-fault
+flag, rather than silently claiming network isolation.
+
+### 11.2 Harness-fault semantics
+
+Any unexpected exception does **both** things, so a fault can never be reduced to
+a UI label on an otherwise-passing report:
+
+1. an explicit bounded `harness_error` failure row is added for the ACTIVE step, and
+2. `harnessFault: true` is passed to `buildProofReport`, which forces
+   `overall: "fail"` regardless of the collected evidence.
+
+A report that would have contained something prohibited is not shown at all, and
+that too sets the harness-fault flag.
+
 ## 12. Known observation limits
 
 Stated plainly so a future report is not over-read:
@@ -265,7 +424,7 @@ Stated plainly so a future report is not over-read:
 
 ## 13. Test coverage
 
-`apps/web/src/app/dev/unity-b6d3c/unityB6D3CProof.test.ts` — 52 tests, run by
+`apps/web/src/app/dev/unity-b6d3c/unityB6D3CProof.test.ts` — 85 tests, run by
 `npm run test:unity-presentation` (and therefore by the existing CI step; no
 workflow change was needed):
 
@@ -286,10 +445,41 @@ workflow change was needed):
 - **Client guards** — merged host and gate reused (no second renderer,
   coordinator, emitter or queue), all five preconditions required, strict
   origin+source listener, explicit target origin, container-scoped DOM,
-  one-iframe invariant, bounded timeouts, operator-initiated, banner text, single
-  control, categories-only retention, and a purity check on the pure module (no
+  one-iframe invariant, bounded timeouts, banner text, exactly two controls,
+  categories-only retention, and a purity check on the pure module (no
   `process.env`, `window`, `document`, `fetch`, `postMessage`, timers, clock or
   React import).
+- **Operator initiation** — the cohort hook requires `operatorRequested`; both
+  initiation flags start `false`; host activation requires operator + activation +
+  `authorized`; the denial check precedes activation; the ready baseline is
+  captured before activation and step 1 needs a strictly-later ready event;
+  preconditions and the one-run guard are checked before anything happens.
+- **Reset** — inert while running, deactivates the host, clears every
+  accumulator, clears the one-run guard, and increments the epoch that re-keys the
+  host.
+- **Evidence lifecycle** — the merged `onMessageSent` is wired and is not a
+  no-op; a host dispatch waits for confirmation *then* acknowledgement and retains
+  rows only afterwards; no `pending` row is ever pushed; outbound `pass` + inbound
+  `pass` classifies a gate as `pass`; a missing confirmation or acknowledgement
+  fails it; a realistic complete 16-step evidence set reaches overall `PASS` with
+  zero pending rows; send summaries normalize to bounded values and match by
+  identity.
+- **Gate C** — the two exact snapshots; passes only on the acknowledged
+  per-envelope scores; fails when the bootstrap was overwritten by the live
+  scores; fails on a missing snapshot; ignores the wrong instance, event kind and
+  rejections; emits one acknowledgement-derived row per snapshot; the client
+  proves it from acknowledgements, not visibility.
+- **`suddenDeathRound`** — step 10 requires exactly 1; positive and negative
+  matcher cases including absence; retained in evidence and displayed.
+- **Fail-open** — the contract cannot pass from host state and iframe count
+  alone: each of the other seven booleans is individually required; the row fails
+  on any false; the client probes every DOM condition.
+- **Harness and network faults** — a harness fault always forces overall failure;
+  a pending row can never appear in a passing report; pre-run entries are filtered
+  by start time; observation is started at the press before the cohort requests
+  and never on mount; the observer is disconnected after completion, on reset and
+  on unmount; an unavailable observer is a bounded failure, not silent success; an
+  exception adds a bounded row AND sets the report flag.
 
 Source assertions are made against **comment-stripped** code, so prose naming a
 forbidden thing cannot masquerade as a violation — nor hide one.
@@ -298,7 +488,7 @@ forbidden thing cannot masquerade as a violation — nor hide one.
 
 | Check | Result |
 | --- | --- |
-| `npm run test:unity-presentation` | 362 passed (310 before + 52 new), 0 failed |
+| `npm run test:unity-presentation` | 395 passed (310 pre-B6D3C + 85 B6D3C), 0 failed |
 | `npm run test:unity-security-delivery` | 170 passed, 0 failed |
 | B6D3B streaming harness tests | 67 passed, 0 failed |
 | `npx tsc --noEmit` (web) | clean |
@@ -331,6 +521,9 @@ Listed for completeness. **None of it is done, requested or authorized here.**
 4. The four public Unity flags and `NEXT_PUBLIC_UNITY_BUILD_URL` set on Preview.
 5. Cohort membership for the operator account and the PR-1 signing secret present.
 6. An operator with browser access to the protected Preview.
+7. That operator pressing **Run mock proof**. Nothing self-starts: with all six
+   above satisfied, the surface still issues no cohort request and mounts no Unity
+   iframe until the press (§5.2).
 
 Every one of those is a separate authorization. Setting any of them on Production
 is prohibited, and would in any case be defeated by the §4 ordering.
@@ -338,8 +531,9 @@ is prohibited, and would in any case be defeated by the §4 ordering.
 ## 17. Reporting rules for a future execution
 
 If the proof is ever run, the report must contain only what the harness already
-retains: gate results, bounded failure categories, sanitized evidence rows, the
-maximum iframe count and request categories.
+retains: gate results, bounded failure categories, sanitized evidence rows (including
+the fixed fail-open booleans and the bounded `suddenDeathRound`), the harness-fault
+flag, the maximum iframe count and request categories.
 
 It must **never** contain: a user password, a Supabase access or refresh token,
 the `p444_unity_cohort` cookie value, `UNITY_COHORT_SIGNING_SECRET`,

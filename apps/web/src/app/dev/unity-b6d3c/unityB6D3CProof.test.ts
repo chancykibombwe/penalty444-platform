@@ -34,10 +34,14 @@ import {
   PROOF_ROUTE,
   PROOF_STEPS,
   REQUIRED_BUILD_URL,
+  FALLBACK_OBSERVATION_KEYS,
+  GATE_C_SNAPSHOTS,
+  SAFE_FAILURE_CATEGORIES,
   SAFE_REJECT_REASONS,
   acknowledgementMatches,
   assertNoProhibitedValues,
   buildEvidenceRowFromAck,
+  buildFallbackEvidenceRow,
   buildHarnessEvidenceRow,
   buildOutboundEvidenceRow,
   buildProofReport,
@@ -45,16 +49,24 @@ import {
   buildRawRoundResult,
   buildRawStateSync,
   buildSanitizedNegativeEnvelope,
+  buildSnapshotEvidenceRows,
   classifyGate,
   classifyNetworkPath,
   classifyNetworkUrl,
   containsProhibitedKey,
   containsProhibitedValue,
+  entryIsInsideProofWindow,
+  fallbackObservationPassed,
+  findSnapshotAck,
   isSafeRejectReason,
   normalizeAcknowledgement,
+  normalizeSentSummary,
   projectProofFeed,
   projectedFeedIsSanitized,
   proofStepOrderIsValid,
+  sentSummaryMatches,
+  verifyPerEnvelopeSnapshots,
+  type FallbackObservation,
   type ProofEvidenceRow,
   type ProofStep,
 } from "./unityB6D3CProof";
@@ -419,11 +431,13 @@ test("evidence rows expose bounded fields only", () => {
     "result",
     "phase",
     "scoreValues",
+    "suddenDeathRound",
     "playerCount",
     "appliedEvent",
     "rejectionReason",
     "hostState",
     "iframeCount",
+    "fallback",
     "status",
     "failureCategory",
   ]);
@@ -635,7 +649,9 @@ test("outbound rows summarize the envelope without raw payload data", () => {
   assert.equal(row.direction, "react-to-unity");
   assert.deepEqual([...(row.scoreValues ?? [])], [1, 2]);
   assert.equal(row.playerCount, 2);
-  assert.equal(row.status, "pending");
+  // An outbound row is only ever retained AFTER confirmation, so the default
+  // status is `pass` — a pending outbound row must never reach the report.
+  assert.equal(row.status, "pass");
   assert.equal(containsProhibitedValue(JSON.stringify(row)), false);
 });
 
@@ -673,8 +689,10 @@ test("the client requires all four public flags plus the protected build URL", (
   }
   assert.ok(/buildUrl === REQUIRED_BUILD_URL/.test(clientSource));
   assert.ok(
-    /useUnityPlayerFacingGate\(\{ requested: preconditionsMet \}\)/.test(clientSource),
-    "no network may be attempted before every precondition holds",
+    /useUnityPlayerFacingGate\(\{ requested: preconditionsMet && operatorRequested \}\)/.test(
+      clientCode,
+    ),
+    "no network may be attempted before the operator starts the run",
   );
 });
 
@@ -737,11 +755,15 @@ test("the mock banner is unmissable and states the four required lines", () => {
 });
 
 test("the harness renders no gameplay control of any kind", () => {
-  // Exactly one control exists: the run button.
-  assert.equal(count(clientSource, "<button"), 1, "only the run control may exist");
+  // Exactly two controls exist: run, and local reset.
+  assert.equal(count(clientCode, "<button"), 2, "only run and reset controls may exist");
+  assert.ok(clientCode.includes("Run mock proof"));
+  assert.ok(clientCode.includes("Reset local proof state"));
   for (const forbidden of ["Join", "Rematch", "Stake", "Deposit", "Withdraw", "onPick"]) {
-    assert.equal(clientSource.includes(forbidden), false, `must not render ${forbidden}`);
+    assert.equal(clientCode.includes(forbidden), false, `must not render ${forbidden}`);
   }
+  // Fallback induction stays automatic — no manual fallback control.
+  assert.equal(/>\s*Induce/.test(clientCode), false, "no manual fallback button");
 });
 
 test("only categories are retained from observed requests", () => {
@@ -780,4 +802,648 @@ test("PROHIBITED_VALUES covers exactly the two synthetic identifiers", () => {
   for (const id of PROHIBITED_VALUES) {
     assert.ok(id.startsWith("b6d3c-mock-"), "synthetic ids must be self-describing");
   }
+});
+
+// ── 5. Correction regressions: operator initiation ────────────────────────────
+
+test("no cohort request and no renderer may begin before the operator acts", () => {
+  // The gate is requested only when the operator has started the run.
+  assert.ok(
+    /useUnityPlayerFacingGate\(\{ requested: preconditionsMet && operatorRequested \}\)/.test(
+      clientCode,
+    ),
+    "the cohort hook must also require operatorRequested",
+  );
+  // Both initiation flags start false, so mount performs no request and mounts
+  // no iframe.
+  assert.ok(/const \[operatorRequested, setOperatorRequested\] = useState\(false\)/.test(clientCode));
+  assert.ok(/const \[proofActivated, setProofActivated\] = useState\(false\)/.test(clientCode));
+  // An authorized gate alone is NOT sufficient to activate the host.
+  assert.ok(
+    /const playerFacingAuthorized =\s*operatorRequested && proofActivated && gate === "authorized"/.test(
+      clientCode,
+    ),
+    "host activation must require operator + activation + authorized",
+  );
+  assert.ok(/playerFacingAuthorized=\{playerFacingAuthorized\}/.test(clientCode));
+  // The only place activation is turned on is inside the run flow.
+  assert.equal(count(clientCode, "setProofActivated(true)"), 1);
+  assert.equal(count(clientCode, "setOperatorRequested(true)"), 1);
+});
+
+test("a denied gate stays React-only and never starts the proof", () => {
+  assert.ok(/gateRef\.current !== "authorized"/.test(clientCode));
+  assert.ok(/failureCategory: resolved \? "gate_denied" : "timeout"/.test(clientCode));
+  assert.ok(SAFE_FAILURE_CATEGORIES.includes("gate_denied"));
+  // The denial path returns before activation.
+  const denialIndex = clientCode.indexOf('gateRef.current !== "authorized"');
+  const activateIndex = clientCode.indexOf("setProofActivated(true)");
+  assert.ok(denialIndex > 0 && activateIndex > 0);
+  assert.ok(denialIndex < activateIndex, "the denial check must precede activation");
+});
+
+test("the ready baseline is captured BEFORE the host is activated", () => {
+  const baselineIndex = clientCode.indexOf("const readyBaseline = readyCountRef.current");
+  const activateIndex = clientCode.indexOf("setProofActivated(true)");
+  assert.ok(baselineIndex > 0, "a ready baseline must be recorded");
+  assert.ok(baselineIndex < activateIndex, "the baseline must precede activation");
+  // Step 1 requires a ready event produced after that baseline.
+  assert.ok(/readyCountRef\.current > readyBaseline/.test(clientCode));
+});
+
+test("the run verifies preconditions before doing anything", () => {
+  assert.ok(/if \(!preconditionsMet\) return;/.test(clientCode));
+  assert.ok(/if \(startedRef\.current\) return;/.test(clientCode));
+  // Clearing happens before the gate is requested.
+  const clearIndex = clientCode.indexOf("clearProofState();");
+  const requestIndex = clientCode.indexOf("setOperatorRequested(true)");
+  assert.ok(clearIndex > 0 && clearIndex < requestIndex);
+});
+
+// ── Reset ─────────────────────────────────────────────────────────────────────
+
+test("reset deactivates the host, clears everything and re-keys the host", () => {
+  const reset = /const resetProof = useCallback\(\(\) => \{[\s\S]*?\}, \[[^\]]*\]\);/.exec(
+    clientCode,
+  );
+  assert.ok(reset, "a reset control must exist");
+  const body = reset[0];
+  assert.ok(/if \(running\) return;/.test(body), "reset must be inert during a run");
+  assert.ok(/stopNetworkObservation\(\)/.test(body));
+  assert.ok(/setProofActivated\(false\)/.test(body));
+  assert.ok(/setOperatorRequested\(false\)/.test(body));
+  assert.ok(/setActiveInstance\(PROOF_INSTANCE_A\)/.test(body));
+  assert.ok(/setIdentity\(feedA\.identity\)/.test(body));
+  assert.ok(/setHostMessages\(\[\]\)/.test(body));
+  assert.ok(/clearProofState\(\)/.test(body));
+  assert.ok(/startedRef\.current = false/.test(body), "the one-run guard must be cleared");
+  assert.ok(/setProofRunEpoch\(\(epoch\) => epoch \+ 1\)/.test(body));
+  // The host is keyed by the epoch so a prior terminal fallback cannot survive.
+  assert.ok(/key=\{proofRunEpoch\}/.test(clientCode));
+  assert.ok(/disabled=\{running\}/.test(clientCode), "reset must be disabled while running");
+});
+
+test("clearProofState resets every accumulator the report reads", () => {
+  const clear = /const clearProofState = useCallback\(\(\) => \{[\s\S]*?\}, \[\]\);/.exec(clientCode);
+  assert.ok(clear);
+  const body = clear[0];
+  for (const line of [
+    "rowsRef.current = []",
+    "ackLogRef.current = []",
+    "sentLogRef.current = []",
+    "readyCountRef.current = 0",
+    "maxIframeRef.current = 0",
+    "networkRef.current = new Set()",
+    "networkStartRef.current = null",
+    "harnessFaultRef.current = false",
+  ]) {
+    assert.ok(body.includes(line), `clearProofState must reset: ${line}`);
+  }
+});
+
+// ── Evidence-row lifecycle ────────────────────────────────────────────────────
+
+test("the merged host onMessageSent callback is wired and is not a no-op", () => {
+  assert.ok(
+    /onMessageSent=\{handleMessageSent\}/.test(clientCode),
+    "the host's send confirmation must be consumed",
+  );
+  assert.equal(
+    /onMessageSent=\{\(\) => \{\}\}/.test(clientCode),
+    false,
+    "onMessageSent must not be a no-op",
+  );
+  assert.ok(/normalizeSentSummary\(summary\)/.test(clientCode));
+  assert.ok(/sentLogRef\.current\.push\(snapshot\)/.test(clientCode));
+  assert.ok(
+    /sentSummaryMatches\(item\.message, sentLogRef\.current\[i\]\)/.test(clientCode),
+    "a host dispatch must wait for its own send confirmation",
+  );
+});
+
+test("a host dispatch retains rows only after BOTH confirmation and acknowledgement", () => {
+  const send = /const sendViaHost = useCallback\([\s\S]*?\n  \);/.exec(clientCode);
+  assert.ok(send);
+  const body = send[0];
+  const confirmIndex = body.indexOf("const confirmed = await waitUntil");
+  const ackIndex = body.indexOf("const ack = await findAck");
+  const outboundIndex = body.indexOf("pushRow(buildOutboundEvidenceRow");
+  assert.ok(confirmIndex > 0 && ackIndex > confirmIndex);
+  assert.ok(outboundIndex > ackIndex, "the outbound row must be retained last");
+  assert.ok(/failureCategory: "missing_send_confirmation"/.test(body));
+  assert.ok(/buildOutboundEvidenceRow\(step, item\.message, "pass"\)/.test(body));
+  assert.ok(/buildEvidenceRowFromAck\(step, ack, "pass"\)/.test(body));
+});
+
+test("no pending row is ever pushed into the retained evidence", () => {
+  assert.equal(
+    /pushRow\([^)]*"pending"/.test(clientCode),
+    false,
+    "a pending row must never reach rowsRef",
+  );
+  assert.equal(
+    /buildOutboundEvidenceRow\([^)]*"pending"\)/.test(clientCode),
+    false,
+    "outbound rows are never retained as pending",
+  );
+  // A transient UI-only indicator is allowed, but it is separate state.
+  assert.ok(/setPendingStep\(/.test(clientCode));
+  assert.equal(/rowsRef\.current[^\n]*pendingStep/.test(clientCode), false);
+});
+
+test("outbound pass plus inbound pass classifies the gate as pass", () => {
+  const envelope = buildSanitizedNegativeEnvelope({
+    matchInstanceId: PROOF_INSTANCE_A,
+    sequence: 1,
+    leftScore: 0,
+    rightScore: 0,
+    round: 1,
+    maxRounds: 5,
+    phase: "NORMAL",
+  })!;
+  const ack = normalizeAcknowledgement({
+    type: "PENALTY444_UNITY_EVENT",
+    event: "presentation_applied",
+    payload: {
+      protocolVersion: 1,
+      matchInstanceId: PROOF_INSTANCE_A,
+      sequence: 1,
+      appliedEvent: "match_state_sync",
+      round: 1,
+      phase: "NORMAL",
+      scoreValues: [0, 0],
+      playerCount: 2,
+    },
+  })!;
+  const rows = [
+    buildOutboundEvidenceRow(stepOf(2), envelope, "pass"),
+    buildEvidenceRowFromAck(stepOf(2), ack, "pass"),
+  ];
+  const result = classifyGate("A_BOOTSTRAP", rows);
+  assert.equal(result.status, "pass");
+  assert.equal(result.stepCount, 2);
+});
+
+test("a missing send confirmation or acknowledgement fails the gate", () => {
+  for (const category of ["missing_send_confirmation", "missing_acknowledgement"] as const) {
+    const rows = [buildHarnessEvidenceRow({ step: stepOf(2), status: "fail", failureCategory: category })];
+    const result = classifyGate("A_BOOTSTRAP", rows);
+    assert.equal(result.status, "fail");
+    assert.equal(result.failureCategory, category);
+    assert.ok(SAFE_FAILURE_CATEGORIES.includes(category));
+  }
+});
+
+test("send summaries are normalized to bounded values and match by identity", () => {
+  const envelope = buildSanitizedNegativeEnvelope({
+    matchInstanceId: PROOF_INSTANCE_B,
+    sequence: 5,
+    leftScore: 2,
+    rightScore: 1,
+    round: 3,
+    maxRounds: 5,
+    phase: "NORMAL",
+  })!;
+  const snapshot = normalizeSentSummary({
+    messageId: `${PROOF_INSTANCE_B}:5:match_state_sync`,
+    event: "match_state_sync",
+    matchInstanceId: PROOF_INSTANCE_B,
+    sequence: 5,
+  })!;
+  // The message id is deliberately dropped.
+  assert.deepEqual(Object.keys(snapshot).sort(), ["event", "matchInstanceId", "sequence"]);
+  assert.equal(sentSummaryMatches(envelope, snapshot), true);
+  assert.equal(
+    sentSummaryMatches(envelope, { ...snapshot, sequence: 4 }),
+    false,
+    "a different sequence must not match",
+  );
+  assert.equal(
+    sentSummaryMatches(envelope, { ...snapshot, matchInstanceId: PROOF_INSTANCE_A }),
+    false,
+  );
+  assert.equal(normalizeSentSummary(null), null);
+  assert.equal(normalizeSentSummary({ event: "" }), null);
+});
+
+// ── Gate C: runtime score snapshots ───────────────────────────────────────────
+
+function appliedAck(
+  sequence: number,
+  scoreValues: number[],
+  instance: string = PROOF_INSTANCE_A,
+) {
+  return normalizeAcknowledgement({
+    type: "PENALTY444_UNITY_EVENT",
+    event: "presentation_applied",
+    payload: {
+      protocolVersion: 1,
+      matchInstanceId: instance,
+      sequence,
+      appliedEvent: "match_state_sync",
+      round: sequence,
+      phase: "NORMAL",
+      scoreValues,
+      playerCount: scoreValues.length,
+    },
+  })!;
+}
+
+test("gate C names the two exact runtime snapshots", () => {
+  assert.equal(GATE_C_SNAPSHOTS.length, 2);
+  assert.deepEqual(
+    GATE_C_SNAPSHOTS.map((s) => [s.matchInstanceId, s.sequence, [...s.scoreValues]]),
+    [
+      [PROOF_INSTANCE_A, 1, [0, 0]],
+      [PROOF_INSTANCE_A, 3, [0, 1]],
+    ],
+  );
+});
+
+test("gate C passes only on the acknowledged per-envelope scores", () => {
+  const good = [appliedAck(1, [0, 0]), appliedAck(3, [1, 0])];
+  const result = verifyPerEnvelopeSnapshots(good);
+  assert.equal(result.passed, true, "score order must not matter");
+  assert.equal(result.checks.length, 2);
+  assert.ok(result.checks.every((c) => c.found && c.scoresMatch));
+});
+
+test("gate C fails when the bootstrap was overwritten by the live scores", () => {
+  // The exact PR-2 defect: the bootstrap reports the LATER scoreboard.
+  const bad = [appliedAck(1, [1, 0]), appliedAck(3, [1, 0])];
+  const result = verifyPerEnvelopeSnapshots(bad);
+  assert.equal(result.passed, false);
+  assert.equal(result.checks[0].found, true);
+  assert.equal(result.checks[0].scoresMatch, false);
+});
+
+test("gate C fails when a snapshot acknowledgement is missing entirely", () => {
+  const result = verifyPerEnvelopeSnapshots([appliedAck(1, [0, 0])]);
+  assert.equal(result.passed, false);
+  assert.equal(result.checks[1].found, false);
+});
+
+test("gate C ignores the wrong instance, event kind and rejections", () => {
+  assert.equal(findSnapshotAck([appliedAck(1, [0, 0], PROOF_INSTANCE_B)], GATE_C_SNAPSHOTS[0]), null);
+  const rejection = normalizeAcknowledgement({
+    type: "PENALTY444_UNITY_EVENT",
+    event: "presentation_rejected",
+    payload: { protocolVersion: 1, matchInstanceId: PROOF_INSTANCE_A, sequence: 1, reason: "apply_failed" },
+  })!;
+  assert.equal(findSnapshotAck([rejection], GATE_C_SNAPSHOTS[0]), null);
+});
+
+test("gate C emits one acknowledgement-derived evidence row per snapshot", () => {
+  const rows = buildSnapshotEvidenceRows(stepOf(5), [appliedAck(1, [0, 0]), appliedAck(3, [1, 0])]);
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every((r) => r.status === "pass"));
+  assert.ok(rows.every((r) => r.gate === "C_PER_ENVELOPE_SCORES"));
+  assert.deepEqual(
+    rows.map((r) => [r.sequence, [...(r.scoreValues ?? [])]]),
+    [
+      [1, [0, 0]],
+      [3, [1, 0]],
+    ],
+    "both distinct scoreboards must be visibly recorded",
+  );
+  const failing = buildSnapshotEvidenceRows(stepOf(5), [appliedAck(1, [1, 0]), appliedAck(3, [1, 0])]);
+  assert.equal(failing[0].status, "fail");
+  assert.equal(failing[0].failureCategory, "unexpected_outcome");
+});
+
+test("the client proves gate C from acknowledgements, not from visibility", () => {
+  assert.ok(/buildSnapshotEvidenceRows\(step\(5\), ackLogRef\.current\)/.test(clientCode));
+  assert.ok(/verifyPerEnvelopeSnapshots\(ackLogRef\.current\)/.test(clientCode));
+  assert.ok(
+    /observe\(5, snapshots\.passed && hostVisible, "unexpected_outcome"\)/.test(clientCode),
+    "host visibility must be an ADDITIONAL requirement, not a substitute",
+  );
+  assert.ok(/readHostState\(\) === "UNITY_READY_VISIBLE" && iframes\(\)\.length === 1/.test(clientCode));
+});
+
+// ── suddenDeathRound ──────────────────────────────────────────────────────────
+
+test("step 10 requires the exact suddenDeathRound", () => {
+  const step = stepOf(10);
+  assert.equal(step.expect.kind, "applied");
+  if (step.expect.kind === "applied") {
+    assert.equal(step.expect.phase, "SUDDEN_DEATH");
+    assert.equal(step.expect.suddenDeathRound, 1);
+    assert.deepEqual([...(step.expect.scoreValues ?? [])], [3, 3]);
+  }
+});
+
+function suddenDeathAck(suddenDeathRound: number | undefined) {
+  const payload: Record<string, unknown> = {
+    protocolVersion: 1,
+    matchInstanceId: PROOF_INSTANCE_A,
+    sequence: 4,
+    appliedEvent: "match_state_sync",
+    round: 6,
+    phase: "SUDDEN_DEATH",
+    scoreValues: [3, 3],
+    playerCount: 2,
+  };
+  if (suddenDeathRound !== undefined) payload.suddenDeathRound = suddenDeathRound;
+  return normalizeAcknowledgement({
+    type: "PENALTY444_UNITY_EVENT",
+    event: "presentation_applied",
+    payload,
+  })!;
+}
+
+test("suddenDeathRound is matched positively and negatively", () => {
+  assert.equal(acknowledgementMatches(stepOf(10), suddenDeathAck(1)), true);
+  assert.equal(acknowledgementMatches(stepOf(10), suddenDeathAck(2)), false, "wrong round");
+  assert.equal(acknowledgementMatches(stepOf(10), suddenDeathAck(0)), false, "wrong round");
+  assert.equal(
+    acknowledgementMatches(stepOf(10), suddenDeathAck(undefined)),
+    false,
+    "an absent suddenDeathRound must not satisfy an explicit expectation",
+  );
+});
+
+test("suddenDeathRound is retained in sanitized evidence and displayed", () => {
+  const row = buildEvidenceRowFromAck(stepOf(10), suddenDeathAck(1), "pass");
+  assert.equal(row.suddenDeathRound, 1);
+  assert.equal(containsProhibitedValue(JSON.stringify(row)), false);
+  // Absent on a normal sync.
+  assert.equal(buildEvidenceRowFromAck(stepOf(2), appliedAck(1, [0, 0]), "pass").suddenDeathRound, null);
+  // Outbound rows carry it too, straight from the envelope.
+  const outbound = buildOutboundEvidenceRow(stepOf(10), validateEnvelope({
+    type: "PENALTY444_MATCH_EVENT",
+    protocolVersion: 1,
+    matchInstanceId: PROOF_INSTANCE_A,
+    sequence: 4,
+    event: "match_state_sync",
+    payload: {
+      scores: { LEFT: 3, RIGHT: 3 },
+      round: 6,
+      maxRounds: 5,
+      phase: "SUDDEN_DEATH",
+      suddenDeathRound: 1,
+    },
+  })!);
+  assert.equal(outbound.suddenDeathRound, 1);
+  // And it is a bounded numeric column in the table.
+  assert.ok(/\{row\.suddenDeathRound \?\? "—"\}/.test(clientCode));
+  assert.ok(clientCode.includes("sdRound"));
+});
+
+// ── Fail-open ─────────────────────────────────────────────────────────────────
+
+function fallbackAllTrue(): FallbackObservation {
+  return {
+    hostTerminal: true,
+    iframeCountZero: true,
+    unityUnderlayPresent: true,
+    proofUnderlayPresent: true,
+    underlayVisible: true,
+    unitySlotAbsent: true,
+    noUnavailableCard: true,
+    stableNoRemount: true,
+    instanceStillTerminal: true,
+  };
+}
+
+test("the fallback contract cannot pass from host state and iframe count alone", () => {
+  assert.equal(fallbackObservationPassed(fallbackAllTrue()), true);
+  // Terminal + zero iframes, but every other requirement violated in turn.
+  for (const key of FALLBACK_OBSERVATION_KEYS) {
+    if (key === "hostTerminal" || key === "iframeCountZero") continue;
+    const broken = { ...fallbackAllTrue(), [key]: false };
+    assert.equal(
+      fallbackObservationPassed(broken),
+      false,
+      `${key} must be required even when the host is terminal with zero iframes`,
+    );
+    assert.equal(broken.hostTerminal, true);
+    assert.equal(broken.iframeCountZero, true);
+  }
+});
+
+test("the fallback evidence row records every boolean and fails on any false", () => {
+  const pass = buildFallbackEvidenceRow(stepOf(15), fallbackAllTrue(), "UNITY_FAILED_REACT_FALLBACK", 0);
+  assert.equal(pass.status, "pass");
+  assert.equal(pass.gate, "I_FAIL_OPEN");
+  assert.deepEqual(Object.keys(pass.fallback ?? {}).sort(), [...FALLBACK_OBSERVATION_KEYS].sort());
+  assert.equal(containsProhibitedValue(JSON.stringify(pass)), false);
+  assert.equal(containsProhibitedKey(JSON.stringify(pass)), false);
+
+  const fail = buildFallbackEvidenceRow(
+    stepOf(15),
+    { ...fallbackAllTrue(), underlayVisible: false },
+    "UNITY_FAILED_REACT_FALLBACK",
+    0,
+  );
+  assert.equal(fail.status, "fail");
+  assert.equal(fail.failureCategory, "unexpected_outcome");
+  assert.equal(classifyGate("I_FAIL_OPEN", [fail]).status, "fail");
+});
+
+test("the client observes the complete fallback DOM contract", () => {
+  for (const probe of [
+    '"[data-unity-underlay]"',
+    '"[data-b6d3c-underlay]"',
+    '"[data-unity-slot]"',
+    '"3D preview unavailable"',
+    "opacity-100",
+    "opacity-0",
+    "FALLBACK_STABILITY_MS",
+  ]) {
+    assert.ok(clientCode.includes(probe), `the fallback observation must probe ${probe}`);
+  }
+  assert.ok(/buildFallbackEvidenceRow\(step\(15\), fallback/.test(clientCode));
+  assert.ok(/if \(!fallbackObservationPassed\(fallback\)\) throw/.test(clientCode));
+});
+
+// ── Harness fault + network window ────────────────────────────────────────────
+
+test("a harness fault always forces overall failure", () => {
+  const rows = passingRows();
+  const clean = buildProofReport({ rows, maxIframeCount: 1, networkCategories: [] });
+  assert.equal(clean.overall, "pass");
+  assert.equal(clean.harnessFault, false);
+
+  const faulted = buildProofReport({
+    rows,
+    maxIframeCount: 1,
+    networkCategories: [],
+    harnessFault: true,
+  });
+  assert.equal(faulted.overall, "fail", "a harness fault can never report a pass");
+  assert.equal(faulted.harnessFault, true);
+});
+
+test("a pending row can never appear in a passing report", () => {
+  const rows = [...passingRows()];
+  rows[0] = { ...rows[0], status: "pending" };
+  const report = buildProofReport({ rows, maxIframeCount: 1, networkCategories: [] });
+  assert.notEqual(report.overall, "pass");
+  assert.equal(report.rows.some((r) => r.status === "pending"), true);
+  // A clean report has none.
+  const clean = buildProofReport({ rows: passingRows(), maxIframeCount: 1, networkCategories: [] });
+  assert.equal(clean.overall, "pass");
+  assert.equal(clean.rows.some((r) => r.status === "pending"), false);
+});
+
+test("a realistic complete 16-step evidence set reaches overall PASS", () => {
+  const rows: ProofEvidenceRow[] = [];
+  const push = (row: ProofEvidenceRow) => rows.push(row);
+
+  const hostPair = (n: number, envelope: ReturnType<typeof buildSanitizedNegativeEnvelope>, ack: ReturnType<typeof normalizeAcknowledgement>) => {
+    push(buildOutboundEvidenceRow(stepOf(n), envelope!, "pass"));
+    push(buildEvidenceRowFromAck(stepOf(n), ack!, "pass"));
+  };
+  const sync = (instance: string, sequence: number, left: number, right: number, round: number) =>
+    buildSanitizedNegativeEnvelope({
+      matchInstanceId: instance,
+      sequence,
+      leftScore: left,
+      rightScore: right,
+      round,
+      maxRounds: 5,
+      phase: "NORMAL",
+    });
+  const rejection = (sequence: number, reason: string) =>
+    normalizeAcknowledgement({
+      type: "PENALTY444_UNITY_EVENT",
+      event: "presentation_rejected",
+      payload: {
+        protocolVersion: 1,
+        matchInstanceId: PROOF_INSTANCE_A,
+        sequence,
+        rejectedEvent: "match_state_sync",
+        reason,
+      },
+    });
+
+  // 1 ready
+  push(buildHarnessEvidenceRow({ step: stepOf(1), status: "pass", hostState: "UNITY_LOADING", iframeCount: 1 }));
+  // 2 bootstrap
+  hostPair(2, sync(PROOF_INSTANCE_A, 1, 0, 0, 1), appliedAck(1, [0, 0]));
+  // 3 round_result
+  push(buildOutboundEvidenceRow(stepOf(3), validateEnvelope({
+    type: "PENALTY444_MATCH_EVENT",
+    protocolVersion: 1,
+    matchInstanceId: PROOF_INSTANCE_A,
+    sequence: 2,
+    event: "round_result",
+    payload: { round: 1, kickerLane: "LEFT", keeperLane: "RIGHT", result: "GOAL" },
+  })!, "pass"));
+  push(buildEvidenceRowFromAck(stepOf(3), normalizeAcknowledgement({
+    type: "PENALTY444_UNITY_EVENT",
+    event: "presentation_applied",
+    payload: {
+      protocolVersion: 1,
+      matchInstanceId: PROOF_INSTANCE_A,
+      sequence: 2,
+      appliedEvent: "round_result",
+      round: 1,
+      result: "GOAL",
+    },
+  })!, "pass"));
+  // 4 authoritative sync
+  hostPair(4, sync(PROOF_INSTANCE_A, 3, 1, 0, 2), appliedAck(3, [1, 0]));
+  // 5 gate C snapshots + host observation
+  for (const row of buildSnapshotEvidenceRows(stepOf(5), [appliedAck(1, [0, 0]), appliedAck(3, [1, 0])])) {
+    push(row);
+  }
+  push(buildHarnessEvidenceRow({ step: stepOf(5), status: "pass", hostState: "UNITY_READY_VISIBLE", iframeCount: 1 }));
+  // 6/7 duplicate + stale
+  hostPair(6, sync(PROOF_INSTANCE_A, 3, 1, 0, 2), rejection(3, "stale_or_duplicate"));
+  hostPair(7, sync(PROOF_INSTANCE_A, 2, 0, 0, 1), rejection(2, "stale_or_duplicate"));
+  // 8 adapter drop
+  push(buildHarnessEvidenceRow({ step: stepOf(8), status: "pass", hostState: "UNITY_READY_VISIBLE", iframeCount: 1 }));
+  // 9 foreign
+  hostPair(9, sync(PROOF_FOREIGN_INSTANCE, 5, 9, 9, 4), normalizeAcknowledgement({
+    type: "PENALTY444_UNITY_EVENT",
+    event: "presentation_rejected",
+    payload: { protocolVersion: 1, reason: "foreign_instance" },
+  }));
+  // 10 sudden death
+  push(buildOutboundEvidenceRow(stepOf(10), validateEnvelope({
+    type: "PENALTY444_MATCH_EVENT",
+    protocolVersion: 1,
+    matchInstanceId: PROOF_INSTANCE_A,
+    sequence: 4,
+    event: "match_state_sync",
+    payload: { scores: { LEFT: 3, RIGHT: 3 }, round: 6, maxRounds: 5, phase: "SUDDEN_DEATH", suddenDeathRound: 1 },
+  })!, "pass"));
+  push(buildEvidenceRowFromAck(stepOf(10), suddenDeathAck(1), "pass"));
+  // 11 transition
+  hostPair(11, sync(PROOF_INSTANCE_B, 1, 0, 0, 1), appliedAck(1, [0, 0], PROOF_INSTANCE_B));
+  // 12 superseded
+  hostPair(12, sync(PROOF_INSTANCE_A, 9, 4, 4, 7), normalizeAcknowledgement({
+    type: "PENALTY444_UNITY_EVENT",
+    event: "presentation_rejected",
+    payload: { protocolVersion: 1, reason: "foreign_instance" },
+  }));
+  // 13 reload
+  push(buildHarnessEvidenceRow({ step: stepOf(13), status: "pass", hostState: "UNITY_READY_VISIBLE", iframeCount: 1 }));
+  // 14 post-reload bootstrap
+  hostPair(14, sync(PROOF_INSTANCE_B, 5, 1, 2, 3), appliedAck(5, [1, 2], PROOF_INSTANCE_B));
+  // 15 fail-open
+  push(buildFallbackEvidenceRow(stepOf(15), fallbackAllTrue(), "UNITY_FAILED_REACT_FALLBACK", 0));
+  // 16 sanitization
+  push(buildHarnessEvidenceRow({ step: stepOf(16), status: "pass", hostState: "UNITY_FAILED_REACT_FALLBACK", iframeCount: 0 }));
+
+  const report = buildProofReport({
+    rows,
+    maxIframeCount: 1,
+    networkCategories: ["cohort_status", "cohort_session", "protected_player_entry", "other_same_origin_static"],
+    harnessFault: false,
+  });
+  assert.equal(report.overall, "pass", "a realistic complete run must be able to PASS");
+  assert.equal(report.rows.some((r) => r.status === "pending"), false, "no pending rows");
+  assert.ok(report.gates.every((g) => g.status === "pass"), "every gate must pass");
+  assert.equal(containsProhibitedValue(JSON.stringify(report)), false);
+});
+
+test("network observation is operator-started and window-filtered", () => {
+  // Pre-run entries are ignored.
+  assert.equal(entryIsInsideProofWindow(100, 200), false);
+  assert.equal(entryIsInsideProofWindow(200, 200), true);
+  assert.equal(entryIsInsideProofWindow(300, 200), true);
+  // No proof start recorded ⇒ nothing may be observed.
+  assert.equal(entryIsInsideProofWindow(300, null), false);
+  assert.equal(entryIsInsideProofWindow("300", 200), false);
+  assert.equal(entryIsInsideProofWindow(Number.NaN, 200), false);
+});
+
+test("the client starts observation at the press, before the cohort requests", () => {
+  const startIndex = clientCode.indexOf("if (!startNetworkObservation())");
+  const requestIndex = clientCode.indexOf("setOperatorRequested(true)");
+  assert.ok(startIndex > 0, "observation must be started inside the run");
+  assert.ok(startIndex < requestIndex, "observation must precede the cohort requests");
+  assert.ok(/networkStartRef\.current = startedAt/.test(clientCode));
+  assert.ok(
+    /entryIsInsideProofWindow\(entry\.startTime, networkStartRef\.current\)/.test(clientCode),
+    "buffered pre-run entries must be filtered out",
+  );
+  // Never started merely on mount.
+  assert.equal(
+    /useEffect\(\(\) => \{\s*if \(typeof PerformanceObserver/.test(clientCode),
+    false,
+    "observation must not begin on mount",
+  );
+});
+
+test("the observer is disconnected after completion, on reset and on unmount", () => {
+  assert.ok(/const finalize = \(\) => \{\s*stopNetworkObservation\(\)/.test(clientCode));
+  assert.ok(/const resetProof = useCallback\(\(\) => \{\s*if \(running\) return;\s*stopNetworkObservation\(\)/.test(clientCode));
+  assert.ok(/useEffect\(\(\) => stopNetworkObservation, \[stopNetworkObservation\]\)/.test(clientCode));
+  assert.ok(/observer\.disconnect\(\)/.test(clientCode));
+});
+
+test("an unavailable PerformanceObserver is a bounded failure, not silent success", () => {
+  assert.ok(/failureCategory: "network_observation_unavailable"/.test(clientCode));
+  assert.ok(/harnessFaultRef\.current = true/.test(clientCode));
+  assert.ok(SAFE_FAILURE_CATEGORIES.includes("network_observation_unavailable"));
+});
+
+test("an unexpected exception records a bounded row AND sets the report flag", () => {
+  assert.ok(/failureCategory: "harness_error"/.test(clientCode), "an explicit row must be added");
+  assert.ok(/harnessFault: harnessFaultRef\.current/.test(clientCode), "and the report flag set");
+  assert.ok(/activeStepRef/.test(clientCode), "the active step must be known in the catch");
 });
