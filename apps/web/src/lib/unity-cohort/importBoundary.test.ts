@@ -105,15 +105,16 @@ test("the proof-only harness is never imported by final runtime code", () => {
 
 test("createAdminClient is imported only where cohort auth requires it", () => {
   const importers = finalSources().filter((f) => readFileSync(f, "utf8").includes("supabase/admin"));
-  const names = importers.map((f) => f.replace(/.*\/(?=(app|lib)\/)/, "")).sort();
+  const names = importers.map((f) => f.replace(/\\/g, "/").replace(/.*\/(?=(app|lib)\/)/, "")).sort();
+  const normalized = importers.map((f) => f.replace(/\\/g, "/"));
   // status + session (bearer verification) and player (allowlist recheck) only.
   assert.equal(importers.length, 3, `unexpected admin-client importers: ${names.join(", ")}`);
-  assert.ok(importers.some((f) => f.includes("api/unity-cohort/status")));
-  assert.ok(importers.some((f) => f.includes("api/unity-cohort/session")));
-  assert.ok(importers.some((f) => f.includes("unity-arena/player")));
+  assert.ok(normalized.some((f) => f.includes("api/unity-cohort/status")));
+  assert.ok(normalized.some((f) => f.includes("api/unity-cohort/session")));
+  assert.ok(normalized.some((f) => f.includes("unity-arena/player")));
   // The artifact route must NOT perform a per-file identity lookup.
   assert.equal(
-    importers.some((f) => f.includes("unity-arena/artifact")),
+    normalized.some((f) => f.includes("unity-arena/artifact")),
     false,
     "the artifact route must not import the admin client",
   );

@@ -10,10 +10,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { supabase as sharedSupabase } from "../../lib/supabase/client";
+
 import {
+  asGateSupabaseLike,
+  resolveDefaultGateSupabase,
+  resolveGateSupabaseFromModule,
   runUnityPlayerFacingGate,
+  runUnityPlayerFacingGateDiagnosed,
   shouldRenderUnityShadow,
   type GateSupabaseLike,
+  type UnityPlayerFacingGateDiagnostic,
   type UnityPlayerFacingGateState,
 } from "./useUnityPlayerFacingGate";
 
@@ -402,4 +409,324 @@ test("authorized never renders the shadow, so host and shadow can never coexist"
     shouldRenderUnityShadow({ shadowEnabled: true, playerFacingRequested: true, gateState: "authorized" }),
     false,
   );
+});
+
+// ── bounded diagnostics (non-secret categories only) ──────────────────────────
+
+const ALL_DIAGNOSTICS: UnityPlayerFacingGateDiagnostic[] = [
+  "resolver_unavailable",
+  "client_shape_invalid",
+  "session_read_failed",
+  "session_missing",
+  "access_token_missing",
+  "status_request_denied",
+  "status_response_invalid",
+  "not_in_cohort",
+  "session_mint_denied",
+  "authorized",
+];
+
+const FORBIDDEN_SECRET_FRAGMENTS = [
+  TOKEN,
+  "Bearer ",
+  "Authorization",
+  "Cookie",
+  "supabase.co",
+  "pwfgcblgjgoywefsotga",
+  "sb_publishable",
+  "info@",
+  "gmail.com",
+  "/api/unity-cohort",
+  "http://",
+  "https://",
+  "session read failed",
+  "network down",
+  "import failed",
+];
+
+function assertDiagnosticSafe(diagnostic: UnityPlayerFacingGateDiagnostic): void {
+  assert.equal(ALL_DIAGNOSTICS.includes(diagnostic), true, `unknown diagnostic: ${diagnostic}`);
+  const encoded = JSON.stringify(diagnostic);
+  for (const frag of FORBIDDEN_SECRET_FRAGMENTS) {
+    assert.equal(encoded.includes(frag), false, `diagnostic must not contain ${frag}`);
+  }
+}
+
+test("diagnostics: resolver_unavailable when getSupabase returns null", async () => {
+  const result = await runUnityPlayerFacingGateDiagnosed({
+    getSupabase: async () => null,
+    fetchImpl: okFlow().impl,
+  });
+  assert.equal(result.state, "denied");
+  assert.equal(result.diagnostic, "resolver_unavailable");
+  assertDiagnosticSafe(result.diagnostic);
+});
+
+test("diagnostics: resolver_unavailable when getSupabase throws", async () => {
+  const result = await runUnityPlayerFacingGateDiagnosed({
+    getSupabase: async () => {
+      throw new Error("import failed");
+    },
+    fetchImpl: okFlow().impl,
+  });
+  assert.equal(result.state, "denied");
+  assert.equal(result.diagnostic, "resolver_unavailable");
+  assertDiagnosticSafe(result.diagnostic);
+});
+
+test("diagnostics: client_shape_invalid for a malformed client object", async () => {
+  const result = await runUnityPlayerFacingGateDiagnosed({
+    getSupabase: async () => ({ auth: {} }) as GateSupabaseLike,
+    fetchImpl: okFlow().impl,
+  });
+  assert.equal(result.state, "denied");
+  assert.equal(result.diagnostic, "client_shape_invalid");
+});
+
+test("diagnostics: session_missing / access_token_missing / session_read_failed", async () => {
+  assert.equal(
+    (
+      await runUnityPlayerFacingGateDiagnosed({
+        getSupabase: async () => supabaseWith(null),
+        fetchImpl: okFlow().impl,
+      })
+    ).diagnostic,
+    "session_missing",
+  );
+  assert.equal(
+    (
+      await runUnityPlayerFacingGateDiagnosed({
+        getSupabase: async () => supabaseWith({ access_token: "" }),
+        fetchImpl: okFlow().impl,
+      })
+    ).diagnostic,
+    "access_token_missing",
+  );
+  assert.equal(
+    (
+      await runUnityPlayerFacingGateDiagnosed({
+        getSupabase: async () => throwingSupabase(),
+        fetchImpl: okFlow().impl,
+      })
+    ).diagnostic,
+    "session_read_failed",
+  );
+});
+
+test("diagnostics: status / cohort / mint categories", async () => {
+  assert.equal(
+    (
+      await runUnityPlayerFacingGateDiagnosed({
+        getSupabase: async () => supabaseWith({ access_token: TOKEN }),
+        fetchImpl: recordingFetch({
+          [STATUS]: () => json({ inCohort: true }, 404),
+          [SESSION]: () => new Response(null, { status: 204 }),
+        }).impl,
+      })
+    ).diagnostic,
+    "status_request_denied",
+  );
+  assert.equal(
+    (
+      await runUnityPlayerFacingGateDiagnosed({
+        getSupabase: async () => supabaseWith({ access_token: TOKEN }),
+        fetchImpl: recordingFetch({
+          [STATUS]: () => json({ inCohort: true, extra: 1 }),
+          [SESSION]: () => new Response(null, { status: 204 }),
+        }).impl,
+      })
+    ).diagnostic,
+    "status_response_invalid",
+  );
+  assert.equal(
+    (
+      await runUnityPlayerFacingGateDiagnosed({
+        getSupabase: async () => supabaseWith({ access_token: TOKEN }),
+        fetchImpl: recordingFetch({
+          [STATUS]: () => json({ inCohort: false }),
+          [SESSION]: () => new Response(null, { status: 204 }),
+        }).impl,
+      })
+    ).diagnostic,
+    "not_in_cohort",
+  );
+  assert.equal(
+    (
+      await runUnityPlayerFacingGateDiagnosed({
+        getSupabase: async () => supabaseWith({ access_token: TOKEN }),
+        fetchImpl: recordingFetch({
+          [STATUS]: () => json({ inCohort: true }),
+          [SESSION]: () => new Response(null, { status: 404 }),
+        }).impl,
+      })
+    ).diagnostic,
+    "session_mint_denied",
+  );
+  assert.equal(
+    (
+      await runUnityPlayerFacingGateDiagnosed({
+        getSupabase: async () => supabaseWith({ access_token: TOKEN }),
+        fetchImpl: okFlow().impl,
+      })
+    ).diagnostic,
+    "authorized",
+  );
+});
+
+test("diagnosed runner never embeds secrets in the returned object", async () => {
+  const result = await runUnityPlayerFacingGateDiagnosed({
+    getSupabase: async () => supabaseWith({ access_token: TOKEN }),
+    fetchImpl: okFlow().impl,
+  });
+  const encoded = JSON.stringify(result);
+  assert.equal(encoded.includes(TOKEN), false);
+  assertDiagnosticSafe(result.diagnostic);
+  assert.deepEqual(Object.keys(result).sort(), ["diagnostic", "state"]);
+});
+
+// ── real default resolver (shared Supabase module) ────────────────────────────
+
+test("fragile module-shape resolver rejects namespaces without supabase named export", () => {
+  // Reproduces the prior dynamic-import failure mode: a module namespace that is
+  // present but missing the expected named `supabase` export / auth shape.
+  assert.equal(resolveGateSupabaseFromModule(null), null);
+  assert.equal(resolveGateSupabaseFromModule({}), null);
+  assert.equal(resolveGateSupabaseFromModule({ supabase: null }), null);
+  assert.equal(resolveGateSupabaseFromModule({ supabase: { auth: {} } }), null);
+  assert.equal(resolveGateSupabaseFromModule({ default: sharedSupabase }), null);
+});
+
+test("reproduced failure: default-less module namespace → resolver_unavailable (no fetch)", async () => {
+  const f = okFlow();
+  const result = await runUnityPlayerFacingGateDiagnosed({
+    getSupabase: async () => resolveGateSupabaseFromModule({ default: sharedSupabase }),
+    fetchImpl: f.impl,
+  });
+  assert.equal(result.state, "denied");
+  assert.equal(result.diagnostic, "resolver_unavailable");
+  assert.equal(f.calls.length, 0);
+});
+
+test("shared Supabase module resolves and exposes auth.getSession", async () => {
+  const client = await resolveDefaultGateSupabase();
+  assert.notEqual(client, null);
+  assert.equal(typeof client?.auth.getSession, "function");
+  assert.equal(asGateSupabaseLike(sharedSupabase) !== null, true);
+});
+
+test("real default resolver + valid session proceeds status → session mint", async () => {
+  const original = sharedSupabase.auth.getSession.bind(sharedSupabase.auth);
+  const f = okFlow();
+  sharedSupabase.auth.getSession = (async () => ({
+    data: { session: { access_token: TOKEN } },
+    error: null,
+  })) as typeof sharedSupabase.auth.getSession;
+  try {
+    const diagnosed = await runUnityPlayerFacingGateDiagnosed({
+      getSupabase: resolveDefaultGateSupabase,
+      fetchImpl: f.impl,
+    });
+    assert.equal(diagnosed.state, "authorized");
+    assert.equal(diagnosed.diagnostic, "authorized");
+    assert.equal(f.calls.length, 2);
+    assert.equal(f.calls[0].url, STATUS);
+    assert.equal(f.calls[1].url, SESSION);
+    assert.equal(f.calls[0].headers.Authorization, `Bearer ${TOKEN}`);
+    assert.equal(JSON.stringify(diagnosed).includes(TOKEN), false);
+  } finally {
+    sharedSupabase.auth.getSession = original;
+  }
+});
+
+test("real default resolver: missing session / token fails before fetch", async () => {
+  const original = sharedSupabase.auth.getSession.bind(sharedSupabase.auth);
+  const f = okFlow();
+  try {
+    sharedSupabase.auth.getSession = (async () => ({
+      data: { session: null },
+      error: null,
+    })) as typeof sharedSupabase.auth.getSession;
+    assert.equal(
+      (await runUnityPlayerFacingGateDiagnosed({ getSupabase: resolveDefaultGateSupabase, fetchImpl: f.impl }))
+        .diagnostic,
+      "session_missing",
+    );
+    sharedSupabase.auth.getSession = (async () => ({
+      data: { session: { access_token: "" } },
+      error: null,
+    })) as typeof sharedSupabase.auth.getSession;
+    assert.equal(
+      (await runUnityPlayerFacingGateDiagnosed({ getSupabase: resolveDefaultGateSupabase, fetchImpl: f.impl }))
+        .diagnostic,
+      "access_token_missing",
+    );
+    assert.equal(f.calls.length, 0);
+  } finally {
+    sharedSupabase.auth.getSession = original;
+  }
+});
+
+test("real default resolver: malformed / non-200 status fails closed; mint non-204 fails closed", async () => {
+  const original = sharedSupabase.auth.getSession.bind(sharedSupabase.auth);
+  sharedSupabase.auth.getSession = (async () => ({
+    data: { session: { access_token: TOKEN } },
+    error: null,
+  })) as typeof sharedSupabase.auth.getSession;
+  try {
+    const badStatus = recordingFetch({
+      [STATUS]: () => json({ inCohort: true }, 500),
+      [SESSION]: () => new Response(null, { status: 204 }),
+    });
+    assert.equal(
+      (
+        await runUnityPlayerFacingGateDiagnosed({
+          getSupabase: resolveDefaultGateSupabase,
+          fetchImpl: badStatus.impl,
+        })
+      ).diagnostic,
+      "status_request_denied",
+    );
+    assert.equal(badStatus.calls.length, 1);
+
+    const badBody = recordingFetch({
+      [STATUS]: () => json({ inCohort: "yes" }),
+      [SESSION]: () => new Response(null, { status: 204 }),
+    });
+    assert.equal(
+      (
+        await runUnityPlayerFacingGateDiagnosed({
+          getSupabase: resolveDefaultGateSupabase,
+          fetchImpl: badBody.impl,
+        })
+      ).diagnostic,
+      "status_response_invalid",
+    );
+
+    const badMint = recordingFetch({
+      [STATUS]: () => json({ inCohort: true }),
+      [SESSION]: () => new Response(null, { status: 200 }),
+    });
+    assert.equal(
+      (
+        await runUnityPlayerFacingGateDiagnosed({
+          getSupabase: resolveDefaultGateSupabase,
+          fetchImpl: badMint.impl,
+        })
+      ).diagnostic,
+      "session_mint_denied",
+    );
+    assert.equal(badMint.calls.length, 2);
+  } finally {
+    sharedSupabase.auth.getSession = original;
+  }
+});
+
+test("player-facing public API still returns only authorized|denied (no diagnostic)", async () => {
+  const outcome = await runUnityPlayerFacingGate({
+    getSupabase: async () => supabaseWith({ access_token: TOKEN }),
+    fetchImpl: okFlow().impl,
+  });
+  assert.equal(outcome, "authorized");
+  assert.equal(typeof outcome, "string");
+  assert.equal(JSON.stringify(outcome), '"authorized"');
 });
