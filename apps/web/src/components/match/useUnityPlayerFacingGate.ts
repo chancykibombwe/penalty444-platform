@@ -14,11 +14,40 @@
  * The Supabase access token is held ONLY in a local function variable while the
  * two requests are issued. It is never placed in React state, `localStorage`,
  * `sessionStorage`, a URL, a query string, a log, or the returned state.
+ *
+ * Bounded internal diagnostics (`UnityPlayerFacingGateDiagnostic`) exist only for
+ * isolated tests / non-production operator tooling. The player-facing React state
+ * remains exclusively `disabled | checking | authorized | denied`. Diagnostics
+ * never include emails, tokens, cookies, headers, bodies, secrets, URLs, or
+ * free-form error strings, and are never rendered in Production.
  */
 
 import { useEffect, useRef, useState } from "react";
 
+import { supabase as sharedSupabase } from "../../lib/supabase/client";
+
 export type UnityPlayerFacingGateState = "disabled" | "checking" | "authorized" | "denied";
+
+/**
+ * Bounded, non-secret diagnostic categories for the gate decision flow.
+ * Never contains PII, tokens, headers, bodies, secrets, URLs, or free-form text.
+ */
+export type UnityPlayerFacingGateDiagnostic =
+  | "resolver_unavailable"
+  | "client_shape_invalid"
+  | "session_read_failed"
+  | "session_missing"
+  | "access_token_missing"
+  | "status_request_denied"
+  | "status_response_invalid"
+  | "not_in_cohort"
+  | "session_mint_denied"
+  | "authorized";
+
+export interface UnityPlayerFacingGateDiagnosedResult {
+  readonly state: "authorized" | "denied";
+  readonly diagnostic: UnityPlayerFacingGateDiagnostic;
+}
 
 /**
  * Single-renderer handoff decision (pure).
@@ -68,30 +97,73 @@ export interface GateRunnerDeps {
 const STATUS_PATH = "/api/unity-cohort/status";
 const SESSION_PATH = "/api/unity-cohort/session";
 
+const DENIED = (diagnostic: UnityPlayerFacingGateDiagnostic): UnityPlayerFacingGateDiagnosedResult => ({
+  state: "denied",
+  diagnostic,
+});
+
 /**
- * Pure/injectable decision flow: session → status → mint. Returns `authorized`
+ * Shape-check a candidate client without reading sessions or throwing free-form
+ * errors into diagnostics.
+ */
+export function asGateSupabaseLike(candidate: unknown): GateSupabaseLike | null {
+  if (candidate === null || typeof candidate !== "object") return null;
+  const auth = (candidate as { auth?: unknown }).auth;
+  if (auth === null || typeof auth !== "object") return null;
+  if (typeof (auth as { getSession?: unknown }).getSession !== "function") return null;
+  return candidate as GateSupabaseLike;
+}
+
+/**
+ * Default resolver: the shared browser Supabase client (static import).
+ * Fail-closed when the export shape is wrong.
+ */
+export async function resolveDefaultGateSupabase(): Promise<GateSupabaseLike | null> {
+  return asGateSupabaseLike(sharedSupabase);
+}
+
+/**
+ * Legacy / test helper: resolve a module namespace the way the fragile dynamic
+ * import previously did. Used only to reproduce resolver failures in diagnostics.
+ */
+export function resolveGateSupabaseFromModule(mod: unknown): GateSupabaseLike | null {
+  if (mod === null || typeof mod !== "object") return null;
+  const candidate = (mod as { supabase?: unknown }).supabase;
+  return asGateSupabaseLike(candidate);
+}
+
+/**
+ * Pure/injectable decision flow with bounded diagnostics. Returns `authorized`
  * ONLY after the status endpoint confirms membership AND the mint returns 204.
  * Never throws and never returns the token or any identity.
  */
-export async function runUnityPlayerFacingGate(
+export async function runUnityPlayerFacingGateDiagnosed(
   deps: GateRunnerDeps,
-): Promise<"authorized" | "denied"> {
+): Promise<UnityPlayerFacingGateDiagnosedResult> {
   try {
-    const supabase = await deps.getSupabase();
-    if (supabase === null) return "denied";
+    let supabase: GateSupabaseLike | null;
+    try {
+      supabase = await deps.getSupabase();
+    } catch {
+      return DENIED("resolver_unavailable");
+    }
+    if (supabase === null) return DENIED("resolver_unavailable");
+    if (asGateSupabaseLike(supabase) === null) return DENIED("client_shape_invalid");
 
     // 1–3. Read the session; keep the token in a local variable only.
     let accessToken: string | null = null;
     try {
       const result = await supabase.auth.getSession();
-      if (result === null || result === undefined) return "denied";
-      if (result.error) return "denied";
-      const token = result.data?.session?.access_token;
+      if (result === null || result === undefined) return DENIED("session_read_failed");
+      if (result.error) return DENIED("session_read_failed");
+      const session = result.data?.session ?? null;
+      if (session === null) return DENIED("session_missing");
+      const token = session.access_token;
       accessToken = typeof token === "string" && token.length > 0 ? token : null;
     } catch {
-      return "denied";
+      return DENIED("session_read_failed");
     }
-    if (accessToken === null) return "denied";
+    if (accessToken === null) return DENIED("access_token_missing");
 
     const authHeaders: HeadersInit = {
       Authorization: `Bearer ${accessToken}`,
@@ -107,47 +179,50 @@ export async function runUnityPlayerFacingGate(
     let inCohort = false;
     try {
       const res = await deps.fetchImpl(STATUS_PATH, { ...common, method: "GET", headers: authHeaders });
-      if (!res || res.status !== 200) return "denied";
-      const body: unknown = await res.json();
-      if (body === null || typeof body !== "object" || Array.isArray(body)) return "denied";
+      if (!res || res.status !== 200) return DENIED("status_request_denied");
+      let body: unknown;
+      try {
+        body = await res.json();
+      } catch {
+        return DENIED("status_response_invalid");
+      }
+      if (body === null || typeof body !== "object" || Array.isArray(body)) {
+        return DENIED("status_response_invalid");
+      }
       const keys = Object.keys(body as Record<string, unknown>);
-      if (keys.length !== 1 || keys[0] !== "inCohort") return "denied"; // exact shape
+      if (keys.length !== 1 || keys[0] !== "inCohort") return DENIED("status_response_invalid");
       const value = (body as Record<string, unknown>).inCohort;
-      if (typeof value !== "boolean") return "denied";
+      if (typeof value !== "boolean") return DENIED("status_response_invalid");
       inCohort = value;
     } catch {
-      return "denied";
+      return DENIED("status_request_denied");
     }
-    if (!inCohort) return "denied"; // non-member ⇒ never attempt the mint
+    if (!inCohort) return DENIED("not_in_cohort");
 
     // 6–7. Mint the short-lived HttpOnly capability. Must be exactly 204.
     try {
       const res = await deps.fetchImpl(SESSION_PATH, { ...common, method: "POST", headers: authHeaders });
-      if (!res || res.status !== 204) return "denied";
+      if (!res || res.status !== 204) return DENIED("session_mint_denied");
     } catch {
-      return "denied";
+      return DENIED("session_mint_denied");
     }
 
-    // 8. Authorized only after a successful mint.
-    return "authorized";
+    return { state: "authorized", diagnostic: "authorized" };
   } catch {
-    return "denied";
+    return DENIED("resolver_unavailable");
   }
 }
 
-/** Default Supabase browser-client resolver (dynamically imported, fail-closed). */
-async function defaultGetSupabase(): Promise<GateSupabaseLike | null> {
-  try {
-    const mod: unknown = await import("../../lib/supabase/client");
-    const candidate = (mod as { supabase?: unknown }).supabase;
-    if (candidate === null || typeof candidate !== "object") return null;
-    const auth = (candidate as { auth?: unknown }).auth;
-    if (auth === null || typeof auth !== "object") return null;
-    if (typeof (auth as { getSession?: unknown }).getSession !== "function") return null;
-    return candidate as GateSupabaseLike;
-  } catch {
-    return null;
-  }
+/**
+ * Pure/injectable decision flow: session → status → mint. Returns `authorized`
+ * ONLY after the status endpoint confirms membership AND the mint returns 204.
+ * Never throws and never returns the token, any identity, or a diagnostic.
+ */
+export async function runUnityPlayerFacingGate(
+  deps: GateRunnerDeps,
+): Promise<"authorized" | "denied"> {
+  const result = await runUnityPlayerFacingGateDiagnosed(deps);
+  return result.state;
 }
 
 export interface UnityPlayerFacingGateOptions {
@@ -160,6 +235,8 @@ export interface UnityPlayerFacingGateOptions {
 /**
  * React binding. Returns `disabled` — performing NO Supabase read and NO network
  * request — whenever the player-facing flags are not all enabled.
+ *
+ * Never exposes diagnostics in React state (Production-safe surface).
  */
 export function useUnityPlayerFacingGate(
   options: UnityPlayerFacingGateOptions,
@@ -179,7 +256,7 @@ export function useUnityPlayerFacingGate(
     setState("checking");
     void (async () => {
       const outcome = await runUnityPlayerFacingGate({
-        getSupabase: depsRef.current.getSupabase ?? defaultGetSupabase,
+        getSupabase: depsRef.current.getSupabase ?? resolveDefaultGateSupabase,
         fetchImpl: depsRef.current.fetchImpl ?? fetch,
         signal: controller.signal,
       });
