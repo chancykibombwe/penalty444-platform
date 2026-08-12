@@ -9,6 +9,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { supabase as sharedSupabase } from "../../lib/supabase/client";
 
@@ -16,6 +17,7 @@ import {
   asGateSupabaseLike,
   resolveDefaultGateSupabase,
   resolveGateSupabaseFromModule,
+  resolveGateWithDiagnostic,
   runUnityPlayerFacingGate,
   runUnityPlayerFacingGateDiagnosed,
   shouldRenderUnityShadow,
@@ -729,4 +731,168 @@ test("player-facing public API still returns only authorized|denied (no diagnost
   assert.equal(outcome, "authorized");
   assert.equal(typeof outcome, "string");
   assert.equal(JSON.stringify(outcome), '"authorized"');
+});
+
+// ── B6D3C: optional bounded-diagnostic reporting ──────────────────────────────
+//
+// `resolveGateWithDiagnostic` is exactly what the React hook's effect runs, so
+// these tests cover the hook's behaviour without a React testing dependency.
+
+const DIAGNOSTIC_VALUES: UnityPlayerFacingGateDiagnostic[] = [
+  "resolver_unavailable",
+  "client_shape_invalid",
+  "session_read_failed",
+  "session_missing",
+  "access_token_missing",
+  "status_request_denied",
+  "status_response_invalid",
+  "not_in_cohort",
+  "session_mint_denied",
+  "authorized",
+];
+
+test("diagnostic sink: the resolved state is still authorized on the happy path", async () => {
+  const f = okFlow();
+  const seen: UnityPlayerFacingGateDiagnostic[] = [];
+  const state = await resolveGateWithDiagnostic(
+    { getSupabase: async () => supabaseWith({ access_token: TOKEN }), fetchImpl: f.impl },
+    (d) => seen.push(d),
+  );
+  assert.equal(state, "authorized");
+  assert.deepEqual(seen, ["authorized"]);
+});
+
+test("diagnostic sink: the resolved state is still denied on failures", async () => {
+  const f = okFlow();
+  const seen: UnityPlayerFacingGateDiagnostic[] = [];
+  const state = await resolveGateWithDiagnostic(
+    { getSupabase: async () => supabaseWith(null), fetchImpl: f.impl },
+    (d) => seen.push(d),
+  );
+  assert.equal(state, "denied");
+  assert.deepEqual(seen, ["session_missing"], "the denial category must reach the operator");
+  assert.equal(f.calls.length, 0, "a denial before the first fetch issues no request");
+});
+
+test("diagnostic sink: every denial category is reportable and stays in the bounded set", async () => {
+  const cases: Array<[string, () => Promise<unknown>]> = [
+    ["resolver_unavailable", async () => null],
+    ["client_shape_invalid", async () => ({ auth: {} })],
+    ["session_missing", async () => supabaseWith(null)],
+    ["access_token_missing", async () => supabaseWith({ access_token: "" })],
+    ["session_read_failed", async () => throwingSupabase()],
+  ];
+  for (const [expected, getSupabase] of cases) {
+    const seen: UnityPlayerFacingGateDiagnostic[] = [];
+    const state = await resolveGateWithDiagnostic(
+      { getSupabase: getSupabase as () => Promise<GateSupabaseLike | null>, fetchImpl: okFlow().impl },
+      (d) => seen.push(d),
+    );
+    assert.equal(state, "denied");
+    assert.deepEqual(seen, [expected]);
+    assert.ok(DIAGNOSTIC_VALUES.includes(seen[0]), `${seen[0]} must be a bounded category`);
+  }
+});
+
+test("diagnostics never duplicate the status request or the capability mint", async () => {
+  // Without a sink.
+  const bare = okFlow();
+  await resolveGateWithDiagnostic({
+    getSupabase: async () => supabaseWith({ access_token: TOKEN }),
+    fetchImpl: bare.impl,
+  });
+  // With a sink.
+  const diagnosed = okFlow();
+  const seen: UnityPlayerFacingGateDiagnostic[] = [];
+  await resolveGateWithDiagnostic(
+    { getSupabase: async () => supabaseWith({ access_token: TOKEN }), fetchImpl: diagnosed.impl },
+    (d) => seen.push(d),
+  );
+
+  assert.equal(bare.calls.length, 2, "one status + one mint");
+  assert.equal(diagnosed.calls.length, 2, "enabling diagnostics must not add a request");
+  assert.deepEqual(
+    diagnosed.calls.map((c) => `${c.method} ${c.url}`),
+    bare.calls.map((c) => `${c.method} ${c.url}`),
+    "the request sequence must be byte-identical with and without diagnostics",
+  );
+  assert.equal(diagnosed.calls.filter((c) => c.url === STATUS).length, 1);
+  assert.equal(diagnosed.calls.filter((c) => c.url === SESSION).length, 1);
+  assert.equal(seen.length, 1, "exactly one diagnostic per resolution");
+});
+
+test("the sink is optional — omitting it preserves existing behaviour exactly", async () => {
+  const f = okFlow();
+  const state = await resolveGateWithDiagnostic({
+    getSupabase: async () => supabaseWith({ access_token: TOKEN }),
+    fetchImpl: f.impl,
+  });
+  assert.equal(state, "authorized");
+  assert.equal(f.calls.length, 2);
+  // And the legacy non-diagnostic wrapper is unchanged.
+  const legacy = okFlow();
+  assert.equal(
+    await runUnityPlayerFacingGate({
+      getSupabase: async () => supabaseWith({ access_token: TOKEN }),
+      fetchImpl: legacy.impl,
+    }),
+    "authorized",
+  );
+  assert.equal(legacy.calls.length, 2);
+});
+
+test("the sink receives ONLY a bounded enum — no token, email, header or body", async () => {
+  const received: unknown[] = [];
+  for (const getSupabase of [
+    async () => supabaseWith({ access_token: TOKEN }),
+    async () => supabaseWith(null),
+  ]) {
+    await resolveGateWithDiagnostic(
+      { getSupabase, fetchImpl: okFlow().impl },
+      (...args: unknown[]) => received.push(...args),
+    );
+  }
+  assert.equal(received.length, 2);
+  for (const value of received) {
+    assert.equal(typeof value, "string", "the sink must receive a plain string");
+    assert.ok(DIAGNOSTIC_VALUES.includes(value as UnityPlayerFacingGateDiagnostic));
+  }
+  const serialized = JSON.stringify(received);
+  assert.equal(serialized.includes(TOKEN), false, "the access token must never reach the sink");
+  assert.equal(serialized.includes("Bearer"), false);
+  assert.equal(serialized.includes("@"), false, "no email-shaped value may reach the sink");
+  assert.equal(serialized.includes("Authorization"), false);
+  assert.equal(serialized.includes("cookie"), false);
+});
+
+test("a throwing sink can never change the gate decision", async () => {
+  const f = okFlow();
+  const state = await resolveGateWithDiagnostic(
+    { getSupabase: async () => supabaseWith({ access_token: TOKEN }), fetchImpl: f.impl },
+    () => {
+      throw new Error("operator tooling blew up");
+    },
+  );
+  assert.equal(state, "authorized", "the decision is computed before the sink runs");
+  assert.equal(f.calls.length, 2, "and no request is repeated");
+});
+
+test("the hook wires the sink through the ref, so it cannot re-run the effect", () => {
+  const source = readFileSync(new URL("./useUnityPlayerFacingGate.ts", import.meta.url), "utf8");
+  // One resolution per request, via the diagnosed path.
+  assert.ok(/const outcome = await resolveGateWithDiagnostic\(/.test(source));
+  assert.equal(
+    /await runUnityPlayerFacingGate\(\{/.test(source),
+    false,
+    "the hook must no longer call the diagnostic-discarding wrapper",
+  );
+  // Read from the mutable ref, and `requested` remains the only effect dep.
+  assert.ok(/depsRef\.current\.onDiagnostic\?\.\(diagnostic\)/.test(source));
+  assert.ok(/\}, \[requested\]\);/.test(source), "the effect must still depend only on `requested`");
+  // Unmount protection guards the sink as well as setState.
+  assert.equal(
+    (source.match(/if \(!mounted \|\| controller\.signal\.aborted\) return;/g) ?? []).length,
+    2,
+    "both the sink and setState must be unmount-protected",
+  );
 });

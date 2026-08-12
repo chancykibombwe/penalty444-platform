@@ -55,7 +55,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import UnityPresentationHost from "../../../components/match/UnityPresentationHost";
-import { useUnityPlayerFacingGate } from "../../../components/match/useUnityPlayerFacingGate";
+import {
+  useUnityPlayerFacingGate,
+  type UnityPlayerFacingGateDiagnostic,
+} from "../../../components/match/useUnityPlayerFacingGate";
 import type { PresentationEnvelope } from "../../../components/match/unityPresentationProtocol";
 import type { ViewerIdentityContext } from "../../../components/match/unityPresentationIdentity";
 import type { ViewerPresentationMessage } from "../../../components/match/useViewerPresentation";
@@ -160,8 +163,22 @@ export default function UnityB6D3CProofClient() {
   const [proofActivated, setProofActivated] = useState(false);
   const [proofRunEpoch, setProofRunEpoch] = useState(0);
 
-  // Reused UNCHANGED from PR-2. No network happens while `requested` is false.
-  const gate = useUnityPlayerFacingGate({ requested: preconditionsMet && operatorRequested });
+  /**
+   * Bounded cohort-gate diagnostic for the operator. This is ONLY the existing
+   * `UnityPlayerFacingGateDiagnostic` enum member — never an email, token,
+   * cookie, header, body, URL, secret or free-form error string. `null` means
+   * the gate has not resolved in this run yet.
+   */
+  const [cohortDiagnostic, setCohortDiagnostic] = useState<UnityPlayerFacingGateDiagnostic | null>(
+    null,
+  );
+
+  // Reused UNCHANGED from PR-2, plus the OPTIONAL bounded-diagnostic sink. The
+  // gate still performs exactly one status request and one mint per resolution.
+  const gate = useUnityPlayerFacingGate({
+    requested: preconditionsMet && operatorRequested,
+    onDiagnostic: setCohortDiagnostic,
+  });
   const gateRef = useRef(gate);
   gateRef.current = gate;
 
@@ -490,6 +507,9 @@ export default function UnityB6D3CProofClient() {
     setHarnessError(false);
     setCurrentStep(null);
     setPendingStep(null);
+    // A new run must never display a diagnostic left over from a previous run,
+    // and Reset must return the line to its initial safe state.
+    setCohortDiagnostic(null);
   }, []);
 
   /**
@@ -879,6 +899,7 @@ export default function UnityB6D3CProofClient() {
           <li>build URL is {REQUIRED_BUILD_URL}: {buildUrlCorrect ? "yes" : "no"}</li>
           <li>operator started: {operatorRequested ? "yes" : "no"}</li>
           <li>cohort gate: {gate}</li>
+          <li>cohort diagnostic: {cohortDiagnostic ?? "none"}</li>
           <li>host activated: {playerFacingAuthorized ? "yes" : "no"}</li>
         </ul>
         <p className="mt-2 text-xs text-zinc-400">

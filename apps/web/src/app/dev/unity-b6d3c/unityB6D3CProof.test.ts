@@ -664,9 +664,10 @@ test("the client reuses the merged host and gate rather than reimplementing them
     ),
   );
   assert.ok(
-    /import \{ useUnityPlayerFacingGate \} from "\.\.\/\.\.\/\.\.\/components\/match\/useUnityPlayerFacingGate"/.test(
+    /useUnityPlayerFacingGate,?\s*[\s\S]{0,120}?\} from "\.\.\/\.\.\/\.\.\/components\/match\/useUnityPlayerFacingGate"/.test(
       clientSource,
     ),
+    "the merged gate must be imported from the merged module",
   );
   assert.ok(/<UnityPresentationHost/.test(clientCode), "the merged host must be mounted");
   assert.equal(count(clientCode, "<UnityPresentationHost"), 1, "exactly one host may mount");
@@ -689,7 +690,7 @@ test("the client requires all four public flags plus the protected build URL", (
   }
   assert.ok(/buildUrl === REQUIRED_BUILD_URL/.test(clientSource));
   assert.ok(
-    /useUnityPlayerFacingGate\(\{ requested: preconditionsMet && operatorRequested \}\)/.test(
+    /useUnityPlayerFacingGate\(\{\s*requested: preconditionsMet && operatorRequested,/.test(
       clientCode,
     ),
     "no network may be attempted before the operator starts the run",
@@ -809,7 +810,7 @@ test("PROHIBITED_VALUES covers exactly the two synthetic identifiers", () => {
 test("no cohort request and no renderer may begin before the operator acts", () => {
   // The gate is requested only when the operator has started the run.
   assert.ok(
-    /useUnityPlayerFacingGate\(\{ requested: preconditionsMet && operatorRequested \}\)/.test(
+    /useUnityPlayerFacingGate\(\{\s*requested: preconditionsMet && operatorRequested,/.test(
       clientCode,
     ),
     "the cohort hook must also require operatorRequested",
@@ -1446,4 +1447,88 @@ test("an unexpected exception records a bounded row AND sets the report flag", (
   assert.ok(/failureCategory: "harness_error"/.test(clientCode), "an explicit row must be added");
   assert.ok(/harnessFault: harnessFaultRef\.current/.test(clientCode), "and the report flag set");
   assert.ok(/activeStepRef/.test(clientCode), "the active step must be known in the catch");
+});
+
+// ── 6. B6D3C cohort-gate diagnostic surfacing ─────────────────────────────────
+
+test("the harness passes the OPTIONAL bounded diagnostic sink into the merged gate", () => {
+  assert.ok(
+    /useUnityPlayerFacingGate\(\{\s*requested: preconditionsMet && operatorRequested,\s*onDiagnostic: setCohortDiagnostic,\s*\}\)/.test(
+      clientCode,
+    ),
+    "the existing hook call must gain only the optional onDiagnostic sink",
+  );
+  // Still exactly one gate call — diagnostics must not add a second resolution.
+  assert.equal(count(clientCode, "useUnityPlayerFacingGate({"), 1);
+  assert.ok(
+    /type UnityPlayerFacingGateDiagnostic/.test(clientCode),
+    "only the bounded enum type is imported",
+  );
+});
+
+test("only the bounded enum is stored and rendered — never a value", () => {
+  assert.ok(
+    /useState<UnityPlayerFacingGateDiagnostic \| null>\(/.test(clientCode),
+    "the stored diagnostic must be the bounded enum or null",
+  );
+  assert.ok(
+    /cohort diagnostic: \{cohortDiagnostic \?\? "none"\}/.test(clientCode),
+    "the operator line must render the enum, defaulting to a safe placeholder",
+  );
+  // Nothing identity- or credential-shaped may be rendered anywhere.
+  for (const forbidden of [
+    "access_token",
+    "accessToken",
+    "Authorization",
+    "Bearer",
+    "document.cookie",
+    "getSession()",
+    "supabase",
+    "UNITY_COHORT_SIGNING_SECRET",
+    "UNITY_COHORT_EMAILS",
+  ]) {
+    assert.equal(clientCode.includes(forbidden), false, `must not surface ${forbidden}`);
+  }
+  // No free-form error text is rendered.
+  assert.equal(/\{[^}]*\.message\}/.test(clientCode), false, "no exception text may be rendered");
+});
+
+test("reset and a new run both clear the displayed diagnostic", () => {
+  const clear = /const clearProofState = useCallback\(\(\) => \{[\s\S]*?\}, \[\]\);/.exec(clientCode);
+  assert.ok(clear);
+  assert.ok(
+    /setCohortDiagnostic\(null\)/.test(clear[0]),
+    "clearProofState must reset the diagnostic to its initial safe state",
+  );
+  // Reset routes through clearProofState…
+  const reset = /const resetProof = useCallback\(\(\) => \{[\s\S]*?\}, \[[^\]]*\]\);/.exec(clientCode);
+  assert.ok(reset && /clearProofState\(\)/.test(reset[0]));
+  // …and so does the start of a run, so no stale value survives into a new run.
+  const runStart = clientCode.indexOf("startedRef.current = true;");
+  const clearInRun = clientCode.indexOf("clearProofState();", runStart);
+  assert.ok(runStart > 0 && clearInRun > runStart, "a run must clear before it begins");
+  // The only writer besides the gate sink is that reset.
+  assert.equal(count(clientCode, "setCohortDiagnostic(null)"), 1);
+});
+
+test("the diagnostic is supplemental only — the proof contract is untouched", () => {
+  // Gate list, step count and the failing-gate semantics are unchanged.
+  assert.equal(PROOF_STEPS.length, 16);
+  assert.equal(PROOF_GATE_IDS.length, 10);
+  assert.ok(/failureCategory: resolved \? "gate_denied" : "timeout"/.test(clientCode));
+  // The diagnostic never feeds the report or any evidence row. Scope the check to
+  // buildProofReport's own argument object, not the remainder of the file.
+  const reportCall = /buildProofReport\(\{[\s\S]*?\}\)/.exec(clientCode);
+  assert.ok(reportCall, "the report must still be built");
+  assert.equal(
+    reportCall[0].includes("cohortDiagnostic"),
+    false,
+    "the diagnostic must never enter the report",
+  );
+  assert.equal(/pushRow\([^)]*cohortDiagnostic/.test(clientCode), false);
+  assert.equal(
+    /buildHarnessEvidenceRow\([^)]*cohortDiagnostic/.test(clientCode),
+    false,
+    "the diagnostic must never enter an evidence row",
+  );
 });

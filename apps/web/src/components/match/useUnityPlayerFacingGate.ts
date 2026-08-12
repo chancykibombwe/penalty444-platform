@@ -225,18 +225,55 @@ export async function runUnityPlayerFacingGate(
   return result.state;
 }
 
+/**
+ * Resolve the gate ONCE and report its bounded diagnostic.
+ *
+ * Exported so the hook's exact behaviour is unit-testable without a React
+ * testing dependency. The diagnosed flow runs exactly once per call, so enabling
+ * diagnostics can never add a status request or a capability mint.
+ *
+ * The callback is invoked defensively: a throwing operator consumer can never
+ * change the decision, and the decision is computed before the callback runs.
+ */
+export async function resolveGateWithDiagnostic(
+  deps: GateRunnerDeps,
+  onDiagnostic?: (diagnostic: UnityPlayerFacingGateDiagnostic) => void,
+): Promise<"authorized" | "denied"> {
+  const outcome = await runUnityPlayerFacingGateDiagnosed(deps);
+  if (onDiagnostic) {
+    try {
+      onDiagnostic(outcome.diagnostic);
+    } catch {
+      /* operator-tooling callback errors are contained */
+    }
+  }
+  return outcome.state;
+}
+
 export interface UnityPlayerFacingGateOptions {
   /** Every required public flag must already be true before we check anything. */
   readonly requested: boolean;
   readonly getSupabase?: () => Promise<GateSupabaseLike | null>;
   readonly fetchImpl?: typeof fetch;
+  /**
+   * OPTIONAL bounded-diagnostic sink for isolated, non-production operator
+   * tooling (the B6D3C protected-preview proof harness). It receives only a
+   * `UnityPlayerFacingGateDiagnostic` enum member — never an email, token,
+   * cookie, header, body, URL, secret or free-form error string.
+   *
+   * Consumers that omit it behave exactly as before: the diagnostic is computed
+   * either way (it always was, inside the diagnosed runner) and simply discarded.
+   */
+  readonly onDiagnostic?: (diagnostic: UnityPlayerFacingGateDiagnostic) => void;
 }
 
 /**
  * React binding. Returns `disabled` — performing NO Supabase read and NO network
  * request — whenever the player-facing flags are not all enabled.
  *
- * Never exposes diagnostics in React state (Production-safe surface).
+ * Never exposes diagnostics in React state (Production-safe surface). The bounded
+ * diagnostic is delivered ONLY through the optional `onDiagnostic` callback, which
+ * no player-facing consumer passes.
  */
 export function useUnityPlayerFacingGate(
   options: UnityPlayerFacingGateOptions,
@@ -255,11 +292,20 @@ export function useUnityPlayerFacingGate(
     let mounted = true;
     setState("checking");
     void (async () => {
-      const outcome = await runUnityPlayerFacingGate({
-        getSupabase: depsRef.current.getSupabase ?? resolveDefaultGateSupabase,
-        fetchImpl: depsRef.current.fetchImpl ?? fetch,
-        signal: controller.signal,
-      });
+      // ONE resolution per request. `resolveGateWithDiagnostic` runs the same
+      // diagnosed flow the non-diagnostic wrapper already ran internally, so no
+      // extra status request and no extra capability mint is introduced.
+      const outcome = await resolveGateWithDiagnostic(
+        {
+          getSupabase: depsRef.current.getSupabase ?? resolveDefaultGateSupabase,
+          fetchImpl: depsRef.current.fetchImpl ?? fetch,
+          signal: controller.signal,
+        },
+        (diagnostic) => {
+          if (!mounted || controller.signal.aborted) return; // unmount protection
+          depsRef.current.onDiagnostic?.(diagnostic);
+        },
+      );
       if (!mounted || controller.signal.aborted) return; // unmount protection
       setState(outcome);
     })();
