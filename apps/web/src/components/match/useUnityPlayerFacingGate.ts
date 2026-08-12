@@ -141,6 +141,19 @@ export async function runUnityPlayerFacingGateDiagnosed(
   deps: GateRunnerDeps,
 ): Promise<UnityPlayerFacingGateDiagnosedResult> {
   try {
+    // RECEIVER SAFETY. `deps.fetchImpl` is typed `typeof fetch`, and the common
+    // caller passes the NATIVE browser `fetch` straight through. Calling it as
+    // `deps.fetchImpl(...)` is a method call, so its `this` becomes `deps` —
+    // and native `fetch` is a `Window`/`WorkerGlobalScope` method that throws
+    // `TypeError: Illegal invocation` for any other receiver. That throw was
+    // caught below and flattened into `status_request_denied`, so the gate
+    // denied before a single request ever left the browser.
+    //
+    // Binding once here restores a valid global receiver for BOTH calls. An
+    // injected test double (arrow function, closure, spy) is unaffected: `bind`
+    // on a function that ignores `this` changes nothing observable.
+    const fetchImpl = deps.fetchImpl.bind(globalThis);
+
     let supabase: GateSupabaseLike | null;
     try {
       supabase = await deps.getSupabase();
@@ -178,7 +191,7 @@ export async function runUnityPlayerFacingGateDiagnosed(
     // 4–5. Convenience membership check. Must be 200 with the exact safe shape.
     let inCohort = false;
     try {
-      const res = await deps.fetchImpl(STATUS_PATH, { ...common, method: "GET", headers: authHeaders });
+      const res = await fetchImpl(STATUS_PATH, { ...common, method: "GET", headers: authHeaders });
       if (!res || res.status !== 200) return DENIED("status_request_denied");
       let body: unknown;
       try {
@@ -201,7 +214,7 @@ export async function runUnityPlayerFacingGateDiagnosed(
 
     // 6–7. Mint the short-lived HttpOnly capability. Must be exactly 204.
     try {
-      const res = await deps.fetchImpl(SESSION_PATH, { ...common, method: "POST", headers: authHeaders });
+      const res = await fetchImpl(SESSION_PATH, { ...common, method: "POST", headers: authHeaders });
       if (!res || res.status !== 204) return DENIED("session_mint_denied");
     } catch {
       return DENIED("session_mint_denied");
