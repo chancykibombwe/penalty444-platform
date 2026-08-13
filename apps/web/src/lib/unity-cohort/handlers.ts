@@ -43,7 +43,11 @@ import {
   validateArtifactOrigin,
   type CohortEnv,
 } from "./cohortAccess";
-import { ARTIFACT_RECORDS, resolveArtifactRecord } from "./artifactManifest";
+import {
+  ARTIFACT_RECORDS,
+  ARTIFACT_RELEASE_ID,
+  resolveArtifactRecord,
+} from "./artifactManifest";
 import {
   streamArtifact as defaultStreamArtifact,
   type ArtifactDiagnostics,
@@ -312,7 +316,7 @@ html,body{margin:0;padding:0;background:#000;overflow:hidden;height:100%}
     streamingAssetsUrl: "StreamingAssets",
     companyName: "Penalty444",
     productName: "Penalty444 Arena",
-    productVersion: "${"b6b-local-fb840878-d"}"
+    productVersion: "${ARTIFACT_RELEASE_ID}"
   }).catch(function(){ /* presentation-only: never surface upstream detail */ });
 })();
 </script>

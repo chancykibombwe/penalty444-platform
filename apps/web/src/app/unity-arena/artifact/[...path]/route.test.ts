@@ -32,7 +32,7 @@ const VER = 5;
 // suffix is a synthetic placeholder — the real artifact origin is never hardcoded.
 const ORIGIN = "https://penalty444-unity-staging-abc123xyz-team.vercel.app";
 
-const WASM_SEGMENTS = ["Build", "b6b-local-fb840878-d.wasm.gz"];
+const WASM_SEGMENTS = ["Build", "b6d2b-5226d3c1-a.wasm.gz"];
 const GZIP_BODY = Buffer.from([0x1f, 0x8b, 0x08, 0x00, 0x09, 0x08, 0x07, 0x06]);
 
 function env(over: Record<string, string | undefined> = {}) {
@@ -179,10 +179,10 @@ test("expiry alone denies every artifact request (TTL bound)", async () => {
 
 test("each allowlisted artifact is served with the pinned record", async () => {
   const paths = [
-    ["Build", "b6b-local-fb840878-d.loader.js"],
-    ["Build", "b6b-local-fb840878-d.framework.js.gz"],
-    ["Build", "b6b-local-fb840878-d.data.gz"],
-    ["Build", "b6b-local-fb840878-d.wasm.gz"],
+    ["Build", "b6d2b-5226d3c1-a.loader.js"],
+    ["Build", "b6d2b-5226d3c1-a.framework.js.gz"],
+    ["Build", "b6d2b-5226d3c1-a.data.gz"],
+    ["Build", "b6d2b-5226d3c1-a.wasm.gz"],
   ];
   for (const p of paths) {
     const t = stubTransport();
@@ -204,17 +204,17 @@ test("traversal / encoded / absolute / unknown / case-mismatch paths → opaque 
     ["Build", "..", "..", "etc", "passwd"],
     ["%2e%2e", "secret"],
     ["%252e%252e", "secret"],
-    ["Build\\b6b-local-fb840878-d.wasm.gz"],
+    ["Build\\b6d2b-5226d3c1-a.wasm.gz"],
     ["Build%5Cx"],
     ["/etc/passwd"],
     ["https://evil.example.com/x"],
     ["//evil.example.com/x"],
     ["C:", "Windows"],
-    ["build", "b6b-local-fb840878-d.wasm.gz"],
+    ["build", "b6d2b-5226d3c1-a.wasm.gz"],
     ["Build", "B6B-LOCAL-FB840878-D.WASM.GZ"],
     ["index.html"],
     ["TemplateData", "style.css"],
-    ["Build", "b6b-local-fb840878-d.wasm.gz", "extra"],
+    ["Build", "b6d2b-5226d3c1-a.wasm.gz", "extra"],
     [],
   ];
   for (const a of attacks) {

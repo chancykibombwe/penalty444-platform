@@ -92,8 +92,8 @@ test("the player rule is scoped to the EXACT path (no wildcard)", async () => {
 test("the artifact route retains DENY (framing never relaxed for artifacts)", async () => {
   const r = await rules();
   for (const p of [
-    "/unity-arena/artifact/Build/b6b-local-fb840878-d.wasm.gz",
-    "/unity-arena/artifact/Build/b6b-local-fb840878-d.loader.js",
+    "/unity-arena/artifact/Build/b6d2b-5226d3c1-a.wasm.gz",
+    "/unity-arena/artifact/Build/b6d2b-5226d3c1-a.loader.js",
     "/unity-arena/artifact",
   ]) {
     assert.equal(effective(r, p, "X-Frame-Options"), "DENY", `${p} must stay DENY`);
