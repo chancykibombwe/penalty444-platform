@@ -913,8 +913,26 @@ export type NetworkCategory =
   | "prohibited";
 
 /**
+ * True when `segment` appears as a full path segment (case-insensitive).
+ * Avoids false positives from Next chunk filenames that merely contain a
+ * gameplay word (e.g. `/_next/static/chunks/app-match-abc.js`).
+ */
+function pathHasSegment(pathname: string, segment: string): boolean {
+  const needle = segment.toLowerCase();
+  return pathname
+    .toLowerCase()
+    .split("/")
+    .filter((part) => part.length > 0)
+    .some((part) => part === needle);
+}
+
+/**
  * Classify a request path into a SAFE category. Full URLs and query strings are
  * never retained. Anything gameplay-authoritative is `prohibited`.
+ *
+ * Known same-origin Next.js static/framework prefixes are classified BEFORE
+ * gameplay segment checks so chunk names containing words like "match" stay
+ * `other_same_origin_static`.
  */
 export function classifyNetworkPath(rawPath: unknown): NetworkCategory {
   if (typeof rawPath !== "string" || rawPath.length === 0) return "prohibited";
@@ -923,10 +941,22 @@ export function classifyNetworkPath(rawPath: unknown): NetworkCategory {
   if (lower.startsWith("ws:") || lower.startsWith("wss:")) return "prohibited";
   if (lower.includes("/socket.io")) return "prohibited";
   if (lower.includes("railway")) return "prohibited";
-  if (lower.includes("/wallet") || lower.includes("/economy") || lower.includes("/payout")) {
+  // Static / framework traffic first — before gameplay substring/segment checks.
+  if (lower.startsWith("/_next/") || lower.startsWith("/favicon")) {
+    return "other_same_origin_static";
+  }
+  if (
+    pathHasSegment(path, "wallet") ||
+    pathHasSegment(path, "economy") ||
+    pathHasSegment(path, "payout")
+  ) {
     return "prohibited";
   }
-  if (lower.includes("/match") || lower.includes("/pick") || lower.includes("/room")) {
+  if (
+    pathHasSegment(path, "match") ||
+    pathHasSegment(path, "pick") ||
+    pathHasSegment(path, "room")
+  ) {
     return "prohibited";
   }
   if (path === "/api/unity-cohort/status") return "cohort_status";

@@ -97,11 +97,19 @@ import {
   type SentSummarySnapshot,
 } from "./unityB6D3CProof";
 
+/**
+ * Proof-only MatchRenderer3D ready bound. Measured cold-boot ready ≈ 66.37s;
+ * authorized ceiling 90s. Does not change the production/default 15s renderer.
+ */
+const B6D3C_UNITY_READY_TIMEOUT_MS = 90_000;
+
 // ── Bounded, harness-owned timeouts. Never derived from input. ────────────────
+// Gate A `load` wait is intentionally greater than the proof renderer timeout so
+// the renderer fail-open remains authoritative if Unity never becomes ready.
 const TIMEOUT_MS: Record<ProofStep["timeoutLabel"], number> = {
   short: 1_500,
   standard: 6_000,
-  load: 30_000,
+  load: 95_000,
 };
 /** Bounded wait for the merged cohort gate to resolve after the operator starts. */
 const GATE_TIMEOUT_MS = 15_000;
@@ -945,6 +953,7 @@ export default function UnityB6D3CProofClient() {
           messages={hostMessages}
           identity={identity}
           correlation={null}
+          readyTimeoutMs={B6D3C_UNITY_READY_TIMEOUT_MS}
           onReady={() => {}}
           onError={() => {}}
           onMessageSent={handleMessageSent}

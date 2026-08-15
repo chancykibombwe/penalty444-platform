@@ -7,6 +7,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import UnityPresentationHost, {
@@ -23,6 +24,8 @@ import {
   type PresentationEnvelope,
 } from "./unityPresentationProtocol";
 import { buildViewerIdentityContext } from "./unityPresentationIdentity";
+
+const HOST_SOURCE = readFileSync(new URL("./UnityPresentationHost.tsx", import.meta.url), "utf8");
 
 const INSTANCE = "ABCD12:1";
 const OTHER_INSTANCE = "ABCD12:2";
@@ -245,4 +248,26 @@ test("throwing onReady/onError/onMessageSent never break rendering", () => {
       onMessageSent: boom,
     });
   });
+});
+
+test("optional readyTimeoutMs is threaded to MatchRenderer3D without changing lifecycle", () => {
+  assert.ok(/readyTimeoutMs\?: number/.test(HOST_SOURCE));
+  assert.ok(/readyTimeoutMs=\{readyTimeoutMs\}/.test(HOST_SOURCE));
+  // Omitted prop must still mount the same state machine.
+  const htmlDefault = render({ testHooks: { forceState: "UNITY_LOADING" } });
+  assert.ok(htmlDefault.includes('data-host-state="UNITY_LOADING"'));
+  assert.equal(count(htmlDefault, "data-unity-slot"), 1);
+  const htmlOverride = render({
+    readyTimeoutMs: 90_000,
+    testHooks: { forceState: "UNITY_LOADING" },
+  });
+  assert.ok(htmlOverride.includes('data-host-state="UNITY_LOADING"'));
+  assert.equal(count(htmlOverride, "data-unity-slot"), 1);
+  // Fail-open lifecycle unchanged when override is present.
+  const htmlFail = render({
+    readyTimeoutMs: 90_000,
+    testHooks: { forceState: "UNITY_FAILED_REACT_FALLBACK" },
+  });
+  assert.equal(count(htmlFail, "data-unity-slot"), 0);
+  assert.ok(htmlFail.includes("opacity-100"));
 });

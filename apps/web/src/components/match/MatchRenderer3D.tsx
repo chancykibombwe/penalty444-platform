@@ -183,13 +183,42 @@ export function postMatchEventToUnity(
  * Presentation-only readiness timeout for the OPTIONAL shadow iframe. If Unity
  * has not emitted `ready` within this window the preview fails open (see
  * `markUnavailable`). This never gates the React match in any way.
+ *
+ * Default remains 15s for every caller that does not opt in. Proof harnesses may
+ * pass an explicit bounded override via `readyTimeoutMs` (clamped to
+ * `MAX_UNITY_READY_TIMEOUT_MS`).
  */
-const UNITY_READY_TIMEOUT_MS = 15_000;
+export const DEFAULT_UNITY_READY_TIMEOUT_MS = 15_000;
+export const MAX_UNITY_READY_TIMEOUT_MS = 90_000;
+/** Alias retained for existing source-contract tests and resolve default. */
+export const UNITY_READY_TIMEOUT_MS = DEFAULT_UNITY_READY_TIMEOUT_MS;
+
+/**
+ * Resolve an optional ready-timeout override.
+ * - `undefined` → default 15_000
+ * - finite positive ≤ MAX → value (floored)
+ * - invalid / non-positive / above MAX → safe default 15_000
+ */
+export function resolveUnityReadyTimeoutMs(value?: number): number {
+  if (value === undefined) return UNITY_READY_TIMEOUT_MS;
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return UNITY_READY_TIMEOUT_MS;
+  }
+  if (value > MAX_UNITY_READY_TIMEOUT_MS) return UNITY_READY_TIMEOUT_MS;
+  return Math.floor(value);
+}
 
 /** Presentation-only lifecycle of the optional shadow iframe. */
 type UnityRendererStatus = "loading" | "ready" | "unavailable";
 
 type MatchRenderer3DProps = {
+  /**
+   * Optional presentation-only ready timeout override (milliseconds).
+   * Defaults to {@link DEFAULT_UNITY_READY_TIMEOUT_MS} when omitted or invalid.
+   * Never unbounded — values above {@link MAX_UNITY_READY_TIMEOUT_MS} fall back
+   * to the default. Does not affect React match authority.
+   */
+  readyTimeoutMs?: number;
   /**
    * LATEST-mode (legacy) message to forward INTO Unity. Held pending until Unity
    * signals `ready`, then sent at most once per `messageId` per iframe lifecycle.
@@ -245,6 +274,7 @@ type MatchRenderer3DProps = {
 };
 
 export default function MatchRenderer3D({
+  readyTimeoutMs,
   message = null,
   messageId = null,
   messages,
@@ -259,11 +289,16 @@ export default function MatchRenderer3D({
   // Public, build-time env flags only. No secrets, no tokens.
   const enabled = process.env.NEXT_PUBLIC_UNITY_MATCH_ENABLED === "true";
   const buildUrl = (process.env.NEXT_PUBLIC_UNITY_BUILD_URL ?? "").trim();
+  const resolvedReadyTimeoutMs = resolveUnityReadyTimeoutMs(readyTimeoutMs);
 
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   // Hold latest callbacks in a ref so the listener subscribes once.
   const callbacksRef = useRef({ onReady, onAnimationComplete, onError, onMessageSent });
   callbacksRef.current = { onReady, onAnimationComplete, onError, onMessageSent };
+  // Keep the armed timeout value in a ref so the arm callback stays stable while
+  // still reading the latest resolved bound.
+  const readyTimeoutMsRef = useRef(resolvedReadyTimeoutMs);
+  readyTimeoutMsRef.current = resolvedReadyTimeoutMs;
 
   // Send-queue state, all in refs so the once-subscribed listener stays stable.
   const readyRef = useRef(false);
@@ -323,10 +358,11 @@ export default function MatchRenderer3D({
   const armReadyTimeout = useCallback(() => {
     if (unavailableRef.current) return;
     clearReadyTimeout();
+    const timeoutMs = readyTimeoutMsRef.current;
     readyTimeoutRef.current = window.setTimeout(() => {
       readyTimeoutRef.current = null;
       markUnavailable("3D preview did not become ready.");
-    }, UNITY_READY_TIMEOUT_MS);
+    }, timeoutMs);
   }, [clearReadyTimeout, markUnavailable]);
 
   // Send the latest pending message to Unity — only when ready, only once per

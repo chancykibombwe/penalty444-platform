@@ -523,12 +523,31 @@ test("gameplay-authoritative paths are prohibited", () => {
     "/socket.io/?EIO=4",
     "https://something.railway.app/",
     "/api/wallet/balance",
+    "/wallet",
     "/api/match/room/ABCD12",
+    "/match/ABCD12",
+    "/api/match/state",
     "/api/room/join",
+    "/room/ABCD12",
     "/api/economy/payout",
+    "/pick/lane",
+    "/api/pick/submit",
   ]) {
     assert.equal(classifyNetworkPath(path), "prohibited", `${path} must be prohibited`);
   }
+});
+
+test("Next static chunks remain other_same_origin_static even when names contain match", () => {
+  assert.equal(
+    classifyNetworkPath("/_next/static/chunks/app-match-abc123.js"),
+    "other_same_origin_static",
+  );
+  assert.equal(
+    classifyNetworkPath("/_next/static/chunks/main-app.js"),
+    "other_same_origin_static",
+  );
+  assert.equal(classifyNetworkPath("/favicon.ico"), "other_same_origin_static");
+  assert.equal(classifyNetworkPath("/_next/static/chunks/main.js"), "other_same_origin_static");
 });
 
 test("the expected proof paths classify safely", () => {
@@ -552,6 +571,12 @@ test("cross-origin URLs are prohibited unless they are the auth origin", () => {
   assert.equal(classifyNetworkUrl("https://cdn.example.invalid/x.js", page, auth), "prohibited");
   assert.equal(classifyNetworkUrl("wss://realtime.example.invalid", page, auth), "prohibited");
   assert.equal(classifyNetworkUrl(`${page}/api/match/state`, page, auth), "prohibited");
+  assert.equal(classifyNetworkUrl(`${page}/wallet`, page, auth), "prohibited");
+  assert.equal(classifyNetworkUrl(`${page}/socket.io/?EIO=4`, page, auth), "prohibited");
+  assert.equal(
+    classifyNetworkUrl(`${page}/_next/static/chunks/app-match-x.js`, page, auth),
+    "other_same_origin_static",
+  );
   // Unparseable or empty inputs are prohibited; a bare relative path is still
   // resolved against the page origin, which is the intended behaviour.
   assert.equal(classifyNetworkUrl("", page, null), "prohibited");
@@ -736,6 +761,19 @@ test("timeouts are bounded harness constants, never derived from input", () => {
   assert.ok(/const TIMEOUT_MS: Record<ProofStep\["timeoutLabel"\], number>/.test(clientSource));
   assert.equal(clientSource.includes("setInterval"), false, "no unbounded interval");
   assert.ok(/const deadline = Date\.now\(\) \+ timeoutMs/.test(clientSource));
+  assert.ok(
+    /const B6D3C_UNITY_READY_TIMEOUT_MS = 90_000/.test(clientSource),
+    "proof renderer override must be 90s",
+  );
+  assert.ok(/load:\s*95_000/.test(clientSource), "Gate A load wait must be 95s");
+  assert.ok(/short:\s*1_500/.test(clientSource));
+  assert.ok(/standard:\s*6_000/.test(clientSource));
+  assert.ok(
+    /readyTimeoutMs=\{B6D3C_UNITY_READY_TIMEOUT_MS\}/.test(clientSource),
+    "proof host must receive the proof-only ready bound",
+  );
+  // Harness wait must remain greater than the proof renderer timeout.
+  assert.equal(90_000 < 95_000, true);
 });
 
 test("the proof never starts on mount and never runs twice", () => {
