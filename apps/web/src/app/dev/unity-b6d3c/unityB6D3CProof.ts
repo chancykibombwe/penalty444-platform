@@ -910,6 +910,12 @@ export type NetworkCategory =
    * its own category rather than hidden inside `other_same_origin_static`.
    */
   | "third_party_auth"
+  /**
+   * Exact Vercel Preview Live feedback assets (`https://vercel.live/_next-live/feedback/…`).
+   * Recorded in sanitized evidence; not a network violation. Lookalike hosts and
+   * any other vercel.live path remain `prohibited`.
+   */
+  | "preview_platform_tooling"
   | "prohibited";
 
 /**
@@ -972,9 +978,11 @@ export function classifyNetworkPath(rawPath: unknown): NetworkCategory {
  * origin and the configured auth origin. Only the CATEGORY is ever retained — the
  * URL, its query string and its headers are discarded here and never stored.
  *
- * Anything that is neither same-origin nor the auth origin is `prohibited`, so an
- * unexpected third party (a realtime host, a CDN, an analytics beacon on another
- * origin) fails the proof rather than passing unnoticed.
+ * Cross-origin order: same-origin → exact auth origin → exact Vercel Live
+ * Preview feedback → `prohibited`. Unknown third parties still fail the proof.
+ *
+ * Query strings and fragments never affect trust: only protocol, exact hostname,
+ * and pathname prefix are considered for Preview tooling.
  */
 export function classifyNetworkUrl(
   rawUrl: unknown,
@@ -992,6 +1000,13 @@ export function classifyNetworkUrl(
   if (parsed.origin === pageOrigin) return classifyNetworkPath(parsed.pathname);
   if (authOrigin !== null && authOrigin.length > 0 && parsed.origin === authOrigin) {
     return "third_party_auth";
+  }
+  if (
+    parsed.protocol === "https:" &&
+    parsed.hostname === "vercel.live" &&
+    parsed.pathname.startsWith("/_next-live/feedback/")
+  ) {
+    return "preview_platform_tooling";
   }
   return "prohibited";
 }
@@ -1015,7 +1030,8 @@ export const PROOF_ROUTE = "/dev/unity-b6d3c" as const;
  * Build the final sanitized report.
  *
  * The run FAILS on any gate failure, a violated one-iframe invariant, a
- * prohibited network category, or a harness fault. A harness fault always wins:
+ * `prohibited` network category, or a harness fault. `preview_platform_tooling`
+ * is retained in evidence and is not a network violation. A harness fault always wins:
  * an unexpected exception means the plan did not complete as written, so the
  * report can never be reported as a pass no matter what evidence was collected.
  *

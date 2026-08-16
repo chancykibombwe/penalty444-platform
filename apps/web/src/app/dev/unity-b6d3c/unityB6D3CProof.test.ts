@@ -585,6 +585,81 @@ test("cross-origin URLs are prohibited unless they are the auth origin", () => {
   assert.equal(classifyNetworkUrl("/_next/static/x.js", page, null), "other_same_origin_static");
 });
 
+test("exact Vercel Live Preview feedback is preview_platform_tooling", () => {
+  const page = "https://preview.example.invalid";
+  const auth = "https://auth.example.invalid";
+  assert.equal(
+    classifyNetworkUrl("https://vercel.live/_next-live/feedback/feedback.js", page, auth),
+    "preview_platform_tooling",
+  );
+  assert.equal(
+    classifyNetworkUrl("https://vercel.live/_next-live/feedback/index.html", page, auth),
+    "preview_platform_tooling",
+  );
+  assert.equal(
+    classifyNetworkUrl("https://vercel.live/_next-live/feedback/foo.js?x=1", page, auth),
+    "preview_platform_tooling",
+  );
+  assert.equal(
+    classifyNetworkUrl("https://vercel.live/_next-live/feedback/foo/bar.js#frag", page, auth),
+    "preview_platform_tooling",
+  );
+});
+
+test("lookalike and non-feedback vercel.live traffic remains prohibited", () => {
+  const page = "https://preview.example.invalid";
+  const auth = "https://auth.example.invalid";
+  for (const url of [
+    "https://evil.vercel.live/_next-live/feedback/foo.js",
+    "https://vercel.live.evil.example/_next-live/feedback/foo.js",
+    "https://www.vercel.live/_next-live/feedback/foo.js",
+    "https://vercel.live/_next-live/other/foo.js",
+    "https://vercel.live/",
+    "https://vercel.live/anything-else",
+    "http://vercel.live/_next-live/feedback/foo.js",
+    "wss://vercel.live/_next-live/feedback/socket",
+    "https://vercel.app/x",
+    "https://vercel.com/x",
+  ]) {
+    assert.equal(classifyNetworkUrl(url, page, auth), "prohibited", `${url} must stay prohibited`);
+  }
+});
+
+test("Railway, unknown third-party, wss, match, and socket.io stay prohibited", () => {
+  const page = "https://preview.example.invalid";
+  assert.equal(
+    classifyNetworkUrl("https://something.railway.app/socket.io/", page, null),
+    "prohibited",
+  );
+  assert.equal(classifyNetworkUrl("https://cdn.example.invalid/x.js", page, null), "prohibited");
+  assert.equal(classifyNetworkUrl("http://cdn.example.invalid/x.js", page, null), "prohibited");
+  assert.equal(classifyNetworkUrl("wss://realtime.example.invalid", page, null), "prohibited");
+  assert.equal(classifyNetworkUrl(`${page}/match/ABCD12`, page, null), "prohibited");
+  assert.equal(classifyNetworkUrl(`${page}/socket.io/?EIO=4`, page, null), "prohibited");
+});
+
+test("preview_platform_tooling is retained and does not fail the network gate", () => {
+  const report = buildProofReport({
+    rows: passingRows(),
+    maxIframeCount: 1,
+    networkCategories: ["preview_platform_tooling", "other_same_origin_static"],
+  });
+  assert.equal(report.overall, "pass");
+  assert.ok(report.networkCategories.includes("preview_platform_tooling"));
+  assert.equal(report.networkCategories.includes("prohibited"), false);
+});
+
+test("preview_platform_tooling plus a prohibited request still fails the network gate", () => {
+  const report = buildProofReport({
+    rows: passingRows(),
+    maxIframeCount: 1,
+    networkCategories: ["preview_platform_tooling", "prohibited"],
+  });
+  assert.equal(report.overall, "fail");
+  assert.ok(report.networkCategories.includes("preview_platform_tooling"));
+  assert.ok(report.networkCategories.includes("prohibited"));
+});
+
 // ── Report ────────────────────────────────────────────────────────────────────
 
 function passingRows(): ProofEvidenceRow[] {
