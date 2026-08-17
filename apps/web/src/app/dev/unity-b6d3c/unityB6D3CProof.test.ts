@@ -625,6 +625,42 @@ test("lookalike and non-feedback vercel.live traffic remains prohibited", () => 
   }
 });
 
+test("exact Vercel Live login validate is preview_platform_tooling", () => {
+  const page = "https://preview.example.invalid";
+  const auth = "https://auth.example.invalid";
+  assert.equal(
+    classifyNetworkUrl("https://vercel.live/login/validate", page, auth),
+    "preview_platform_tooling",
+  );
+  assert.equal(
+    classifyNetworkUrl("https://vercel.live/login/validate?x=1", page, auth),
+    "preview_platform_tooling",
+  );
+  assert.equal(
+    classifyNetworkUrl("https://vercel.live/login/validate#frag", page, auth),
+    "preview_platform_tooling",
+  );
+});
+
+test("near-miss Vercel Live login paths remain prohibited", () => {
+  const page = "https://preview.example.invalid";
+  const auth = "https://auth.example.invalid";
+  for (const url of [
+    "https://vercel.live/login",
+    "https://vercel.live/login/",
+    "https://vercel.live/login/foo",
+    "https://vercel.live/login/validate/",
+    "https://vercel.live/login/validate/extra",
+    "http://vercel.live/login/validate",
+    "wss://vercel.live/login/validate",
+    "https://evil.vercel.live/login/validate",
+    "https://www.vercel.live/login/validate",
+    "https://vercel.live.evil.example/login/validate",
+  ]) {
+    assert.equal(classifyNetworkUrl(url, page, auth), "prohibited", `${url} must stay prohibited`);
+  }
+});
+
 test("Railway, unknown third-party, wss, match, and socket.io stay prohibited", () => {
   const page = "https://preview.example.invalid";
   assert.equal(
@@ -649,7 +685,38 @@ test("preview_platform_tooling is retained and does not fail the network gate", 
   assert.equal(report.networkCategories.includes("prohibited"), false);
 });
 
+test("feedback plus login validate preview tooling does not fail the network gate", () => {
+  const page = "https://preview.example.invalid";
+  assert.equal(
+    classifyNetworkUrl("https://vercel.live/_next-live/feedback/feedback.js", page, null),
+    "preview_platform_tooling",
+  );
+  assert.equal(
+    classifyNetworkUrl("https://vercel.live/login/validate", page, null),
+    "preview_platform_tooling",
+  );
+  const report = buildProofReport({
+    rows: passingRows(),
+    maxIframeCount: 1,
+    networkCategories: ["preview_platform_tooling"],
+  });
+  assert.equal(report.overall, "pass");
+  assert.ok(report.networkCategories.includes("preview_platform_tooling"));
+  assert.equal(report.networkCategories.includes("prohibited"), false);
+});
+
 test("preview_platform_tooling plus a prohibited request still fails the network gate", () => {
+  const report = buildProofReport({
+    rows: passingRows(),
+    maxIframeCount: 1,
+    networkCategories: ["preview_platform_tooling", "prohibited"],
+  });
+  assert.equal(report.overall, "fail");
+  assert.ok(report.networkCategories.includes("preview_platform_tooling"));
+  assert.ok(report.networkCategories.includes("prohibited"));
+});
+
+test("login validate tooling plus a prohibited request still fails the network gate", () => {
   const report = buildProofReport({
     rows: passingRows(),
     maxIframeCount: 1,

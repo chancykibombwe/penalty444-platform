@@ -911,7 +911,9 @@ export type NetworkCategory =
    */
   | "third_party_auth"
   /**
-   * Exact Vercel Preview Live feedback assets (`https://vercel.live/_next-live/feedback/…`).
+   * Exact Vercel Preview Live tooling:
+   *   - `https://vercel.live/_next-live/feedback/…`
+   *   - `https://vercel.live/login/validate` (pathname exact; no prefix match)
    * Recorded in sanitized evidence; not a network violation. Lookalike hosts and
    * any other vercel.live path remain `prohibited`.
    */
@@ -979,10 +981,10 @@ export function classifyNetworkPath(rawPath: unknown): NetworkCategory {
  * URL, its query string and its headers are discarded here and never stored.
  *
  * Cross-origin order: same-origin → exact auth origin → exact Vercel Live
- * Preview feedback → `prohibited`. Unknown third parties still fail the proof.
+ * Preview tooling → `prohibited`. Unknown third parties still fail the proof.
  *
  * Query strings and fragments never affect trust: only protocol, exact hostname,
- * and pathname prefix are considered for Preview tooling.
+ * and the exact allowed pathname (or feedback prefix) are considered.
  */
 export function classifyNetworkUrl(
   rawUrl: unknown,
@@ -1001,14 +1003,20 @@ export function classifyNetworkUrl(
   if (authOrigin !== null && authOrigin.length > 0 && parsed.origin === authOrigin) {
     return "third_party_auth";
   }
-  if (
-    parsed.protocol === "https:" &&
-    parsed.hostname === "vercel.live" &&
-    parsed.pathname.startsWith("/_next-live/feedback/")
-  ) {
-    return "preview_platform_tooling";
-  }
+  if (isPreviewPlatformToolingUrl(parsed)) return "preview_platform_tooling";
   return "prohibited";
+}
+
+/**
+ * HTTPS + exact hostname `vercel.live` only. Allowed pathnames:
+ *   - prefix `/_next-live/feedback/`
+ *   - exact `/login/validate` (not `/login`, not `/login/validate/…`)
+ */
+function isPreviewPlatformToolingUrl(parsed: URL): boolean {
+  if (parsed.protocol !== "https:") return false;
+  if (parsed.hostname !== "vercel.live") return false;
+  if (parsed.pathname.startsWith("/_next-live/feedback/")) return true;
+  return parsed.pathname === "/login/validate";
 }
 
 export interface ProofReport {
