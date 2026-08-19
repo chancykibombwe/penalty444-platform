@@ -148,6 +148,51 @@ function isReadyEvent(data: unknown): boolean {
   return record.type === "PENALTY444_UNITY_EVENT" && record.event === "ready";
 }
 
+/**
+ * Bounded synthetic Unity → React error. Presentation-only; no identity, match,
+ * room, opponent, wallet, token or session fields.
+ */
+const PROOF_UNITY_REPORTED_ERROR_MESSAGE = "B6D3C-proof-synthetic-presentation-error";
+
+/**
+ * Post the existing validated Unity error event FROM the proof iframe's
+ * contentWindow so MatchRenderer3D's origin+source checks accept it.
+ * Parent-window postMessage / forged MessageEvent source is not used.
+ */
+function postUnityReportedErrorFromIframe(frame: HTMLIFrameElement): boolean {
+  const child = frame.contentWindow;
+  if (child === null) return false;
+  let childOrigin = "";
+  try {
+    childOrigin = child.location.origin;
+  } catch {
+    return false;
+  }
+  const targetOrigin = window.location.origin;
+  if (childOrigin !== targetOrigin) return false;
+  const payload = {
+    type: "PENALTY444_UNITY_EVENT",
+    event: "error",
+    payload: { message: PROOF_UNITY_REPORTED_ERROR_MESSAGE },
+  };
+  const doc = frame.contentDocument;
+  if (doc === null || doc.defaultView !== child) return false;
+  try {
+    const script = doc.createElement("script");
+    script.textContent =
+      "parent.postMessage(" +
+      JSON.stringify(payload) +
+      ", " +
+      JSON.stringify(targetOrigin) +
+      ");";
+    doc.documentElement.appendChild(script);
+    script.remove();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export default function UnityB6D3CProofClient() {
   // ── Public build-time flags (all four, exactly as MatchRoomPanel composes) ──
   const matchEnabled = process.env.NEXT_PUBLIC_UNITY_MATCH_ENABLED === "true";
@@ -793,9 +838,12 @@ export default function UnityB6D3CProofClient() {
       setCurrentStep(14);
       if (!(await sendViaHost(step(14), feedB.messages[1]))) throw new Error("step-14");
 
-      // 15 — a NATIVE iframe error is terminal for this instance: the renderer is
-      //      unmounted, the React underlay stays mounted AND visible, no
-      //      "unavailable" card is left behind, and nothing remounts.
+      // 15 — a Unity-reported presentation error is terminal for this instance:
+      //      the renderer is unmounted, the React underlay stays mounted AND
+      //      visible, no "unavailable" card is left behind, and nothing remounts.
+      //      The message is posted FROM the proof iframe contentWindow so the
+      //      production origin+source checks accept it. This is not an HTML
+      //      iframe resource/network error.
       activeStepRef.current = step(15);
       setCurrentStep(15);
       const target = proofIframe();
@@ -803,7 +851,10 @@ export default function UnityB6D3CProofClient() {
         observe(15, false, "iframe_invariant_violation");
         throw new Error("step-15-iframe");
       }
-      target.dispatchEvent(new Event("error"));
+      if (!postUnityReportedErrorFromIframe(target)) {
+        observe(15, false, "iframe_invariant_violation");
+        throw new Error("step-15-inject");
+      }
       await waitUntil(
         () => readHostState() === "UNITY_FAILED_REACT_FALLBACK" && iframes().length === 0,
         TIMEOUT_MS[step(15).timeoutLabel],

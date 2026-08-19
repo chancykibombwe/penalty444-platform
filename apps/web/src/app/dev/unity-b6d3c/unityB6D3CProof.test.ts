@@ -274,6 +274,56 @@ test("the fail-open step requires a terminal state with zero Unity iframes", () 
   }
 });
 
+test("step 15 injects a Unity-reported presentation error, not a native iframe resource error", () => {
+  const step = stepOf(15);
+  assert.equal(step.action, "induce-error");
+  assert.equal(step.gate, "I_FAIL_OPEN");
+  assert.match(step.label, /Unity-reported presentation error/);
+  assert.equal(/native iframe/i.test(step.label), false);
+  assert.equal(/HTML resource/i.test(step.label), false);
+  assert.equal(/network failure/i.test(step.label), false);
+  assert.equal(clientSource.includes('dispatchEvent(new Event("error"))'), false);
+  assert.equal(clientCode.includes('dispatchEvent(new Event("error"))'), false);
+  assert.ok(clientCode.includes("postUnityReportedErrorFromIframe"));
+  assert.ok(clientCode.includes('type: "PENALTY444_UNITY_EVENT"'));
+  assert.ok(clientCode.includes('event: "error"'));
+  assert.ok(clientCode.includes("PROOF_UNITY_REPORTED_ERROR_MESSAGE"));
+  assert.ok(/parent\.postMessage\(/.test(clientCode));
+  assert.ok(/JSON\.stringify\(targetOrigin\)/.test(clientCode));
+  assert.ok(/const targetOrigin = window\.location\.origin/.test(clientCode));
+  assert.ok(/contentDocument/.test(clientCode));
+  assert.ok(/createElement\("script"\)/.test(clientCode));
+  assert.equal(/postMessage\([^)]*,\s*"\*"\)/.test(clientCode), false);
+  assert.equal(clientCode.includes('postMessage(payload, "*")'), false);
+  assert.equal(/window\.postMessage\(/.test(clientCode), false);
+  assert.equal(/new MessageEvent/.test(clientCode), false);
+  assert.equal(/forceState/.test(clientCode), false);
+  assert.ok(/const target = proofIframe\(\)/.test(clientCode));
+  assert.ok(/if \(target === null\)/.test(clientCode));
+  assert.ok(/iframe_invariant_violation/.test(clientCode));
+  const injectedMessage = /PROOF_UNITY_REPORTED_ERROR_MESSAGE = "([^"]+)"/.exec(clientCode);
+  assert.ok(injectedMessage, "synthetic proof-only message must be a bounded string constant");
+  assert.ok(injectedMessage[1].startsWith("B6D3C-proof-"));
+  assert.ok(injectedMessage[1].length <= 80);
+  for (const forbidden of [
+    "token",
+    "session",
+    "authorization",
+    "Bearer",
+    "socket",
+    "wallet",
+    "opponent",
+    "roomCode",
+    "matchId",
+  ]) {
+    assert.equal(
+      injectedMessage[1].toLowerCase().includes(forbidden.toLowerCase()),
+      false,
+      `injected message must not contain ${forbidden}`,
+    );
+  }
+});
+
 test("raw mock inputs are well-formed Protocol v1 and id-keyed", () => {
   for (const instance of [PROOF_INSTANCE_A, PROOF_INSTANCE_B]) {
     const inputs = buildRawHostInputs(instance);
@@ -1436,6 +1486,49 @@ test("the client observes the complete fallback DOM contract", () => {
   }
   assert.ok(/buildFallbackEvidenceRow\(step\(15\), fallback/.test(clientCode));
   assert.ok(/if \(!fallbackObservationPassed\(fallback\)\) throw/.test(clientCode));
+});
+
+test("Gate I still requires all nine fallback booleans including noUnavailableCard", () => {
+  assert.deepEqual(
+    [...FALLBACK_OBSERVATION_KEYS],
+    [
+      "hostTerminal",
+      "iframeCountZero",
+      "unityUnderlayPresent",
+      "proofUnderlayPresent",
+      "underlayVisible",
+      "unitySlotAbsent",
+      "noUnavailableCard",
+      "stableNoRemount",
+      "instanceStillTerminal",
+    ],
+  );
+  assert.equal(FALLBACK_OBSERVATION_KEYS.length, 9);
+  assert.equal(fallbackObservationPassed({ ...fallbackAllTrue(), noUnavailableCard: false }), false);
+  assert.equal(fallbackObservationPassed({ ...fallbackAllTrue(), stableNoRemount: false }), false);
+  assert.equal(fallbackObservationPassed({ ...fallbackAllTrue(), instanceStillTerminal: false }), false);
+});
+
+test("step 16 remains after Gate I and is not skipped by design", () => {
+  const fifteen = stepOf(15);
+  const sixteen = stepOf(16);
+  assert.equal(fifteen.step, 15);
+  assert.equal(fifteen.gate, "I_FAIL_OPEN");
+  assert.equal(sixteen.step, 16);
+  assert.equal(sixteen.gate, "J_SANITIZATION");
+  const fifteenIndex = clientCode.indexOf("activeStepRef.current = step(15)");
+  const sixteenIndex = clientCode.indexOf("activeStepRef.current = step(16)");
+  assert.ok(fifteenIndex > 0);
+  assert.ok(sixteenIndex > fifteenIndex, "step 16 must still run after Gate I");
+});
+
+test("step 15 introduces no realtime match source and leaves timeouts and classifier unchanged", () => {
+  assert.equal(/from ["']socket\.io/.test(clientCode), false);
+  assert.equal(/from ["'][^"']*socket/.test(clientCode), false);
+  assert.ok(/const B6D3C_UNITY_READY_TIMEOUT_MS = 90_000/.test(clientSource));
+  assert.ok(/load:\s*95_000/.test(clientSource));
+  assert.ok(/function classifyNetworkUrl\(/.test(proofCode));
+  assert.equal(clientCode.includes("classifyNetworkUrl(entry.name, pageOrigin, authOrigin)"), true);
 });
 
 // ── Harness fault + network window ────────────────────────────────────────────

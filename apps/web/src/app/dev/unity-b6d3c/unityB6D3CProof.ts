@@ -1265,7 +1265,7 @@ export const PROOF_STEPS: ReadonlyArray<ProofStep> = Object.freeze([
   {
     step: 15,
     gate: "I_FAIL_OPEN",
-    label: "native iframe error → terminal fallback, React underlay exposed",
+    label: "Unity-reported presentation error → terminal fallback, React underlay exposed",
     channel: "harness",
     action: "induce-error",
     timeoutLabel: "standard",
