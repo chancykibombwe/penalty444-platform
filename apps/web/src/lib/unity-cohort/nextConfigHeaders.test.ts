@@ -3,10 +3,10 @@
  *
  * Proves the SOURCE CONFIG resolves correctly: the global `X-Frame-Options: DENY`
  * is preserved, exactly `/unity-arena/player` gains `SAMEORIGIN` +
- * `frame-ancestors 'self'` with overriding precedence (it must appear AFTER the
- * global block, since Next.js resolves conflicts as "the last header key wins"),
- * the artifact route stays `DENY`, unrelated routes stay `DENY`, no global CSP is
- * introduced, and the B6C staging rules are untouched.
+ * `frame-ancestors 'self'; connect-src 'self'` with overriding precedence (it must
+ * appear AFTER the global block, since Next.js resolves conflicts as "the last
+ * header key wins"), the artifact route stays `DENY`, unrelated routes stay
+ * `DENY`, no global CSP is introduced, and the B6C staging rules are untouched.
  *
  * A deployment-level check of the FINAL response headers on a protected preview is
  * still required before merge and is NOT performed here.
@@ -19,6 +19,8 @@ import nextConfig from "../../../next.config";
 
 type HeaderEntry = { key: string; value: string };
 type HeaderRule = { source: string; headers: HeaderEntry[] };
+
+const PLAYER_CSP = "frame-ancestors 'self'; connect-src 'self'";
 
 async function rules(): Promise<HeaderRule[]> {
   assert.equal(typeof nextConfig.headers, "function");
@@ -66,9 +68,27 @@ test("the exact player path resolves to SAMEORIGIN (override wins)", async () =>
   assert.equal(effective(r, "/unity-arena/player", "X-Frame-Options"), "SAMEORIGIN");
 });
 
-test("the player path carries Content-Security-Policy: frame-ancestors 'self'", async () => {
+test("the player path carries only the telemetry containment Content-Security-Policy", async () => {
   const r = await rules();
-  assert.equal(effective(r, "/unity-arena/player", "Content-Security-Policy"), "frame-ancestors 'self'");
+  assert.equal(effective(r, "/unity-arena/player", "Content-Security-Policy"), PLAYER_CSP);
+});
+
+test("the player CSP keeps framing and same-origin connect containment only", async () => {
+  const r = await rules();
+  const csp = effective(r, "/unity-arena/player", "Content-Security-Policy") ?? "";
+  assert.equal(csp, PLAYER_CSP);
+  assert.ok(csp.includes("frame-ancestors 'self'"));
+  assert.ok(csp.includes("connect-src 'self'"));
+  for (const forbidden of [
+    "default-src",
+    "script-src",
+    "worker-src",
+    "*.unity3d.com",
+    "config.uca.cloud.unity3d.com",
+    "cdp.cloud.unity3d.com",
+  ]) {
+    assert.equal(csp.includes(forbidden), false, `${forbidden} must not be in the player CSP`);
+  }
 });
 
 test("the player rule appears AFTER the global block so it takes precedence", async () => {
@@ -103,7 +123,15 @@ test("the artifact route retains DENY (framing never relaxed for artifacts)", as
 
 test("unrelated routes retain DENY and gain no CSP", async () => {
   const r = await rules();
-  for (const p of ["/", "/lobby", "/match/ABC123", "/api/admin/me", "/unity-arena", "/unity-arena/playerx"]) {
+  for (const p of [
+    "/",
+    "/lobby",
+    "/match/ABC123",
+    "/api/admin/me",
+    "/unity-arena",
+    "/unity-arena/playerx",
+    "/dev/unity-b6d3c",
+  ]) {
     assert.equal(effective(r, p, "X-Frame-Options"), "DENY", `${p} must stay DENY`);
     assert.equal(effective(r, p, "Content-Security-Policy"), null, `${p} must have no CSP`);
   }
