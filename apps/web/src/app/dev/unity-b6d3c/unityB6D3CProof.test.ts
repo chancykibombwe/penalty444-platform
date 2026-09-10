@@ -274,6 +274,56 @@ test("the fail-open step requires a terminal state with zero Unity iframes", () 
   }
 });
 
+test("step 15 injects a Unity-reported presentation error, not a native iframe resource error", () => {
+  const step = stepOf(15);
+  assert.equal(step.action, "induce-error");
+  assert.equal(step.gate, "I_FAIL_OPEN");
+  assert.match(step.label, /Unity-reported presentation error/);
+  assert.equal(/native iframe/i.test(step.label), false);
+  assert.equal(/HTML resource/i.test(step.label), false);
+  assert.equal(/network failure/i.test(step.label), false);
+  assert.equal(clientSource.includes('dispatchEvent(new Event("error"))'), false);
+  assert.equal(clientCode.includes('dispatchEvent(new Event("error"))'), false);
+  assert.ok(clientCode.includes("postUnityReportedErrorFromIframe"));
+  assert.ok(clientCode.includes('type: "PENALTY444_UNITY_EVENT"'));
+  assert.ok(clientCode.includes('event: "error"'));
+  assert.ok(clientCode.includes("PROOF_UNITY_REPORTED_ERROR_MESSAGE"));
+  assert.ok(/parent\.postMessage\(/.test(clientCode));
+  assert.ok(/JSON\.stringify\(targetOrigin\)/.test(clientCode));
+  assert.ok(/const targetOrigin = window\.location\.origin/.test(clientCode));
+  assert.ok(/contentDocument/.test(clientCode));
+  assert.ok(/createElement\("script"\)/.test(clientCode));
+  assert.equal(/postMessage\([^)]*,\s*"\*"\)/.test(clientCode), false);
+  assert.equal(clientCode.includes('postMessage(payload, "*")'), false);
+  assert.equal(/window\.postMessage\(/.test(clientCode), false);
+  assert.equal(/new MessageEvent/.test(clientCode), false);
+  assert.equal(/forceState/.test(clientCode), false);
+  assert.ok(/const target = proofIframe\(\)/.test(clientCode));
+  assert.ok(/if \(target === null\)/.test(clientCode));
+  assert.ok(/iframe_invariant_violation/.test(clientCode));
+  const injectedMessage = /PROOF_UNITY_REPORTED_ERROR_MESSAGE = "([^"]+)"/.exec(clientCode);
+  assert.ok(injectedMessage, "synthetic proof-only message must be a bounded string constant");
+  assert.ok(injectedMessage[1].startsWith("B6D3C-proof-"));
+  assert.ok(injectedMessage[1].length <= 80);
+  for (const forbidden of [
+    "token",
+    "session",
+    "authorization",
+    "Bearer",
+    "socket",
+    "wallet",
+    "opponent",
+    "roomCode",
+    "matchId",
+  ]) {
+    assert.equal(
+      injectedMessage[1].toLowerCase().includes(forbidden.toLowerCase()),
+      false,
+      `injected message must not contain ${forbidden}`,
+    );
+  }
+});
+
 test("raw mock inputs are well-formed Protocol v1 and id-keyed", () => {
   for (const instance of [PROOF_INSTANCE_A, PROOF_INSTANCE_B]) {
     const inputs = buildRawHostInputs(instance);
@@ -523,12 +573,31 @@ test("gameplay-authoritative paths are prohibited", () => {
     "/socket.io/?EIO=4",
     "https://something.railway.app/",
     "/api/wallet/balance",
+    "/wallet",
     "/api/match/room/ABCD12",
+    "/match/ABCD12",
+    "/api/match/state",
     "/api/room/join",
+    "/room/ABCD12",
     "/api/economy/payout",
+    "/pick/lane",
+    "/api/pick/submit",
   ]) {
     assert.equal(classifyNetworkPath(path), "prohibited", `${path} must be prohibited`);
   }
+});
+
+test("Next static chunks remain other_same_origin_static even when names contain match", () => {
+  assert.equal(
+    classifyNetworkPath("/_next/static/chunks/app-match-abc123.js"),
+    "other_same_origin_static",
+  );
+  assert.equal(
+    classifyNetworkPath("/_next/static/chunks/main-app.js"),
+    "other_same_origin_static",
+  );
+  assert.equal(classifyNetworkPath("/favicon.ico"), "other_same_origin_static");
+  assert.equal(classifyNetworkPath("/_next/static/chunks/main.js"), "other_same_origin_static");
 });
 
 test("the expected proof paths classify safely", () => {
@@ -552,12 +621,160 @@ test("cross-origin URLs are prohibited unless they are the auth origin", () => {
   assert.equal(classifyNetworkUrl("https://cdn.example.invalid/x.js", page, auth), "prohibited");
   assert.equal(classifyNetworkUrl("wss://realtime.example.invalid", page, auth), "prohibited");
   assert.equal(classifyNetworkUrl(`${page}/api/match/state`, page, auth), "prohibited");
+  assert.equal(classifyNetworkUrl(`${page}/wallet`, page, auth), "prohibited");
+  assert.equal(classifyNetworkUrl(`${page}/socket.io/?EIO=4`, page, auth), "prohibited");
+  assert.equal(
+    classifyNetworkUrl(`${page}/_next/static/chunks/app-match-x.js`, page, auth),
+    "other_same_origin_static",
+  );
   // Unparseable or empty inputs are prohibited; a bare relative path is still
   // resolved against the page origin, which is the intended behaviour.
   assert.equal(classifyNetworkUrl("", page, null), "prohibited");
   assert.equal(classifyNetworkUrl("http://", page, null), "prohibited");
   assert.equal(classifyNetworkUrl(undefined, page, null), "prohibited");
   assert.equal(classifyNetworkUrl("/_next/static/x.js", page, null), "other_same_origin_static");
+});
+
+test("exact Vercel Live Preview feedback is preview_platform_tooling", () => {
+  const page = "https://preview.example.invalid";
+  const auth = "https://auth.example.invalid";
+  assert.equal(
+    classifyNetworkUrl("https://vercel.live/_next-live/feedback/feedback.js", page, auth),
+    "preview_platform_tooling",
+  );
+  assert.equal(
+    classifyNetworkUrl("https://vercel.live/_next-live/feedback/index.html", page, auth),
+    "preview_platform_tooling",
+  );
+  assert.equal(
+    classifyNetworkUrl("https://vercel.live/_next-live/feedback/foo.js?x=1", page, auth),
+    "preview_platform_tooling",
+  );
+  assert.equal(
+    classifyNetworkUrl("https://vercel.live/_next-live/feedback/foo/bar.js#frag", page, auth),
+    "preview_platform_tooling",
+  );
+});
+
+test("lookalike and non-feedback vercel.live traffic remains prohibited", () => {
+  const page = "https://preview.example.invalid";
+  const auth = "https://auth.example.invalid";
+  for (const url of [
+    "https://evil.vercel.live/_next-live/feedback/foo.js",
+    "https://vercel.live.evil.example/_next-live/feedback/foo.js",
+    "https://www.vercel.live/_next-live/feedback/foo.js",
+    "https://vercel.live/_next-live/other/foo.js",
+    "https://vercel.live/",
+    "https://vercel.live/anything-else",
+    "http://vercel.live/_next-live/feedback/foo.js",
+    "wss://vercel.live/_next-live/feedback/socket",
+    "https://vercel.app/x",
+    "https://vercel.com/x",
+  ]) {
+    assert.equal(classifyNetworkUrl(url, page, auth), "prohibited", `${url} must stay prohibited`);
+  }
+});
+
+test("exact Vercel Live login validate is preview_platform_tooling", () => {
+  const page = "https://preview.example.invalid";
+  const auth = "https://auth.example.invalid";
+  assert.equal(
+    classifyNetworkUrl("https://vercel.live/login/validate", page, auth),
+    "preview_platform_tooling",
+  );
+  assert.equal(
+    classifyNetworkUrl("https://vercel.live/login/validate?x=1", page, auth),
+    "preview_platform_tooling",
+  );
+  assert.equal(
+    classifyNetworkUrl("https://vercel.live/login/validate#frag", page, auth),
+    "preview_platform_tooling",
+  );
+});
+
+test("near-miss Vercel Live login paths remain prohibited", () => {
+  const page = "https://preview.example.invalid";
+  const auth = "https://auth.example.invalid";
+  for (const url of [
+    "https://vercel.live/login",
+    "https://vercel.live/login/",
+    "https://vercel.live/login/foo",
+    "https://vercel.live/login/validate/",
+    "https://vercel.live/login/validate/extra",
+    "http://vercel.live/login/validate",
+    "wss://vercel.live/login/validate",
+    "https://evil.vercel.live/login/validate",
+    "https://www.vercel.live/login/validate",
+    "https://vercel.live.evil.example/login/validate",
+  ]) {
+    assert.equal(classifyNetworkUrl(url, page, auth), "prohibited", `${url} must stay prohibited`);
+  }
+});
+
+test("Railway, unknown third-party, wss, match, and socket.io stay prohibited", () => {
+  const page = "https://preview.example.invalid";
+  assert.equal(
+    classifyNetworkUrl("https://something.railway.app/socket.io/", page, null),
+    "prohibited",
+  );
+  assert.equal(classifyNetworkUrl("https://cdn.example.invalid/x.js", page, null), "prohibited");
+  assert.equal(classifyNetworkUrl("http://cdn.example.invalid/x.js", page, null), "prohibited");
+  assert.equal(classifyNetworkUrl("wss://realtime.example.invalid", page, null), "prohibited");
+  assert.equal(classifyNetworkUrl(`${page}/match/ABCD12`, page, null), "prohibited");
+  assert.equal(classifyNetworkUrl(`${page}/socket.io/?EIO=4`, page, null), "prohibited");
+});
+
+test("preview_platform_tooling is retained and does not fail the network gate", () => {
+  const report = buildProofReport({
+    rows: passingRows(),
+    maxIframeCount: 1,
+    networkCategories: ["preview_platform_tooling", "other_same_origin_static"],
+  });
+  assert.equal(report.overall, "pass");
+  assert.ok(report.networkCategories.includes("preview_platform_tooling"));
+  assert.equal(report.networkCategories.includes("prohibited"), false);
+});
+
+test("feedback plus login validate preview tooling does not fail the network gate", () => {
+  const page = "https://preview.example.invalid";
+  assert.equal(
+    classifyNetworkUrl("https://vercel.live/_next-live/feedback/feedback.js", page, null),
+    "preview_platform_tooling",
+  );
+  assert.equal(
+    classifyNetworkUrl("https://vercel.live/login/validate", page, null),
+    "preview_platform_tooling",
+  );
+  const report = buildProofReport({
+    rows: passingRows(),
+    maxIframeCount: 1,
+    networkCategories: ["preview_platform_tooling"],
+  });
+  assert.equal(report.overall, "pass");
+  assert.ok(report.networkCategories.includes("preview_platform_tooling"));
+  assert.equal(report.networkCategories.includes("prohibited"), false);
+});
+
+test("preview_platform_tooling plus a prohibited request still fails the network gate", () => {
+  const report = buildProofReport({
+    rows: passingRows(),
+    maxIframeCount: 1,
+    networkCategories: ["preview_platform_tooling", "prohibited"],
+  });
+  assert.equal(report.overall, "fail");
+  assert.ok(report.networkCategories.includes("preview_platform_tooling"));
+  assert.ok(report.networkCategories.includes("prohibited"));
+});
+
+test("login validate tooling plus a prohibited request still fails the network gate", () => {
+  const report = buildProofReport({
+    rows: passingRows(),
+    maxIframeCount: 1,
+    networkCategories: ["preview_platform_tooling", "prohibited"],
+  });
+  assert.equal(report.overall, "fail");
+  assert.ok(report.networkCategories.includes("preview_platform_tooling"));
+  assert.ok(report.networkCategories.includes("prohibited"));
 });
 
 // ── Report ────────────────────────────────────────────────────────────────────
@@ -664,9 +881,10 @@ test("the client reuses the merged host and gate rather than reimplementing them
     ),
   );
   assert.ok(
-    /import \{ useUnityPlayerFacingGate \} from "\.\.\/\.\.\/\.\.\/components\/match\/useUnityPlayerFacingGate"/.test(
+    /useUnityPlayerFacingGate,?\s*[\s\S]{0,120}?\} from "\.\.\/\.\.\/\.\.\/components\/match\/useUnityPlayerFacingGate"/.test(
       clientSource,
     ),
+    "the merged gate must be imported from the merged module",
   );
   assert.ok(/<UnityPresentationHost/.test(clientCode), "the merged host must be mounted");
   assert.equal(count(clientCode, "<UnityPresentationHost"), 1, "exactly one host may mount");
@@ -689,7 +907,7 @@ test("the client requires all four public flags plus the protected build URL", (
   }
   assert.ok(/buildUrl === REQUIRED_BUILD_URL/.test(clientSource));
   assert.ok(
-    /useUnityPlayerFacingGate\(\{ requested: preconditionsMet && operatorRequested \}\)/.test(
+    /useUnityPlayerFacingGate\(\{\s*requested: preconditionsMet && operatorRequested,/.test(
       clientCode,
     ),
     "no network may be attempted before the operator starts the run",
@@ -735,6 +953,19 @@ test("timeouts are bounded harness constants, never derived from input", () => {
   assert.ok(/const TIMEOUT_MS: Record<ProofStep\["timeoutLabel"\], number>/.test(clientSource));
   assert.equal(clientSource.includes("setInterval"), false, "no unbounded interval");
   assert.ok(/const deadline = Date\.now\(\) \+ timeoutMs/.test(clientSource));
+  assert.ok(
+    /const B6D3C_UNITY_READY_TIMEOUT_MS = 90_000/.test(clientSource),
+    "proof renderer override must be 90s",
+  );
+  assert.ok(/load:\s*95_000/.test(clientSource), "Gate A load wait must be 95s");
+  assert.ok(/short:\s*1_500/.test(clientSource));
+  assert.ok(/standard:\s*6_000/.test(clientSource));
+  assert.ok(
+    /readyTimeoutMs=\{B6D3C_UNITY_READY_TIMEOUT_MS\}/.test(clientSource),
+    "proof host must receive the proof-only ready bound",
+  );
+  // Harness wait must remain greater than the proof renderer timeout.
+  assert.equal(90_000 < 95_000, true);
 });
 
 test("the proof never starts on mount and never runs twice", () => {
@@ -809,7 +1040,7 @@ test("PROHIBITED_VALUES covers exactly the two synthetic identifiers", () => {
 test("no cohort request and no renderer may begin before the operator acts", () => {
   // The gate is requested only when the operator has started the run.
   assert.ok(
-    /useUnityPlayerFacingGate\(\{ requested: preconditionsMet && operatorRequested \}\)/.test(
+    /useUnityPlayerFacingGate\(\{\s*requested: preconditionsMet && operatorRequested,/.test(
       clientCode,
     ),
     "the cohort hook must also require operatorRequested",
@@ -1257,6 +1488,49 @@ test("the client observes the complete fallback DOM contract", () => {
   assert.ok(/if \(!fallbackObservationPassed\(fallback\)\) throw/.test(clientCode));
 });
 
+test("Gate I still requires all nine fallback booleans including noUnavailableCard", () => {
+  assert.deepEqual(
+    [...FALLBACK_OBSERVATION_KEYS],
+    [
+      "hostTerminal",
+      "iframeCountZero",
+      "unityUnderlayPresent",
+      "proofUnderlayPresent",
+      "underlayVisible",
+      "unitySlotAbsent",
+      "noUnavailableCard",
+      "stableNoRemount",
+      "instanceStillTerminal",
+    ],
+  );
+  assert.equal(FALLBACK_OBSERVATION_KEYS.length, 9);
+  assert.equal(fallbackObservationPassed({ ...fallbackAllTrue(), noUnavailableCard: false }), false);
+  assert.equal(fallbackObservationPassed({ ...fallbackAllTrue(), stableNoRemount: false }), false);
+  assert.equal(fallbackObservationPassed({ ...fallbackAllTrue(), instanceStillTerminal: false }), false);
+});
+
+test("step 16 remains after Gate I and is not skipped by design", () => {
+  const fifteen = stepOf(15);
+  const sixteen = stepOf(16);
+  assert.equal(fifteen.step, 15);
+  assert.equal(fifteen.gate, "I_FAIL_OPEN");
+  assert.equal(sixteen.step, 16);
+  assert.equal(sixteen.gate, "J_SANITIZATION");
+  const fifteenIndex = clientCode.indexOf("activeStepRef.current = step(15)");
+  const sixteenIndex = clientCode.indexOf("activeStepRef.current = step(16)");
+  assert.ok(fifteenIndex > 0);
+  assert.ok(sixteenIndex > fifteenIndex, "step 16 must still run after Gate I");
+});
+
+test("step 15 introduces no realtime match source and leaves timeouts and classifier unchanged", () => {
+  assert.equal(/from ["']socket\.io/.test(clientCode), false);
+  assert.equal(/from ["'][^"']*socket/.test(clientCode), false);
+  assert.ok(/const B6D3C_UNITY_READY_TIMEOUT_MS = 90_000/.test(clientSource));
+  assert.ok(/load:\s*95_000/.test(clientSource));
+  assert.ok(/function classifyNetworkUrl\(/.test(proofCode));
+  assert.equal(clientCode.includes("classifyNetworkUrl(entry.name, pageOrigin, authOrigin)"), true);
+});
+
 // ── Harness fault + network window ────────────────────────────────────────────
 
 test("a harness fault always forces overall failure", () => {
@@ -1446,4 +1720,88 @@ test("an unexpected exception records a bounded row AND sets the report flag", (
   assert.ok(/failureCategory: "harness_error"/.test(clientCode), "an explicit row must be added");
   assert.ok(/harnessFault: harnessFaultRef\.current/.test(clientCode), "and the report flag set");
   assert.ok(/activeStepRef/.test(clientCode), "the active step must be known in the catch");
+});
+
+// ── 6. B6D3C cohort-gate diagnostic surfacing ─────────────────────────────────
+
+test("the harness passes the OPTIONAL bounded diagnostic sink into the merged gate", () => {
+  assert.ok(
+    /useUnityPlayerFacingGate\(\{\s*requested: preconditionsMet && operatorRequested,\s*onDiagnostic: setCohortDiagnostic,\s*\}\)/.test(
+      clientCode,
+    ),
+    "the existing hook call must gain only the optional onDiagnostic sink",
+  );
+  // Still exactly one gate call — diagnostics must not add a second resolution.
+  assert.equal(count(clientCode, "useUnityPlayerFacingGate({"), 1);
+  assert.ok(
+    /type UnityPlayerFacingGateDiagnostic/.test(clientCode),
+    "only the bounded enum type is imported",
+  );
+});
+
+test("only the bounded enum is stored and rendered — never a value", () => {
+  assert.ok(
+    /useState<UnityPlayerFacingGateDiagnostic \| null>\(/.test(clientCode),
+    "the stored diagnostic must be the bounded enum or null",
+  );
+  assert.ok(
+    /cohort diagnostic: \{cohortDiagnostic \?\? "none"\}/.test(clientCode),
+    "the operator line must render the enum, defaulting to a safe placeholder",
+  );
+  // Nothing identity- or credential-shaped may be rendered anywhere.
+  for (const forbidden of [
+    "access_token",
+    "accessToken",
+    "Authorization",
+    "Bearer",
+    "document.cookie",
+    "getSession()",
+    "supabase",
+    "UNITY_COHORT_SIGNING_SECRET",
+    "UNITY_COHORT_EMAILS",
+  ]) {
+    assert.equal(clientCode.includes(forbidden), false, `must not surface ${forbidden}`);
+  }
+  // No free-form error text is rendered.
+  assert.equal(/\{[^}]*\.message\}/.test(clientCode), false, "no exception text may be rendered");
+});
+
+test("reset and a new run both clear the displayed diagnostic", () => {
+  const clear = /const clearProofState = useCallback\(\(\) => \{[\s\S]*?\}, \[\]\);/.exec(clientCode);
+  assert.ok(clear);
+  assert.ok(
+    /setCohortDiagnostic\(null\)/.test(clear[0]),
+    "clearProofState must reset the diagnostic to its initial safe state",
+  );
+  // Reset routes through clearProofState…
+  const reset = /const resetProof = useCallback\(\(\) => \{[\s\S]*?\}, \[[^\]]*\]\);/.exec(clientCode);
+  assert.ok(reset && /clearProofState\(\)/.test(reset[0]));
+  // …and so does the start of a run, so no stale value survives into a new run.
+  const runStart = clientCode.indexOf("startedRef.current = true;");
+  const clearInRun = clientCode.indexOf("clearProofState();", runStart);
+  assert.ok(runStart > 0 && clearInRun > runStart, "a run must clear before it begins");
+  // The only writer besides the gate sink is that reset.
+  assert.equal(count(clientCode, "setCohortDiagnostic(null)"), 1);
+});
+
+test("the diagnostic is supplemental only — the proof contract is untouched", () => {
+  // Gate list, step count and the failing-gate semantics are unchanged.
+  assert.equal(PROOF_STEPS.length, 16);
+  assert.equal(PROOF_GATE_IDS.length, 10);
+  assert.ok(/failureCategory: resolved \? "gate_denied" : "timeout"/.test(clientCode));
+  // The diagnostic never feeds the report or any evidence row. Scope the check to
+  // buildProofReport's own argument object, not the remainder of the file.
+  const reportCall = /buildProofReport\(\{[\s\S]*?\}\)/.exec(clientCode);
+  assert.ok(reportCall, "the report must still be built");
+  assert.equal(
+    reportCall[0].includes("cohortDiagnostic"),
+    false,
+    "the diagnostic must never enter the report",
+  );
+  assert.equal(/pushRow\([^)]*cohortDiagnostic/.test(clientCode), false);
+  assert.equal(
+    /buildHarnessEvidenceRow\([^)]*cohortDiagnostic/.test(clientCode),
+    false,
+    "the diagnostic must never enter an evidence row",
+  );
 });

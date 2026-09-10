@@ -4,11 +4,10 @@
  * Production-scoped allowlist for the protected `/unity-arena/artifact/**` route.
  * This module is deliberately independent of the disposable proof harness: it does
  * NOT import `apps/web/src/lib/unity-stream-proof/**`. The byte counts, SHA-256
- * digests and encodings below were transcribed from the tracked, CI-verified
- * evidence fixture (`unity-stream-proof/fixtures/b6b-local-fb840878-d.manifest.json`,
- * source-manifest SHA-256 `be290569c2f22cc8481a641bbfd720795790ced4e271042f45f367441f6444ae`,
- * independently HTTP-verified in B6C §14.3 and streamed byte-exactly in the B6D3B
- * protected-preview measurement).
+ * digests and encodings below were transcribed from the authenticated historical
+ * B6D2B hosted manifest for release `b6d2b-5226d3c1-a`
+ * (manifest SHA-256 `00205da3ecc88557a1f138d5b57486e4920fe5ef33a02962c340cf61b28dc79e`,
+ * source commit `5226d3c125f3a274fc7d8589f3aa77642a3c5991`, Unity `6000.4.2f1`).
  *
  * Only the FOUR core build files needed by the minimal trusted entry HTML are
  * allowlisted. `index.html` and `TemplateData/**` are deliberately NOT served.
@@ -17,7 +16,7 @@
  * plus the record's own release-relative path; it is NEVER request-controlled.
  */
 
-export const ARTIFACT_RELEASE_ID = "b6b-local-fb840878-d" as const;
+export const ARTIFACT_RELEASE_ID = "b6d2b-5226d3c1-a" as const;
 
 export const ARTIFACT_LABELS = ["loader", "framework", "data", "wasm"] as const;
 export type ArtifactLabel = (typeof ARTIFACT_LABELS)[number];
@@ -48,33 +47,33 @@ const SHA256_RE = /^[0-9a-f]{64}$/;
 export const ARTIFACT_RECORDS: ReadonlyArray<ArtifactRecord> = Object.freeze([
   Object.freeze({
     label: "loader" as const,
-    path: "Build/b6b-local-fb840878-d.loader.js",
+    path: "Build/b6d2b-5226d3c1-a.loader.js",
     bytes: 26982,
-    sha256: "de61c3bc8500cb8ff080d6a0791cc7cf53f2128368d94a5dd9dadbf0291dc71d",
+    sha256: "e92d0faa491f054c30b24c9613de894496fcb33aff6ebe2744f45a8570e3b034",
     contentEncoding: "identity" as const,
     contentType: "application/javascript",
   }),
   Object.freeze({
     label: "framework" as const,
-    path: "Build/b6b-local-fb840878-d.framework.js.gz",
-    bytes: 88984,
-    sha256: "d757c33a4c0be14e18adbfb3078f8ef19baed6091f360f2c07133f99155e1eee",
+    path: "Build/b6d2b-5226d3c1-a.framework.js.gz",
+    bytes: 90655,
+    sha256: "f020ebbb33b00559d6dc18ad186811cef2681b0343de5af38778ca81cf677c22",
     contentEncoding: "gzip" as const,
     contentType: "application/javascript",
   }),
   Object.freeze({
     label: "data" as const,
-    path: "Build/b6b-local-fb840878-d.data.gz",
-    bytes: 1866605,
-    sha256: "b1f91a0117c62de5ef3734d0a2c757e078ce607778f09deccbe664a3e5368339",
+    path: "Build/b6d2b-5226d3c1-a.data.gz",
+    bytes: 1877549,
+    sha256: "c786dc7d7544ed22ca4da786773b7e573347ad37451e3e89b78e4296dc1586e4",
     contentEncoding: "gzip" as const,
     contentType: "application/octet-stream",
   }),
   Object.freeze({
     label: "wasm" as const,
-    path: "Build/b6b-local-fb840878-d.wasm.gz",
-    bytes: 8583356,
-    sha256: "cff67683b8a9ee3850c19a96b70109deb817827e7d709227a0d45820d47d409b",
+    path: "Build/b6d2b-5226d3c1-a.wasm.gz",
+    bytes: 8688964,
+    sha256: "8f4058436a541710878b4534a6edf97ac34a615099cbde920e3c187f9bac6d94",
     contentEncoding: "gzip" as const,
     contentType: "application/wasm",
   }),

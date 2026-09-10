@@ -141,6 +141,19 @@ export async function runUnityPlayerFacingGateDiagnosed(
   deps: GateRunnerDeps,
 ): Promise<UnityPlayerFacingGateDiagnosedResult> {
   try {
+    // RECEIVER SAFETY. `deps.fetchImpl` is typed `typeof fetch`, and the common
+    // caller passes the NATIVE browser `fetch` straight through. Calling it as
+    // `deps.fetchImpl(...)` is a method call, so its `this` becomes `deps` —
+    // and native `fetch` is a `Window`/`WorkerGlobalScope` method that throws
+    // `TypeError: Illegal invocation` for any other receiver. That throw was
+    // caught below and flattened into `status_request_denied`, so the gate
+    // denied before a single request ever left the browser.
+    //
+    // Binding once here restores a valid global receiver for BOTH calls. An
+    // injected test double (arrow function, closure, spy) is unaffected: `bind`
+    // on a function that ignores `this` changes nothing observable.
+    const fetchImpl = deps.fetchImpl.bind(globalThis);
+
     let supabase: GateSupabaseLike | null;
     try {
       supabase = await deps.getSupabase();
@@ -178,7 +191,7 @@ export async function runUnityPlayerFacingGateDiagnosed(
     // 4–5. Convenience membership check. Must be 200 with the exact safe shape.
     let inCohort = false;
     try {
-      const res = await deps.fetchImpl(STATUS_PATH, { ...common, method: "GET", headers: authHeaders });
+      const res = await fetchImpl(STATUS_PATH, { ...common, method: "GET", headers: authHeaders });
       if (!res || res.status !== 200) return DENIED("status_request_denied");
       let body: unknown;
       try {
@@ -201,7 +214,7 @@ export async function runUnityPlayerFacingGateDiagnosed(
 
     // 6–7. Mint the short-lived HttpOnly capability. Must be exactly 204.
     try {
-      const res = await deps.fetchImpl(SESSION_PATH, { ...common, method: "POST", headers: authHeaders });
+      const res = await fetchImpl(SESSION_PATH, { ...common, method: "POST", headers: authHeaders });
       if (!res || res.status !== 204) return DENIED("session_mint_denied");
     } catch {
       return DENIED("session_mint_denied");
@@ -225,18 +238,55 @@ export async function runUnityPlayerFacingGate(
   return result.state;
 }
 
+/**
+ * Resolve the gate ONCE and report its bounded diagnostic.
+ *
+ * Exported so the hook's exact behaviour is unit-testable without a React
+ * testing dependency. The diagnosed flow runs exactly once per call, so enabling
+ * diagnostics can never add a status request or a capability mint.
+ *
+ * The callback is invoked defensively: a throwing operator consumer can never
+ * change the decision, and the decision is computed before the callback runs.
+ */
+export async function resolveGateWithDiagnostic(
+  deps: GateRunnerDeps,
+  onDiagnostic?: (diagnostic: UnityPlayerFacingGateDiagnostic) => void,
+): Promise<"authorized" | "denied"> {
+  const outcome = await runUnityPlayerFacingGateDiagnosed(deps);
+  if (onDiagnostic) {
+    try {
+      onDiagnostic(outcome.diagnostic);
+    } catch {
+      /* operator-tooling callback errors are contained */
+    }
+  }
+  return outcome.state;
+}
+
 export interface UnityPlayerFacingGateOptions {
   /** Every required public flag must already be true before we check anything. */
   readonly requested: boolean;
   readonly getSupabase?: () => Promise<GateSupabaseLike | null>;
   readonly fetchImpl?: typeof fetch;
+  /**
+   * OPTIONAL bounded-diagnostic sink for isolated, non-production operator
+   * tooling (the B6D3C protected-preview proof harness). It receives only a
+   * `UnityPlayerFacingGateDiagnostic` enum member — never an email, token,
+   * cookie, header, body, URL, secret or free-form error string.
+   *
+   * Consumers that omit it behave exactly as before: the diagnostic is computed
+   * either way (it always was, inside the diagnosed runner) and simply discarded.
+   */
+  readonly onDiagnostic?: (diagnostic: UnityPlayerFacingGateDiagnostic) => void;
 }
 
 /**
  * React binding. Returns `disabled` — performing NO Supabase read and NO network
  * request — whenever the player-facing flags are not all enabled.
  *
- * Never exposes diagnostics in React state (Production-safe surface).
+ * Never exposes diagnostics in React state (Production-safe surface). The bounded
+ * diagnostic is delivered ONLY through the optional `onDiagnostic` callback, which
+ * no player-facing consumer passes.
  */
 export function useUnityPlayerFacingGate(
   options: UnityPlayerFacingGateOptions,
@@ -255,11 +305,20 @@ export function useUnityPlayerFacingGate(
     let mounted = true;
     setState("checking");
     void (async () => {
-      const outcome = await runUnityPlayerFacingGate({
-        getSupabase: depsRef.current.getSupabase ?? resolveDefaultGateSupabase,
-        fetchImpl: depsRef.current.fetchImpl ?? fetch,
-        signal: controller.signal,
-      });
+      // ONE resolution per request. `resolveGateWithDiagnostic` runs the same
+      // diagnosed flow the non-diagnostic wrapper already ran internally, so no
+      // extra status request and no extra capability mint is introduced.
+      const outcome = await resolveGateWithDiagnostic(
+        {
+          getSupabase: depsRef.current.getSupabase ?? resolveDefaultGateSupabase,
+          fetchImpl: depsRef.current.fetchImpl ?? fetch,
+          signal: controller.signal,
+        },
+        (diagnostic) => {
+          if (!mounted || controller.signal.aborted) return; // unmount protection
+          depsRef.current.onDiagnostic?.(diagnostic);
+        },
+      );
       if (!mounted || controller.signal.aborted) return; // unmount protection
       setState(outcome);
     })();

@@ -80,6 +80,12 @@ export interface UnityPresentationHostProps {
   onError: (reason: string) => void;
   onMessageSent: (summary: SentSummary) => void;
   children: React.ReactNode;
+  /**
+   * Optional presentation-only ready timeout override forwarded to
+   * `MatchRenderer3D`. Omit to preserve the renderer default (15s). The host is
+   * not authoritative for timing — it only threads the bound through.
+   */
+  readyTimeoutMs?: number;
   testHooks?: {
     forceState?: HostState;
   };
@@ -105,6 +111,7 @@ export default function UnityPresentationHost({
   onError,
   onMessageSent,
   children,
+  readyTimeoutMs,
   testHooks,
 }: UnityPresentationHostProps) {
   const [runtime, setRuntime] = useState<HostRuntimeState>(INITIAL_HOST_RUNTIME);
@@ -200,6 +207,7 @@ export default function UnityPresentationHost({
             deliveryMode="fifo"
             activeMatchInstanceId={matchInstanceId}
             presentationOnly
+            readyTimeoutMs={readyTimeoutMs}
             onReady={handleReady}
             onError={handleError}
             onMessageSent={handleMessageSent}

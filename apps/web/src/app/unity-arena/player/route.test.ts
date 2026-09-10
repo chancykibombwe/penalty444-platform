@@ -18,7 +18,10 @@ import {
   type CohortAdminLike,
 } from "../../../lib/unity-cohort/handlers";
 import { COHORT_COOKIE_NAME, signCapability } from "../../../lib/unity-cohort/capability";
-import { ARTIFACT_RECORDS } from "../../../lib/unity-cohort/artifactManifest";
+import {
+  ARTIFACT_RECORDS,
+  ARTIFACT_RELEASE_ID,
+} from "../../../lib/unity-cohort/artifactManifest";
 import { GET as liveGET } from "./route";
 import * as routeModule from "./route";
 
@@ -229,6 +232,24 @@ test("HTML references exactly the four protected same-origin artifact URLs", asy
   const refs = [...html.matchAll(/"(\/[^"]*)"/g)].map((m) => m[1]).filter((u) => u.includes("artifact"));
   assert.equal(refs.length, 4);
   for (const u of refs) assert.ok(u.startsWith("/unity-arena/artifact/"), `unexpected ref ${u}`);
+});
+
+test("productVersion equals ARTIFACT_RELEASE_ID and player uses B6D2B filenames only", () => {
+  const html = buildPlayerEntryHtml();
+  assert.equal(ARTIFACT_RELEASE_ID, "b6d2b-5226d3c1-a");
+  assert.ok(
+    html.includes(`productVersion: "${ARTIFACT_RELEASE_ID}"`),
+    "productVersion must derive from ARTIFACT_RELEASE_ID",
+  );
+  assert.equal(html.includes("b6b-local-fb840878-d"), false, "no B6B artifact filename in player HTML");
+  for (const name of [
+    "b6d2b-5226d3c1-a.loader.js",
+    "b6d2b-5226d3c1-a.framework.js.gz",
+    "b6d2b-5226d3c1-a.data.gz",
+    "b6d2b-5226d3c1-a.wasm.gz",
+  ]) {
+    assert.ok(html.includes(name), `missing B6D2B filename ${name}`);
+  }
 });
 
 test("HTML exposes no upstream origin, identity, capability or query authorization", async () => {

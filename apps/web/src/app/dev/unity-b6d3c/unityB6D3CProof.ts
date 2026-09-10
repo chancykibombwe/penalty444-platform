@@ -910,11 +910,37 @@ export type NetworkCategory =
    * its own category rather than hidden inside `other_same_origin_static`.
    */
   | "third_party_auth"
+  /**
+   * Exact Vercel Preview Live tooling:
+   *   - `https://vercel.live/_next-live/feedback/…`
+   *   - `https://vercel.live/login/validate` (pathname exact; no prefix match)
+   * Recorded in sanitized evidence; not a network violation. Lookalike hosts and
+   * any other vercel.live path remain `prohibited`.
+   */
+  | "preview_platform_tooling"
   | "prohibited";
+
+/**
+ * True when `segment` appears as a full path segment (case-insensitive).
+ * Avoids false positives from Next chunk filenames that merely contain a
+ * gameplay word (e.g. `/_next/static/chunks/app-match-abc.js`).
+ */
+function pathHasSegment(pathname: string, segment: string): boolean {
+  const needle = segment.toLowerCase();
+  return pathname
+    .toLowerCase()
+    .split("/")
+    .filter((part) => part.length > 0)
+    .some((part) => part === needle);
+}
 
 /**
  * Classify a request path into a SAFE category. Full URLs and query strings are
  * never retained. Anything gameplay-authoritative is `prohibited`.
+ *
+ * Known same-origin Next.js static/framework prefixes are classified BEFORE
+ * gameplay segment checks so chunk names containing words like "match" stay
+ * `other_same_origin_static`.
  */
 export function classifyNetworkPath(rawPath: unknown): NetworkCategory {
   if (typeof rawPath !== "string" || rawPath.length === 0) return "prohibited";
@@ -923,10 +949,22 @@ export function classifyNetworkPath(rawPath: unknown): NetworkCategory {
   if (lower.startsWith("ws:") || lower.startsWith("wss:")) return "prohibited";
   if (lower.includes("/socket.io")) return "prohibited";
   if (lower.includes("railway")) return "prohibited";
-  if (lower.includes("/wallet") || lower.includes("/economy") || lower.includes("/payout")) {
+  // Static / framework traffic first — before gameplay substring/segment checks.
+  if (lower.startsWith("/_next/") || lower.startsWith("/favicon")) {
+    return "other_same_origin_static";
+  }
+  if (
+    pathHasSegment(path, "wallet") ||
+    pathHasSegment(path, "economy") ||
+    pathHasSegment(path, "payout")
+  ) {
     return "prohibited";
   }
-  if (lower.includes("/match") || lower.includes("/pick") || lower.includes("/room")) {
+  if (
+    pathHasSegment(path, "match") ||
+    pathHasSegment(path, "pick") ||
+    pathHasSegment(path, "room")
+  ) {
     return "prohibited";
   }
   if (path === "/api/unity-cohort/status") return "cohort_status";
@@ -942,9 +980,11 @@ export function classifyNetworkPath(rawPath: unknown): NetworkCategory {
  * origin and the configured auth origin. Only the CATEGORY is ever retained — the
  * URL, its query string and its headers are discarded here and never stored.
  *
- * Anything that is neither same-origin nor the auth origin is `prohibited`, so an
- * unexpected third party (a realtime host, a CDN, an analytics beacon on another
- * origin) fails the proof rather than passing unnoticed.
+ * Cross-origin order: same-origin → exact auth origin → exact Vercel Live
+ * Preview tooling → `prohibited`. Unknown third parties still fail the proof.
+ *
+ * Query strings and fragments never affect trust: only protocol, exact hostname,
+ * and the exact allowed pathname (or feedback prefix) are considered.
  */
 export function classifyNetworkUrl(
   rawUrl: unknown,
@@ -963,7 +1003,20 @@ export function classifyNetworkUrl(
   if (authOrigin !== null && authOrigin.length > 0 && parsed.origin === authOrigin) {
     return "third_party_auth";
   }
+  if (isPreviewPlatformToolingUrl(parsed)) return "preview_platform_tooling";
   return "prohibited";
+}
+
+/**
+ * HTTPS + exact hostname `vercel.live` only. Allowed pathnames:
+ *   - prefix `/_next-live/feedback/`
+ *   - exact `/login/validate` (not `/login`, not `/login/validate/…`)
+ */
+function isPreviewPlatformToolingUrl(parsed: URL): boolean {
+  if (parsed.protocol !== "https:") return false;
+  if (parsed.hostname !== "vercel.live") return false;
+  if (parsed.pathname.startsWith("/_next-live/feedback/")) return true;
+  return parsed.pathname === "/login/validate";
 }
 
 export interface ProofReport {
@@ -985,7 +1038,8 @@ export const PROOF_ROUTE = "/dev/unity-b6d3c" as const;
  * Build the final sanitized report.
  *
  * The run FAILS on any gate failure, a violated one-iframe invariant, a
- * prohibited network category, or a harness fault. A harness fault always wins:
+ * `prohibited` network category, or a harness fault. `preview_platform_tooling`
+ * is retained in evidence and is not a network violation. A harness fault always wins:
  * an unexpected exception means the plan did not complete as written, so the
  * report can never be reported as a pass no matter what evidence was collected.
  *
@@ -1211,7 +1265,7 @@ export const PROOF_STEPS: ReadonlyArray<ProofStep> = Object.freeze([
   {
     step: 15,
     gate: "I_FAIL_OPEN",
-    label: "native iframe error → terminal fallback, React underlay exposed",
+    label: "Unity-reported presentation error → terminal fallback, React underlay exposed",
     channel: "harness",
     action: "induce-error",
     timeoutLabel: "standard",

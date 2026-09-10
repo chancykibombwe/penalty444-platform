@@ -1,11 +1,25 @@
 # B6D3C — Protected-Preview MOCK Proof Harness
 
-Status: **harness only — the proof has NOT been executed.**
-This head is **not proof-executable as it stands**: the route is a 404 everywhere,
-no environment variable is configured, and even on a correctly-configured Preview
-the proof does not start until an operator presses Run (§5.2).
+Status: **B6D3C FINAL PROTECTED-PREVIEW MOCK PROOF PASSED — READY TO LOCK/CLOSE.**
+
+| Field | Value |
+| --- | --- |
+| Authoritative final run | 2026-08-23 |
+| Branch | `feat/unity-b6d3c-attempt4-proof` |
+| Final tested commit | `aa49f6d2cac6313740bf48b3f5437d4856541d59` |
+| Deployment | `dpl_9j98Beq6zDGzQbGJygxLshiHJZPJ` |
+| Immutable Preview | `https://penalty444-platform-at1y-kvniyrqs8-chancykibombwes-projects.vercel.app` |
+| Environment | Preview (Vercel) |
+| Production Unity | **NO-GO** |
+| B6D3D | **NOT AUTHORIZED** |
+
 Baseline: `231264be0946941933face8c0d4442adc952d414` (master, after PR #220).
-Route: `/dev/unity-b6d3c` (404 on every environment today).
+Route: `/dev/unity-b6d3c`.
+The proof does not start until an operator presses Run (§5.2).
+
+*Pre-execution note (historical): at initial commit this document read "harness only —
+the proof has NOT been executed." and the route was 404 on all environments until
+`B6D3C_PROOF_ROUTE_ENABLED=true` was set on the Preview. Both are now resolved.*
 
 ---
 
@@ -43,9 +57,9 @@ This commit does **not**:
 - touch Production in any way;
 - authorize B6D3D.
 
-The route is a 404 everywhere until an operator sets a server-side flag in a
-separate, separately-authorized step. Production can never be that environment
-(§4).
+The route is gated as a 404 until an operator sets a server-side flag in a
+separately-authorized step; it was activated on the `aa49f6d2` Preview deployment.
+Production can never be that environment (§4).
 
 ## 3. Files
 
@@ -216,7 +230,7 @@ consumer's own gate would go unproven. A unit test enforces that every
 | 12 | F | direct | the superseded instance is still rejected → `foreign_instance` |
 | 13 | H | harness | same-origin reload of the one iframe → fresh `ready` |
 | 14 | H | host | post-reload complete bootstrap at sequence **5** (> 1) is accepted |
-| 15 | I | harness | a native iframe `error` → the COMPLETE fail-open contract (§10.1) |
+| 15 | I | harness | a Unity-reported presentation error (`PENALTY444_UNITY_EVENT`, `event: "error"`, from the proof iframe) → the COMPLETE fail-open contract (§10.1) |
 | 16 | J | harness | no synthetic id in any projection, evidence row or report |
 
 **Gate C is proven from the acknowledgements, never from visibility.** Step 5
@@ -281,8 +295,11 @@ Enforced at runtime by the client:
   one proof iframe's `contentWindow`.
 - **Explicit outbound origin.** Direct injections pass
   `window.location.origin` — never `"*"`.
-- **Bounded timeouts.** `short` 1.5 s, `standard` 6 s, `load` 30 s, polled at
-  50 ms against a `Date.now()` deadline. No interval, no unbounded wait.
+- **Bounded timeouts.** `short` 1.5 s, `standard` 6 s, `load` 95 s outer (Gate A) /
+  90 s proof-renderer (`B6D3C_UNITY_READY_TIMEOUT_MS`), polled at 50 ms against a
+  `Date.now()` deadline. The outer 95 s intentionally exceeds the renderer timeout
+  so `MatchRenderer3D`'s fail-open path remains authoritative if Unity never reaches
+  ready. No interval, no unbounded wait.
 - **Operator-initiated.** Neither a cohort request nor the Unity renderer begins
   before the operator presses Run (§5.2). A guard prevents a second run without a
   reset.
@@ -295,8 +312,12 @@ Enforced at runtime by the client:
 
 ### 10.1 The complete fail-open contract
 
-Step 15 dispatches a native `error` event on the real proof iframe and then
-requires **all nine** of these fixed booleans. Host state and iframe count alone
+Step 15 posts a `PENALTY444_UNITY_EVENT` with `event: "error"` from the same-origin
+proof iframe's own `contentWindow` (by injecting a minimal script into the iframe's
+`contentDocument`). The message is received by the parent's strict inbound listener
+and handled through the existing `MatchRenderer3D` → `onError` → `markUnavailable`
+→ `UNITY_FAILED_REACT_FALLBACK` path — the genuine production fail-open callback
+chain. The step then requires **all nine** of these fixed booleans. Host state and iframe count alone
 are deliberately insufficient — a terminal host that had unmounted the React
 underlay, left the renderer's "unavailable" card behind, or silently remounted an
 iframe would still be a broken fallback:
@@ -416,15 +437,16 @@ Stated plainly so a future report is not over-read:
   `ready`. This is existing merged behaviour, observed here and **not changed**
   by B6D3C; it is recorded in the evidence rows rather than hidden. Whether a
   rematch should re-reveal Unity without a reload is a question for B6D3D.
-- **Induced failure is a native `error` event**, dispatched on the real iframe
-  element. It exercises the merged `onError` → `markUnavailable` → host terminal
-  path exactly, but it is an induced failure, not a naturally-occurring one.
+- **Induced failure is a `PENALTY444_UNITY_EVENT` with `event: "error"`**, posted from
+  the same-origin proof iframe's `contentWindow` via an injected script. It exercises
+  the merged `onError` → `markUnavailable` → host terminal path exactly, but it is an
+  induced failure, not a naturally-occurring one.
 - The harness proves **presentation** behaviour only. It says nothing about
   matchmaking, settlement, economy or server authority.
 
 ## 13. Test coverage
 
-`apps/web/src/app/dev/unity-b6d3c/unityB6D3CProof.test.ts` — 85 tests, run by
+`apps/web/src/app/dev/unity-b6d3c/unityB6D3CProof.test.ts` — 103 tests, run by
 `npm run test:unity-presentation` (and therefore by the existing CI step; no
 workflow change was needed):
 
@@ -488,7 +510,7 @@ forbidden thing cannot masquerade as a violation — nor hide one.
 
 | Check | Result |
 | --- | --- |
-| `npm run test:unity-presentation` | 395 passed (310 pre-B6D3C + 85 B6D3C), 0 failed |
+| `npm run test:unity-presentation` | 413 passed (310 pre-B6D3C + 103 B6D3C), 0 failed |
 | `npm run test:unity-security-delivery` | 170 passed, 0 failed |
 | B6D3B streaming harness tests | 67 passed, 0 failed |
 | `npx tsc --noEmit` (web) | clean |
@@ -511,11 +533,13 @@ with the pinned baseline SHA and route beneath it. The surface cannot be mistake
 for a match: there is no scoreboard, no timer, no opponent, no pick control and
 no result text.
 
-## 16. What a future, separately-authorized execution would require
+## 16. Pre-execution requirements (historical context — completed for aa49f6d2 proof run)
 
-Listed for completeness. **None of it is done, requested or authorized here.**
+*The items below describe the prerequisites that had to be satisfied before the proof
+could be run. They are retained as historical context. All were satisfied for the
+`aa49f6d2` Preview proof deployment on 2026-08-23.*
 
-1. A decision to run the proof at all.
+1. A decision to run the proof.
 2. A Preview deployment of this branch, with Vercel deployment protection on.
 3. Server-side `B6D3C_PROOF_ROUTE_ENABLED=true` scoped to **Preview only**.
 4. The four public Unity flags and `NEXT_PUBLIC_UNITY_BUILD_URL` set on Preview.
@@ -528,12 +552,12 @@ Listed for completeness. **None of it is done, requested or authorized here.**
 Every one of those is a separate authorization. Setting any of them on Production
 is prohibited, and would in any case be defeated by the §4 ordering.
 
-## 17. Reporting rules for a future execution
+## 17. Reporting rules
 
-If the proof is ever run, the report must contain only what the harness already
-retains: gate results, bounded failure categories, sanitized evidence rows (including
-the fixed fail-open booleans and the bounded `suddenDeathRound`), the harness-fault
-flag, the maximum iframe count and request categories.
+The executed report contains only what the harness retains: gate results, bounded
+failure categories, sanitized evidence rows (including the fixed fail-open booleans
+and the bounded `suddenDeathRound`), the harness-fault flag, the maximum iframe count
+and request categories.
 
 It must **never** contain: a user password, a Supabase access or refresh token,
 the `p444_unity_cohort` cookie value, `UNITY_COHORT_SIGNING_SECRET`,
@@ -548,7 +572,231 @@ not perturb the existing production build.
 
 ## 19. Relationship to B6D3D
 
-B6D3C ends here. It produces a proof surface and a proof plan; it does not
-produce a result, and it does not authorize activating player-facing Unity for a
-real match. Any decision about a real match, about production flags, or about
-B6D3D is out of scope for this change and requires its own review.
+B6D3C ends here. With the final authoritative proof run complete (2026-08-23), it
+produces a proof surface, a proof plan, and a final result (PASS). It does not
+authorize activating player-facing Unity for a real match. Any decision about a
+real match, about production flags, or about B6D3D is out of scope and requires its
+own separate review. See §27 for the formal lock/close decision.
+
+---
+
+## 20. Final authoritative B6D3C execution — PASS
+
+| Field | Value |
+| --- | --- |
+| Run presses | 1 |
+| Reset presses | 0 |
+| Retries | 0 |
+| Real matches | 0 |
+| Result | **PASS** |
+| Harness fault | no |
+
+| Gate | Result | Step(s) |
+| --- | --- | --- |
+| A\_BOOTSTRAP | **PASS** | 3 |
+| B\_RESULT\_STATE\_SEPARATION | **PASS** | 4 |
+| C\_PER\_ENVELOPE\_SCORES | **PASS** | 3 |
+| D\_DUPLICATE\_STALE | **PASS** | 4 |
+| E\_FOREIGN\_INSTANCE | **PASS** | 3 |
+| F\_INSTANCE\_TRANSITION | **PASS** | 4 |
+| G\_SUDDEN\_DEATH | **PASS** | 2 |
+| H\_RELOAD\_BOOTSTRAP | **PASS** | 3 |
+| I\_FAIL\_OPEN | **PASS** | 1 |
+| J\_SANITIZATION | **PASS** | 1 |
+
+**Overall: 10 / 10 gates PASS.**
+
+Max concurrent Unity iframes: 1.
+Observed request categories: `cohort_session`, `cohort_status`, `protected_player_entry`.
+
+---
+
+## 21. Final step evidence
+
+| # | Outcome | Detail |
+| --- | --- | --- |
+| 1 | PASS | Unity ready (A\_BOOTSTRAP harness: host UNITY\_LOADING → frames=1) |
+| 2 | PASS | Bootstrap `match_state_sync` · instance B6D3C01:1 · seq 1 · NORMAL · 0/0 · players=2 |
+| 3 | PASS | `round_result` GOAL · seq 2 · no score — separation confirmed |
+| 4 | PASS | Authoritative `match_state_sync` · seq 3 · score change applied (0/1) |
+| 5 | PASS | Per-envelope snapshots retained: seq 1 = 0/0, seq 3 = 0/1; host UNITY\_READY\_VISIBLE · frames=1 |
+| 6 | PASS | Duplicate seq 3 rejected — `stale_or_duplicate` |
+| 7 | PASS | Stale seq 2 rejected — `stale_or_duplicate` |
+| 8 | PASS | Foreign-instance envelope filtered through adapter (host UNITY\_READY\_VISIBLE · frames=1) |
+| 9 | PASS | Compiled Unity rejects direct foreign-instance B6D3C99:1 seq 5 — `foreign_instance` |
+| 10 | PASS | SUDDEN\_DEATH accepted · seq 4 · scores 3/3 · `suddenDeathRound = 1` |
+| 11 | PASS | New instance B6D3C01:2 seq 1 accepted · NORMAL · 0/0 |
+| 12 | PASS | Superseded instance B6D3C01:1 seq 9 rejected — `foreign_instance` |
+| 13 | PASS | Single iframe reload → fresh `PENALTY444_UNITY_EVENT:ready` received |
+| 14 | PASS | Post-reload bootstrap seq 5 (> 1) accepted · B6D3C01:2 · NORMAL · 2/1 |
+| 15 | PASS | Unity-reported presentation error → `UNITY_FAILED_REACT_FALLBACK` · frames=0 (see §22) |
+| 16 | PASS | Sanitization: no synthetic raw id in projections, evidence or report |
+
+---
+
+## 22. Gate I final observation
+
+Step 15 induced a Unity-reported error (`PENALTY444_UNITY_EVENT`, `event: "error"`)
+from the proof iframe. The harness then observed the complete fail-open contract.
+
+| Boolean | Value |
+| --- | --- |
+| `hostTerminal` | **true** |
+| `iframeCountZero` | **true** |
+| `unityUnderlayPresent` | **true** |
+| `proofUnderlayPresent` | **true** |
+| `underlayVisible` | **true** |
+| `unitySlotAbsent` | **true** |
+| `noUnavailableCard` | **true** |
+| `stableNoRemount` | **true** |
+| `instanceStillTerminal` | **true** |
+
+True count: **9 / 9**
+Final iframe count: **0**
+Final host state: `UNITY_FAILED_REACT_FALLBACK`
+
+**Gate I: PASS.**
+
+---
+
+## 23. Network and isolation evidence
+
+### Telemetry containment
+
+| Endpoint | Actual outbound HTTP |
+| --- | --- |
+| `config.uca.cloud.unity3d.com` | **0** |
+| `cdp.cloud.unity3d.com/v1/events` | **0** |
+| New unknown third-party | **0** |
+
+*Known Vercel Preview tooling (`vercel.live/_next-live/feedback/…`) appeared under the
+existing `preview_platform_tooling` policy and is not a network violation.*
+
+### Gameplay / realtime isolation
+
+| Category | Count |
+| --- | --- |
+| `socket.io` | 0 |
+| Railway | 0 |
+| `match` | 0 |
+| `room` | 0 |
+| `pick` | 0 |
+| `wallet` | 0 |
+| `economy` | 0 |
+| `payout` | 0 |
+
+**Formal statement: No match-room/opponent activity caused by the proof.**
+
+The harness's own summary confirms: observed request categories were limited to
+`cohort_session`, `cohort_status`, and `protected_player_entry`. Zero gameplay or
+realtime requests of any kind.
+
+---
+
+## 24. CSP telemetry containment — player route
+
+Commit `aa49f6d2` includes a player-only CSP header block in `apps/web/next.config.ts`,
+applied to the exact route `/unity-arena/player` only.
+
+| Header | Value |
+| --- | --- |
+| `X-Frame-Options` | `SAMEORIGIN` |
+| `Content-Security-Policy` | `frame-ancestors 'self'; connect-src 'self'` |
+
+Design constraints (all verified on the final proof run):
+
+- Scoped to `/unity-arena/player` only — no global CSP introduced.
+- Artifact routes (`/unity-arena/artifact/**`) did not gain this CSP.
+- Unity telemetry endpoints remain prohibited by `connect-src 'self'`.
+- They are blocked by containment, not whitelisted or reclassified.
+- Unity still reached ready successfully — confirmed by Gate A PASS and the clean
+  non-proof diagnostic (see §26).
+
+---
+
+## 25. Locked artifact evidence
+
+Release: `b6d2b-5226d3c1-a`
+Source commit: `5226d3c125f3a274fc7d8589f3aa77642a3c5991`
+
+| Artifact | Expected encoded bytes | Final run observed |
+| --- | --- | --- |
+| `Build/b6d2b-5226d3c1-a.loader.js` | 26 982 | 26 982 ✓ (HTTP 200) |
+| `Build/b6d2b-5226d3c1-a.framework.js.gz` | 90 655 | 90 655 ✓ (HTTP 200) |
+| `Build/b6d2b-5226d3c1-a.data.gz` | 1 877 549 | HTTP 304 (see note) |
+| `Build/b6d2b-5226d3c1-a.wasm.gz` | 8 688 964 | 8 688 964 ✓ (HTTP 200) |
+
+**Note on 304 for `data.gz`:** the browser issued a conditional request and the server
+confirmed the resource was unchanged. The body was not retransferred in that request;
+this does not constitute a new byte or hash measurement. The locked manifest and
+artifact bytes were unchanged. Unity still booted successfully (Gate A PASS).
+
+No artifact was modified, rebuilt, or remanifested.
+
+---
+
+## 26. Prior Step-1 timeout — root-cause note
+
+A prior single proof attempt timed out at Step 1 (Unity ready) while two
+`Page.addScriptToEvaluateOnNewDocument` scripts were active in the external browser
+session. Both scripts wrapped `window.fetch` and `XMLHttpRequest.prototype.open`
+in every navigation context, including the Unity player iframe.
+
+A subsequent **clean non-proof iframe boot** on the same `aa49f6d2` deployment
+(with all instrumentation absent) observed:
+
+- all four protected artifacts loaded successfully;
+- authoritative `PENALTY444_UNITY_EVENT:ready` received;
+- Unity ready in **26.2 s** (wasm download: 20.5 s; init + post-wasm: 2.6 s);
+- telemetry outbound: 0.
+
+The final clean proof, with those scripts absent, passed all Gates A–J.
+
+The double `Page.addScriptToEvaluateOnNewDocument` fetch/XHR wrapping present in the
+failed attempt and absent from the successful clean run is the **high-confidence
+cause** of the contaminated timeout. A definitive exclusive-causal claim is not
+asserted; timing variability alone cannot be ruled out as a contributing factor, but
+timing was decisively ruled out as the *primary* cause by the 26.2 s clean boot.
+
+---
+
+## 27. B6D3C lock / close decision
+
+**B6D3C acceptance criteria are satisfied.**
+
+**B6D3C status: PASS — READY TO LOCK/CLOSE.**
+
+No additional B6D3C proof execution is required. Any future rerun requires a new
+explicit authorization and a concrete reason.
+
+This closure does **not** authorize:
+
+- Production Unity
+- real-player Unity activation
+- economy work
+- real-money work
+- B6D3D
+- changes to Node/Socket.IO gameplay authority
+- changes to React gameplay authority
+
+### Authority boundaries
+
+These boundaries are unchanged by B6D3C and by this closure:
+
+| Authority | Owner |
+| --- | --- |
+| Presentation lifecycle / state rendering | React / player-facing application |
+| Score | Node / Socket.IO (sole authority) |
+| Outcome | Node / Socket.IO (sole authority) |
+| Winner | Node / Socket.IO (sole authority) |
+| Round | Node / Socket.IO (sole authority) |
+| Unity role | Presentation-only — receives state, renders, returns acknowledgements |
+
+### Branch and merge truth
+
+The authoritative evidence is currently on branch `feat/unity-b6d3c-attempt4-proof`.
+This document has **not** been merged to master. Lock/close documentation and branch
+changes still require the normal protected PR workflow before master becomes the
+source of truth for this closure.
+
+Production Unity remains: **NO-GO**.

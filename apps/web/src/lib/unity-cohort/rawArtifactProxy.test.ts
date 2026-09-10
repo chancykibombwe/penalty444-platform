@@ -52,7 +52,7 @@ const IDENTITY_BODY = Buffer.from("console.log('loader');");
 function gzipRecord(over: Partial<ArtifactRecord> = {}): ArtifactRecord {
   return {
     label: "wasm",
-    path: "Build/b6b-local-fb840878-d.wasm.gz",
+    path: "Build/b6d2b-5226d3c1-a.wasm.gz",
     bytes: GZIP_BODY.length,
     sha256: "c".repeat(64),
     contentEncoding: "gzip",
@@ -64,7 +64,7 @@ function gzipRecord(over: Partial<ArtifactRecord> = {}): ArtifactRecord {
 function loaderRecord(over: Partial<ArtifactRecord> = {}): ArtifactRecord {
   return {
     label: "loader",
-    path: "Build/b6b-local-fb840878-d.loader.js",
+    path: "Build/b6d2b-5226d3c1-a.loader.js",
     bytes: IDENTITY_BODY.length,
     sha256: "d".repeat(64),
     contentEncoding: "identity",
@@ -319,7 +319,7 @@ test("requests the internally pinned versioned upstream path (never /Build/...)"
     const outcome = await streamArtifact({ origin: s.origin, record: gzipRecord(), method: "GET" });
     assertStream(outcome);
     await drain(outcome.body!);
-    assert.equal(seenUrl, "/releases/b6b-local-fb840878-d/Build/b6b-local-fb840878-d.wasm.gz");
+    assert.equal(seenUrl, "/releases/b6d2b-5226d3c1-a/Build/b6d2b-5226d3c1-a.wasm.gz");
     assert.equal((seenUrl as string).startsWith("/Build/"), false);
   } finally {
     await s.close();

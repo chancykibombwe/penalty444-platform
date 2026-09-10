@@ -177,7 +177,7 @@ const UNITY_ARENA_PLAYER_HEADER_RULE = {
   source: "/unity-arena/player",
   headers: [
     { key: "X-Frame-Options", value: "SAMEORIGIN" },
-    { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+    { key: "Content-Security-Policy", value: "frame-ancestors 'self'; connect-src 'self'" },
   ],
 };
 

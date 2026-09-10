@@ -55,7 +55,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import UnityPresentationHost from "../../../components/match/UnityPresentationHost";
-import { useUnityPlayerFacingGate } from "../../../components/match/useUnityPlayerFacingGate";
+import {
+  useUnityPlayerFacingGate,
+  type UnityPlayerFacingGateDiagnostic,
+} from "../../../components/match/useUnityPlayerFacingGate";
 import type { PresentationEnvelope } from "../../../components/match/unityPresentationProtocol";
 import type { ViewerIdentityContext } from "../../../components/match/unityPresentationIdentity";
 import type { ViewerPresentationMessage } from "../../../components/match/useViewerPresentation";
@@ -94,11 +97,19 @@ import {
   type SentSummarySnapshot,
 } from "./unityB6D3CProof";
 
+/**
+ * Proof-only MatchRenderer3D ready bound. Measured cold-boot ready ≈ 66.37s;
+ * authorized ceiling 90s. Does not change the production/default 15s renderer.
+ */
+const B6D3C_UNITY_READY_TIMEOUT_MS = 90_000;
+
 // ── Bounded, harness-owned timeouts. Never derived from input. ────────────────
+// Gate A `load` wait is intentionally greater than the proof renderer timeout so
+// the renderer fail-open remains authoritative if Unity never becomes ready.
 const TIMEOUT_MS: Record<ProofStep["timeoutLabel"], number> = {
   short: 1_500,
   standard: 6_000,
-  load: 30_000,
+  load: 95_000,
 };
 /** Bounded wait for the merged cohort gate to resolve after the operator starts. */
 const GATE_TIMEOUT_MS = 15_000;
@@ -137,6 +148,51 @@ function isReadyEvent(data: unknown): boolean {
   return record.type === "PENALTY444_UNITY_EVENT" && record.event === "ready";
 }
 
+/**
+ * Bounded synthetic Unity → React error. Presentation-only; no identity, match,
+ * room, opponent, wallet, token or session fields.
+ */
+const PROOF_UNITY_REPORTED_ERROR_MESSAGE = "B6D3C-proof-synthetic-presentation-error";
+
+/**
+ * Post the existing validated Unity error event FROM the proof iframe's
+ * contentWindow so MatchRenderer3D's origin+source checks accept it.
+ * Parent-window postMessage / forged MessageEvent source is not used.
+ */
+function postUnityReportedErrorFromIframe(frame: HTMLIFrameElement): boolean {
+  const child = frame.contentWindow;
+  if (child === null) return false;
+  let childOrigin = "";
+  try {
+    childOrigin = child.location.origin;
+  } catch {
+    return false;
+  }
+  const targetOrigin = window.location.origin;
+  if (childOrigin !== targetOrigin) return false;
+  const payload = {
+    type: "PENALTY444_UNITY_EVENT",
+    event: "error",
+    payload: { message: PROOF_UNITY_REPORTED_ERROR_MESSAGE },
+  };
+  const doc = frame.contentDocument;
+  if (doc === null || doc.defaultView !== child) return false;
+  try {
+    const script = doc.createElement("script");
+    script.textContent =
+      "parent.postMessage(" +
+      JSON.stringify(payload) +
+      ", " +
+      JSON.stringify(targetOrigin) +
+      ");";
+    doc.documentElement.appendChild(script);
+    script.remove();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export default function UnityB6D3CProofClient() {
   // ── Public build-time flags (all four, exactly as MatchRoomPanel composes) ──
   const matchEnabled = process.env.NEXT_PUBLIC_UNITY_MATCH_ENABLED === "true";
@@ -160,8 +216,22 @@ export default function UnityB6D3CProofClient() {
   const [proofActivated, setProofActivated] = useState(false);
   const [proofRunEpoch, setProofRunEpoch] = useState(0);
 
-  // Reused UNCHANGED from PR-2. No network happens while `requested` is false.
-  const gate = useUnityPlayerFacingGate({ requested: preconditionsMet && operatorRequested });
+  /**
+   * Bounded cohort-gate diagnostic for the operator. This is ONLY the existing
+   * `UnityPlayerFacingGateDiagnostic` enum member — never an email, token,
+   * cookie, header, body, URL, secret or free-form error string. `null` means
+   * the gate has not resolved in this run yet.
+   */
+  const [cohortDiagnostic, setCohortDiagnostic] = useState<UnityPlayerFacingGateDiagnostic | null>(
+    null,
+  );
+
+  // Reused UNCHANGED from PR-2, plus the OPTIONAL bounded-diagnostic sink. The
+  // gate still performs exactly one status request and one mint per resolution.
+  const gate = useUnityPlayerFacingGate({
+    requested: preconditionsMet && operatorRequested,
+    onDiagnostic: setCohortDiagnostic,
+  });
   const gateRef = useRef(gate);
   gateRef.current = gate;
 
@@ -490,6 +560,9 @@ export default function UnityB6D3CProofClient() {
     setHarnessError(false);
     setCurrentStep(null);
     setPendingStep(null);
+    // A new run must never display a diagnostic left over from a previous run,
+    // and Reset must return the line to its initial safe state.
+    setCohortDiagnostic(null);
   }, []);
 
   /**
@@ -765,9 +838,12 @@ export default function UnityB6D3CProofClient() {
       setCurrentStep(14);
       if (!(await sendViaHost(step(14), feedB.messages[1]))) throw new Error("step-14");
 
-      // 15 — a NATIVE iframe error is terminal for this instance: the renderer is
-      //      unmounted, the React underlay stays mounted AND visible, no
-      //      "unavailable" card is left behind, and nothing remounts.
+      // 15 — a Unity-reported presentation error is terminal for this instance:
+      //      the renderer is unmounted, the React underlay stays mounted AND
+      //      visible, no "unavailable" card is left behind, and nothing remounts.
+      //      The message is posted FROM the proof iframe contentWindow so the
+      //      production origin+source checks accept it. This is not an HTML
+      //      iframe resource/network error.
       activeStepRef.current = step(15);
       setCurrentStep(15);
       const target = proofIframe();
@@ -775,7 +851,10 @@ export default function UnityB6D3CProofClient() {
         observe(15, false, "iframe_invariant_violation");
         throw new Error("step-15-iframe");
       }
-      target.dispatchEvent(new Event("error"));
+      if (!postUnityReportedErrorFromIframe(target)) {
+        observe(15, false, "iframe_invariant_violation");
+        throw new Error("step-15-inject");
+      }
       await waitUntil(
         () => readHostState() === "UNITY_FAILED_REACT_FALLBACK" && iframes().length === 0,
         TIMEOUT_MS[step(15).timeoutLabel],
@@ -879,6 +958,7 @@ export default function UnityB6D3CProofClient() {
           <li>build URL is {REQUIRED_BUILD_URL}: {buildUrlCorrect ? "yes" : "no"}</li>
           <li>operator started: {operatorRequested ? "yes" : "no"}</li>
           <li>cohort gate: {gate}</li>
+          <li>cohort diagnostic: {cohortDiagnostic ?? "none"}</li>
           <li>host activated: {playerFacingAuthorized ? "yes" : "no"}</li>
         </ul>
         <p className="mt-2 text-xs text-zinc-400">
@@ -924,6 +1004,7 @@ export default function UnityB6D3CProofClient() {
           messages={hostMessages}
           identity={identity}
           correlation={null}
+          readyTimeoutMs={B6D3C_UNITY_READY_TIMEOUT_MS}
           onReady={() => {}}
           onError={() => {}}
           onMessageSent={handleMessageSent}
