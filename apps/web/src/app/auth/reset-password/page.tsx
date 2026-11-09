@@ -4,17 +4,14 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase/client";
 import {
+  INVALID_RECOVERY_LINK_MESSAGE,
   clearRecoveryFlag,
-  hasAuthCallbackError,
-  isPasswordRecoveryCallback,
-  parseAuthCallbackParams,
-  readRecoveryFlag,
-  shouldForcePasswordUpdate,
+  startRecoveryBootstrap,
   validateNewPassword,
-  writeRecoveryFlag,
+  type RecoveryGateState,
 } from "../../../lib/auth/passwordRecovery";
 
-type GateState = "checking" | "ready" | "invalid" | "success";
+type GateState = RecoveryGateState["status"] | "success";
 
 export default function ResetPasswordPage() {
   const [gate, setGate] = useState<GateState>("checking");
@@ -30,107 +27,35 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    let settled = false;
-
-    function markReady() {
-      if (cancelled || settled) return;
-      settled = true;
-      writeRecoveryFlag(window.sessionStorage);
-      setGate("ready");
-      setGateMessage("");
-    }
-
-    function markInvalid(message: string) {
-      if (cancelled || settled) return;
-      settled = true;
-      clearRecoveryFlag(window.sessionStorage);
-      setGate("invalid");
-      setGateMessage(message);
-    }
-
-    const params = parseAuthCallbackParams(
-      window.location.search,
-      window.location.hash
-    );
-
-    if (hasAuthCallbackError(params)) {
-      markInvalid(
-        "This password reset link is invalid or has expired. Request a new one."
-      );
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    if (isPasswordRecoveryCallback(params)) {
-      writeRecoveryFlag(window.sessionStorage);
-    }
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (cancelled) return;
-
-      if (event === "PASSWORD_RECOVERY") {
-        markReady();
-        return;
-      }
-
-      if (
-        session &&
-        shouldForcePasswordUpdate({
-          authEvent: event,
-          recoveryFlagSet: readRecoveryFlag(window.sessionStorage),
-          callbackIsRecovery: isPasswordRecoveryCallback(params),
-        })
-      ) {
-        markReady();
-      }
+    const bootstrap = startRecoveryBootstrap({
+      getSearch: () => window.location.search,
+      getHash: () => window.location.hash,
+      onResetPasswordPath: true,
+      storage: window.sessionStorage,
+      getSession: async () => {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        return { session };
+      },
+      onAuthStateChange: (cb) => {
+        const {
+          data: { subscription },
+        } = supabase.auth.onAuthStateChange((event, session) => {
+          cb(event, session);
+        });
+        return { unsubscribe: () => subscription.unsubscribe() };
+      },
+      setTimeout: (fn, ms) => window.setTimeout(fn, ms) as unknown,
+      clearTimeout: (id) => window.clearTimeout(id as number),
+      onState: (next) => {
+        setGate(next.status);
+        setGateMessage(next.message);
+      },
     });
 
-    void (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (cancelled || settled) return;
-
-      const force = shouldForcePasswordUpdate({
-        authEvent: null,
-        recoveryFlagSet: readRecoveryFlag(window.sessionStorage),
-        callbackIsRecovery: isPasswordRecoveryCallback(params),
-      });
-
-      if (session && force) {
-        markReady();
-        return;
-      }
-
-      // Give the auth client a moment to finish hash/PKCE exchange.
-      window.setTimeout(() => {
-        if (cancelled || settled) return;
-        void supabase.auth.getSession().then(({ data: { session: s } }) => {
-          if (cancelled || settled) return;
-          const stillForce = shouldForcePasswordUpdate({
-            authEvent: null,
-            recoveryFlagSet: readRecoveryFlag(window.sessionStorage),
-            callbackIsRecovery: isPasswordRecoveryCallback(params),
-          });
-          if (s && stillForce) {
-            markReady();
-            return;
-          }
-          markInvalid(
-            "This password reset link is invalid or has expired. Request a new one."
-          );
-        });
-      }, 1500);
-    })();
-
     return () => {
-      cancelled = true;
-      subscription.unsubscribe();
+      bootstrap.stop();
     };
   }, []);
 
@@ -154,18 +79,19 @@ export default function ResetPasswordPage() {
 
     if (error) {
       setLoading(false);
+      const lower = error.message.toLowerCase();
       setStatusTone("error");
       setStatus(
-        error.message.toLowerCase().includes("expired") ||
-          error.message.toLowerCase().includes("session")
-          ? "This password reset link is invalid or has expired. Request a new one."
+        lower.includes("expired") ||
+          lower.includes("session") ||
+          lower.includes("invalid")
+          ? INVALID_RECOVERY_LINK_MESSAGE
           : "Unable to update your password. Try again or request a new reset link."
       );
       return;
     }
 
     clearRecoveryFlag(window.sessionStorage);
-    // Force a clean login with the new password.
     await supabase.auth.signOut();
     setLoading(false);
     setGate("success");
@@ -178,6 +104,10 @@ export default function ResetPasswordPage() {
       <section className="mx-auto max-w-md rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
         <h1 className="text-2xl font-bold text-white">Reset password</h1>
         <p className="mt-2 text-sm text-zinc-400">{gateMessage}</p>
+        <p className="mt-3 text-xs text-zinc-500">
+          Still verifying your secure link. This can take a few seconds on slow
+          connections.
+        </p>
       </section>
     );
   }
@@ -190,7 +120,7 @@ export default function ResetPasswordPage() {
           role="alert"
           className="mt-4 rounded-xl border border-red-500/40 bg-red-950/40 px-4 py-3 text-sm text-red-100"
         >
-          {gateMessage}
+          {gateMessage || INVALID_RECOVERY_LINK_MESSAGE}
         </div>
         <p className="mt-4 text-sm text-zinc-400">
           <Link href="/auth/forgot-password" className="text-[#9AD2FF] underline">
