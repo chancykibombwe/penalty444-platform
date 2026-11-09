@@ -34,6 +34,7 @@ test("isolated set is exact and does not blanket /dev/*", () => {
 test("the shell mounts chrome only when the route is not isolated", () => {
   assert.ok(/isIsolatedDevRoute\(pathname\)/.test(source));
   assert.ok(/return <main>\{children\}<\/main>/.test(source));
+  assert.ok(/<PasswordRecoveryRedirect \/>/.test(source));
   assert.ok(/<ActiveMatchRecovery \/>/.test(source));
   assert.ok(/<MatchReadyNotification \/>/.test(source));
   assert.ok(/<TournamentMatchReadyNotification \/>/.test(source));
