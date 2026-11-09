@@ -34,6 +34,7 @@ import FreePlayNoticeStrip from "./FreePlayNoticeStrip";
 import ActiveMatchRecovery from "../match/ActiveMatchRecovery";
 import MatchReadyNotification from "../match/MatchReadyNotification";
 import TournamentMatchReadyNotification from "../tournament/TournamentMatchReadyNotification";
+import PasswordRecoveryRedirect from "../auth/PasswordRecoveryRedirect";
 
 /**
  * Exact pathname set for shell isolation. Query strings are not part of the
@@ -70,6 +71,7 @@ export default function RouteAwareAppShell({
 
   return (
     <>
+      <PasswordRecoveryRedirect />
       <ActiveMatchRecovery />
       <MatchReadyNotification />
       <TournamentMatchReadyNotification />
