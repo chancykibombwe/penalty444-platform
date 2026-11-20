@@ -169,6 +169,16 @@ body {
     opacity: 1 !important;
     transform: none !important;
   }
+
+  /* Preserve JS-timed match announcements and result overlays.
+     Their normal animations end at opacity: 0 with forwards fill;
+     reduced-motion users need a visible, static presentation. */
+  .p444-round-transition,
+  .p444-result-burst {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }
 
 /* ── Keyboard focus ring ────────────────────────────────────────────
