@@ -1,6 +1,19 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
+import { Poppins } from "next/font/google";
 import RouteAwareAppShell from "../components/layout/RouteAwareAppShell";
+
+/**
+ * Stage 6O-D1 — Poppins via next/font/google (built into Next.js 16).
+ * Weights 400–800 per approved design system. No binary font files committed.
+ * `variable` exposes --font-poppins for globals.css --font-sans.
+ */
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  display: "swap",
+  variable: "--font-poppins",
+});
 
 export const metadata: Metadata = {
   title: "444 ARENA — Penalty444 Free Play Beta",
@@ -27,8 +40,11 @@ export default function RootLayout({
   // routes EXCEPT /dev/unity-staging (B6C staging isolation — no Socket.IO / auth
   // components mount there). See RouteAwareAppShell.
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className="bg-zinc-950 text-white" suppressHydrationWarning>
+    <html lang="en" className={poppins.variable} suppressHydrationWarning>
+      <body
+        className="bg-arena-bg text-white antialiased"
+        suppressHydrationWarning
+      >
         <RouteAwareAppShell>{children}</RouteAwareAppShell>
       </body>
     </html>
